@@ -9,10 +9,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode
 }
 
-export function Button({ variant = 'default', size = 'md', icon, className = '', children, ...rest }: ButtonProps) {
+export function Button({ variant = 'default', size = 'md', icon, className = '', type = 'button', children, ...rest }: ButtonProps) {
   const classes = ['btn', variant !== 'default' && `btn-${variant}`, size !== 'md' && `btn-${size}`, className]
   return (
-    <button type="button" className={classes.filter(Boolean).join(' ')} {...rest}>
+    <button type={type} className={classes.filter(Boolean).join(' ')} {...rest}>
       {icon}
       {children}
     </button>

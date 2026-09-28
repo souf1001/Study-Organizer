@@ -1,6 +1,7 @@
 .settings {
   display: flex;
   height: 100%;
+  container-type: inline-size;
 }
 
 .settings-nav {
@@ -160,8 +161,13 @@
   width: 100%;
 }
 
+.inline-form .row {
+  flex-wrap: wrap;
+}
+
 .inline-form .row .input {
-  flex: 1;
+  flex: 1 1 160px;
+  min-width: 0;
 }
 
 .status-ok {
@@ -172,12 +178,21 @@
   color: var(--danger);
 }
 
-@media (max-width: 800px) {
+/* Schmale Bereiche (Split-Screen) */
+@container (max-width: 820px) {
   .settings-nav {
-    width: 170px;
+    width: 160px;
+    padding: 20px 6px;
+  }
+  .settings-inner {
+    padding: 24px 20px 64px;
   }
   .setting-row {
     flex-wrap: wrap;
+  }
+  .setting-control {
+    width: 100%;
+    justify-content: flex-start;
   }
   .setting-control .input,
   .setting-control .select {

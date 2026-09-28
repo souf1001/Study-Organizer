@@ -170,4 +170,36 @@ describe('Moodle', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('lädt keine Dateien, wenn das Speicherlimit erreicht ist', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-'))
+    try {
+      const store = await Store.open(dir)
+      const module = newModule('s', { name: 'Physik' })
+      store.put('modules', module)
+      const settings = store.get().settings
+      store.update({
+        settings: { ...settings, moodle: { ...settings.moodle, url: 'https://m.de', courseMap: { 11: module.id }, syncFiles: true } },
+      })
+      const file = { type: 'file', filename: 'a.pdf', fileurl: 'https://m.de/webservice/pluginfile.php/1/a.pdf', filesize: 4, timemodified: 1 }
+      const fetchImpl = fakeFetch((fn) =>
+        fn === 'core_course_get_contents'
+          ? [{ name: 'Woche 1', modules: [{ modname: 'resource', name: 'Folien', contents: [file] }] }]
+          : fn === 'mod_assign_get_assignments'
+            ? { courses: [] }
+            : { events: [] },
+      )
+      const reserved: number[] = []
+      const full = async (bytes: number): Promise<() => void> => {
+        reserved.push(bytes)
+        throw new Error('Speicher voll')
+      }
+      const result = await syncMoodle(store, new MoodleClient('https://m.de', 't', fetchImpl), full)
+      expect(reserved).toEqual([4])
+      expect(result.errors).toEqual(['Dateien: Speicher voll'])
+      expect(store.get().items).toHaveLength(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
