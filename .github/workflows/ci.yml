@@ -1,0 +1,26 @@
+# Prüft jeden Push: Lint, Typen, Unit-Tests, Build und End-to-End-Tests in der echten App.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: End-to-End-Tests (Electron unter Xvfb)
+        run: xvfb-run -a npm run test:e2e

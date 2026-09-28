@@ -4,9 +4,12 @@ import path from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 
 export async function launchApp(dataDir = mkdtempSync(path.join(os.tmpdir(), 'study-e2e-'))): Promise<{ app: ElectronApplication; page: Page; dataDir: string }> {
-  const args = ['out/main/index.js']
-  if (process.getuid?.() === 0) args.unshift('--no-sandbox')
+  // STUDY_E2E_EXECUTABLE: fertig verpackte App testen (z. B. release/linux-unpacked/study-organizer)
+  const executablePath = process.env.STUDY_E2E_EXECUTABLE
+  const args = executablePath ? [] : ['out/main/index.js']
+  if (process.getuid?.() === 0 || process.env.CI) args.unshift('--no-sandbox')
   const app = await electron.launch({
+    executablePath,
     args,
     env: { ...process.env, STUDY_ORGANIZER_DATA: dataDir, ELECTRON_RENDERER_URL: '' },
   })

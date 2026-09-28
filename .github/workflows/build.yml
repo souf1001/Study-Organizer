@@ -1,0 +1,62 @@
+# Baut die Installationspakete auf echten Windows-, macOS- und Linux-Maschinen.
+# - Bei jedem Push liegen die Dateien unter „Actions → Lauf → Artifacts“ zum Download bereit.
+# - Bei einem Tag wie v0.1.0 wird zusätzlich ein GitHub-Release mit allen Dateien erstellt.
+name: Installationspakete
+
+on:
+  push:
+    branches: [main, webapp]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+            files: release/*.exe
+          - os: macos-latest
+            target: --mac
+            files: release/*.dmg
+          - os: ubuntu-latest
+            target: --linux
+            files: release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Paket bauen
+        run: npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          # Ohne eigenes Zertifikat wird nicht nach einer Signatur-Identität gesucht
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Study-Organizer-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

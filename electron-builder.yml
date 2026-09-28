@@ -1,3 +1,4 @@
+# Installationspakete: Windows (.exe), macOS (.dmg), Linux (.AppImage)
 appId: de.studyorganizer.app
 productName: Study Organizer
 copyright: Copyright © 2026 Soufian Kroud
@@ -13,6 +14,7 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  icon: build/icon.png
   artifactName: Study-Organizer-Setup-${version}.${ext}
 
 nsis:
@@ -20,16 +22,20 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
+  createStartMenuShortcut: true
   shortcutName: Study Organizer
 
 mac:
   category: public.app-category.education
+  icon: build/icon.png
   target:
     - target: dmg
       arch: [universal]
-  artifactName: Study-Organizer-${version}.${ext}
-  hardenedRuntime: true
-  gatekeeperAssess: false
+  artifactName: Study-Organizer-${version}-mac.${ext}
+  # Ad-hoc-Signatur: läuft ohne Apple-Entwicklerkonto (beim ersten Start „Trotzdem öffnen“).
+  # Mit Zertifikat: identity entfernen und CSC_LINK/CSC_KEY_PASSWORD setzen.
+  identity: '-'
+  hardenedRuntime: false
 
 dmg:
   title: Study Organizer ${version}
@@ -37,4 +43,5 @@ dmg:
 linux:
   target: [AppImage]
   category: Education
+  icon: build/icon.png
   artifactName: Study-Organizer-${version}.${ext}

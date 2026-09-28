@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- macOS-Raster: 824 × 824 Fläche mit 100 px Rand -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="#1f1f22"/>
+  <!-- Blatt -->
+  <rect x="330" y="262" width="364" height="500" rx="44" fill="#fafaf8"/>
+  <!-- Lesezeichen -->
+  <path d="M590 262 h60 v170 l-30 -28 l-30 28 z" fill="#7c7cf0"/>
+  <!-- Zeilen -->
+  <rect x="394" y="350" width="160" height="26" rx="13" fill="#c9c8c3"/>
+  <rect x="394" y="448" width="236" height="26" rx="13" fill="#c9c8c3"/>
+  <rect x="394" y="524" width="170" height="26" rx="13" fill="#c9c8c3"/>
+  <!-- Handschrift-Strich -->
+  <path d="M396 648 C 440 606, 470 694, 514 652 S 590 614, 630 646" fill="none" stroke="#7c7cf0" stroke-width="22" stroke-linecap="round"/>
+</svg>
