@@ -12,6 +12,8 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const HOUR = 60 * 60 * 1000
 
 registerSchemePrivileges()
+// Datums- und Zeitfelder auf Deutsch (TT.MM.JJJJ, 24-Stunden-Format)
+app.commandLine.appendSwitch('lang', 'de-DE')
 
 let mainWindow: BrowserWindow | null = null
 

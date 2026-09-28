@@ -6,6 +6,7 @@ import type { AiRequest, FileInput, FileTarget } from '../shared/types'
 import { toISODate } from '../shared/dates'
 import type { Service } from '../backend/service'
 import type { Store } from '../backend/store'
+import { moodleSsoLogin } from './moodle-sso'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (...args: any[]) => unknown
@@ -49,8 +50,17 @@ export function registerIpc(service: Service, store: Store): void {
     'ai:setKey': service.aiSetKey,
     'ai:hasKey': service.aiHasKey,
     'ai:listModels': service.aiListModels,
-    'calendar:sync': service.syncSubscription,
+    'calendar:subscribe': service.calendarSubscribe,
+    'calendar:unsubscribe': service.calendarUnsubscribe,
+    'calendar:sync': service.calendarSync,
+    'calendar:importFile': service.calendarImportFile,
+    'moodle:siteInfo': service.moodleSiteInfo,
     'moodle:connect': service.moodleConnect,
+    'moodle:connectSso': async (url: string) => {
+      const { url: site } = await service.moodleSiteInfo(url)
+      const token = await moodleSsoLogin(site, BrowserWindow.getFocusedWindow())
+      return service.moodleConnect({ url: site, token })
+    },
     'moodle:courses': service.moodleCourses,
     'moodle:sync': service.moodleSync,
     'moodle:disconnect': service.moodleDisconnect,

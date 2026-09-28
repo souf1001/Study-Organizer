@@ -35,7 +35,7 @@ export async function streamChat(
       ? await streamAnthropic(apiKey, t.model, request, onText, signal)
       : await streamOpenAi(t.baseUrl, apiKey, t.model, request, onText, signal)
   } catch (error) {
-    throw new Error(describeAiError(error))
+    throw new Error(describeAiError(error), { cause: error })
   }
 }
 
@@ -46,7 +46,7 @@ export async function listModels(settings: AiSettings, apiKey: string): Promise<
       ? await listAnthropicModels(apiKey)
       : await listOpenAiModels(t.baseUrl, apiKey)
   } catch (error) {
-    throw new Error(describeAiError(error))
+    throw new Error(describeAiError(error), { cause: error })
   }
 }
 

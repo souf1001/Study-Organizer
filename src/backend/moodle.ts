@@ -1,7 +1,8 @@
 // Moodle-Anbindung über die offiziellen Web-Services (dieselben, die auch die Moodle-App nutzt).
 // Holt Abgaben (als Aufgaben), weitere Termine (Tests, Fristen) und optional Kursdateien.
-import type { MoodleCourse, MoodleSyncResult } from '../shared/types'
+import type { MoodleCourse, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
 import { newFolder, newTask, newEvent } from '../shared/defaults'
+import { classifyEvent } from './ics'
 import type { Store } from './store'
 
 type Params = Record<string, unknown>
@@ -29,8 +30,49 @@ export function normalizeMoodleUrl(input: string): string {
   const withProtocol = /^https?:\/\//i.test(input.trim()) ? input.trim() : `https://${input.trim()}`
   const url = new URL(withProtocol)
   if (url.protocol !== 'https:') throw new Error('Moodle muss über https erreichbar sein.')
-  const path = url.pathname.replace(/\/(login|my|course|user|calendar|admin)(\/.*)?$/, '').replace(/\/$/, '')
+  const path = url.pathname
+    .replace(/\/(login|my|course|user|calendar|admin)(\/.*)?$/, '')
+    .replace(/\/$/, '')
   return `${url.origin}${path}`
+}
+
+/** Öffentliche Infos einer Moodle-Instanz (ohne Anmeldung): Name, Adresse und Login-Art */
+export async function moodleSiteInfo(
+  input: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<MoodleSiteInfo> {
+  const site = normalizeMoodleUrl(input)
+  const response = await fetchImpl(
+    `${site}/lib/ajax/service-nologin.php?info=tool_mobile_get_public_config`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ index: 0, methodname: 'tool_mobile_get_public_config', args: {} }]),
+      signal: AbortSignal.timeout(15_000),
+    },
+  )
+  if (!response.ok) throw new Error(`Moodle nicht erreichbar (HTTP ${response.status}).`)
+  const [result] = (await response.json()) as {
+    error: boolean
+    data?: {
+      sitename: string
+      wwwroot: string
+      typeoflogin: number
+      enablemobilewebservice?: number
+    }
+  }[]
+  if (!result || result.error || !result.data)
+    throw new Error('Unter dieser Adresse wurde kein Moodle mit App-Zugang gefunden.')
+  if (result.data.enablemobilewebservice === 0)
+    throw new Error(
+      'Diese Moodle-Instanz erlaubt keinen App-Zugang. Nutze stattdessen den Kalender-Export (iCal).',
+    )
+  // typeoflogin: 1 = Login-Formular, 2/3 = Hochschul-Login im Browser (SSO)
+  return {
+    siteName: result.data.sitename,
+    url: result.data.wwwroot.replace(/\/$/, ''),
+    ssoRequired: result.data.typeoflogin !== 1,
+  }
 }
 
 interface MoodleSection {
@@ -38,7 +80,13 @@ interface MoodleSection {
   modules: {
     modname: string
     name: string
-    contents?: { type: string; filename: string; fileurl: string; filesize: number; timemodified: number }[]
+    contents?: {
+      type: string
+      filename: string
+      fileurl: string
+      filesize: number
+      timemodified: number
+    }[]
   }[]
 }
 
@@ -52,7 +100,12 @@ export class MoodleClient {
   ) {}
 
   /** Tauscht Benutzername/Passwort gegen einen Token (klappt nicht bei reinem SSO-Login) */
-  static async login(site: string, username: string, password: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  static async login(
+    site: string,
+    username: string,
+    password: string,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<string> {
     const response = await fetchImpl(`${site}/login/token.php`, {
       method: 'POST',
       body: new URLSearchParams({ username, password, service: 'moodle_mobile_app' }),
@@ -70,7 +123,12 @@ export class MoodleClient {
   }
 
   async call<T>(wsfunction: string, params: Params = {}): Promise<T> {
-    const body = encodeParams({ wstoken: this.token, wsfunction, moodlewsrestformat: 'json', ...params })
+    const body = encodeParams({
+      wstoken: this.token,
+      wsfunction,
+      moodlewsrestformat: 'json',
+      ...params,
+    })
     const response = await this.fetchImpl(`${this.site}/webservice/rest/server.php`, {
       method: 'POST',
       body,
@@ -89,23 +147,46 @@ export class MoodleClient {
   }
 
   async courses(userid: number): Promise<MoodleCourse[]> {
-    const list = await this.call<MoodleCourse[]>('core_enrol_get_users_courses', { userid })
+    const list = await this.call<MoodleCourse[]>('core_enrol_get_users_courses', {
+      userid,
+      returnusercount: false,
+    })
     return list.map(({ id, fullname, shortname }) => ({ id, fullname, shortname }))
   }
 
   assignments(courseids: number[]): Promise<{
-    courses: { id: number; assignments: { id: number; name: string; duedate: number; intro?: string }[] }[]
+    courses: {
+      id: number
+      assignments: { id: number; name: string; duedate: number; intro?: string }[]
+    }[]
   }> {
     return this.call('mod_assign_get_assignments', { courseids })
   }
 
-  actionEvents(from: number): Promise<{
-    events: { id: number; name: string; timesort: number; modulename: string; course?: { id: number } }[]
+  /** Alle Kalendertermine der Kurse (Tests, Fristen, Kurstermine) im Zeitraum */
+  calendarEvents(
+    courseids: number[],
+    from: number,
+    to: number,
+  ): Promise<{
+    events: {
+      id: number
+      name: string
+      courseid: number
+      modulename: string | null
+      timestart: number
+      timeduration: number
+    }[]
   }> {
-    return this.call('core_calendar_get_action_events_by_timesort', {
-      timesortfrom: from,
-      limitnum: 50,
-      limittononsuspendedevents: true,
+    return this.call('core_calendar_get_calendar_events', {
+      events: { courseids },
+      options: {
+        userevents: true,
+        siteevents: true,
+        timestart: from,
+        timeend: to,
+        ignorehidden: true,
+      },
     })
   }
 
@@ -115,7 +196,8 @@ export class MoodleClient {
 
   async download(fileurl: string): Promise<Uint8Array> {
     const url = new URL(fileurl)
-    if (url.origin !== new URL(this.site).origin) throw new Error('Datei liegt nicht auf dem Moodle-Server.')
+    if (url.origin !== new URL(this.site).origin)
+      throw new Error('Datei liegt nicht auf dem Moodle-Server.')
     url.searchParams.set('token', this.token)
     const response = await this.fetchImpl(url, { signal: AbortSignal.timeout(120_000) })
     if (!response.ok) throw new Error(`Download fehlgeschlagen (HTTP ${response.status}).`)
@@ -126,14 +208,21 @@ export class MoodleClient {
 export async function connectMoodle(
   input: { url: string; username?: string; password?: string; token?: string },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ site: string; token: string; siteName: string; userId: number; courses: MoodleCourse[] }> {
+): Promise<{
+  site: string
+  token: string
+  siteName: string
+  userId: number
+  courses: MoodleCourse[]
+}> {
   const site = normalizeMoodleUrl(input.url)
   const token =
     input.token?.trim() ||
     (input.username && input.password
       ? await MoodleClient.login(site, input.username, input.password, fetchImpl)
       : '')
-  if (!token) throw new Error('Bitte Benutzername und Passwort oder einen Sicherheitsschlüssel angeben.')
+  if (!token)
+    throw new Error('Bitte Benutzername und Passwort oder einen Sicherheitsschlüssel angeben.')
   const client = new MoodleClient(site, token, fetchImpl)
   const info = await client.siteInfo()
   const courses = await client.courses(info.userid)
@@ -148,8 +237,12 @@ export async function syncMoodle(store: Store, client: MoodleClient): Promise<Mo
   const db = store.get()
   const courseMap = db.settings.moodle.courseMap
   const moduleFor = (courseId: number | undefined): string | null =>
-    courseId !== undefined && db.modules.some((m) => m.id === courseMap[courseId]) ? courseMap[courseId] : null
-  const courseIds = Object.keys(courseMap).map(Number).filter((id) => moduleFor(id))
+    courseId !== undefined && db.modules.some((m) => m.id === courseMap[courseId])
+      ? courseMap[courseId]
+      : null
+  const courseIds = Object.keys(courseMap)
+    .map(Number)
+    .filter((id) => moduleFor(id))
   if (courseIds.length === 0) {
     result.errors.push('Noch keine Moodle-Kurse einem Modul zugeordnet.')
     return result
@@ -163,9 +256,19 @@ export async function syncMoodle(store: Store, client: MoodleClient): Promise<Mo
         const externalId = `moodle:assign:${a.id}`
         const existing = db.tasks.find((t) => t.externalId === externalId)
         const due = a.duedate ? toIso(a.duedate) : null
-        store.put('tasks', existing
-          ? { ...existing, title: a.name, due }
-          : newTask({ title: a.name, due, moduleId: moduleFor(course.id), kind: 'assignment', source: 'moodle', externalId }))
+        store.put(
+          'tasks',
+          existing
+            ? { ...existing, title: a.name, due }
+            : newTask({
+                title: a.name,
+                due,
+                moduleId: moduleFor(course.id),
+                kind: 'assignment',
+                source: 'moodle',
+                externalId,
+              }),
+        )
         result.tasks += 1
       }
     }
@@ -173,21 +276,23 @@ export async function syncMoodle(store: Store, client: MoodleClient): Promise<Mo
     result.errors.push(`Abgaben: ${(error as Error).message}`)
   }
 
-  // Weitere Fristen (Tests, Foren …) → Kalender
+  // Weitere Termine (Tests, Foren, Kurstermine) → Kalender. Abgaben kommen schon als Aufgaben.
   try {
-    const { events } = await client.actionEvents(Math.floor(Date.now() / 1000) - 7 * 86_400)
+    const now = Math.floor(Date.now() / 1000)
+    const { events } = await client.calendarEvents(courseIds, now - 30 * 86_400, now + 365 * 86_400)
     const records = events
       .filter((e) => e.modulename !== 'assign')
-      .map((e) =>
-        newEvent({
+      .map((e) => {
+        const kind = classifyEvent(e.name)
+        return newEvent({
           title: e.name,
-          kind: 'deadline',
-          start: toIso(e.timesort),
-          end: toIso(e.timesort),
-          moduleId: moduleFor(e.course?.id),
+          kind: kind === 'other' && !e.timeduration ? 'deadline' : kind,
+          start: toIso(e.timestart),
+          end: toIso(e.timestart + (e.timeduration || 0)),
+          moduleId: moduleFor(e.courseid),
           externalId: `moodle:event:${e.id}`,
-        }),
-      )
+        })
+      })
     store.replaceMany('events', (e) => Boolean(e.externalId?.startsWith('moodle:event:')), records)
     result.events = records.length
   } catch (error) {
@@ -204,14 +309,26 @@ export async function syncMoodle(store: Store, client: MoodleClient): Promise<Mo
     }
   }
 
-  store.update({ settings: { ...db.settings, moodle: { ...db.settings.moodle, lastSync: new Date().toISOString() } } })
+  store.update({
+    settings: {
+      ...db.settings,
+      moodle: { ...db.settings.moodle, lastSync: new Date().toISOString() },
+    },
+  })
   return result
 }
 
-async function syncCourseFiles(store: Store, client: MoodleClient, courseId: number, moduleId: string): Promise<number> {
+async function syncCourseFiles(
+  store: Store,
+  client: MoodleClient,
+  courseId: number,
+  moduleId: string,
+): Promise<number> {
   const db = store.get()
   const folderNamed = (name: string, parentId: string | null): string => {
-    const found = db.folders.find((f) => f.moduleId === moduleId && f.parentId === parentId && f.name === name)
+    const found = db.folders.find(
+      (f) => f.moduleId === moduleId && f.parentId === parentId && f.name === name,
+    )
     if (found) return found.id
     const folder = newFolder(moduleId, { name, parentId })
     store.put('folders', folder)
@@ -227,11 +344,16 @@ async function syncCourseFiles(store: Store, client: MoodleClient, courseId: num
         if (file.type !== 'file' || file.filesize > MAX_FILE_BYTES) continue
         const externalId = `moodle:file:${file.fileurl}@${file.timemodified}`
         if (db.items.some((i) => i.externalId === externalId)) continue
-        const outdated = db.items.find((i) => i.externalId?.startsWith(`moodle:file:${file.fileurl}@`))
+        const outdated = db.items.find((i) =>
+          i.externalId?.startsWith(`moodle:file:${file.fileurl}@`),
+        )
         if (outdated) await store.remove('items', outdated.id)
         const bytes = await client.download(file.fileurl)
         const folderId = folderNamed(section.name || 'Allgemein', rootId)
-        const item = await store.addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes })
+        const item = await store.addFile(
+          { moduleId, folderId },
+          { name: file.filename, type: '', bytes },
+        )
         store.put('items', { ...item, source: 'moodle', externalId })
         count += 1
       }

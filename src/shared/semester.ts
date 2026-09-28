@@ -17,8 +17,12 @@ interface SemesterRule {
   /** Dauer der Vorlesungszeit in Wochen (Vorlesungsende = Freitag der letzten Woche) */
   winterLectureWeeks: number
   summerLectureWeeks: number
+  /** Weihnachtspause (Dezember → Januar) */
+  christmasBreak: [from: MonthDay, to: MonthDay]
 }
 
+// Quellen: Vorgaben des MKW NRW für Universitäten und Fachhochschulen (WiSe 2026/27, SoSe 2027),
+// Merkblätter der h_da (WiSe 2025/26 bis WiSe 2026/27). Einzelne Hochschulen weichen ab.
 export const SEMESTER_MODELS: Record<SemesterModelId, SemesterRule> = {
   uni: {
     label: 'Universität',
@@ -27,28 +31,31 @@ export const SEMESTER_MODELS: Record<SemesterModelId, SemesterRule> = {
     summerStart: [4, 1],
     winterLectureFrom: [10, 11],
     summerLectureFrom: [4, 11],
-    winterLectureWeeks: 18,
+    winterLectureWeeks: 17,
     summerLectureWeeks: 14,
+    christmasBreak: [[12, 22], [1, 6]],
   },
   hochschule: {
     label: 'Hochschule (HAW/FH)',
-    description: 'WiSe 1.9.–28.2., SoSe 1.3.–31.8. · Vorlesungen ab Anfang Oktober bzw. Mitte März',
+    description: 'WiSe 1.9.–28.2., SoSe 1.3.–31.8. · Vorlesungen ab Ende September bzw. Ende März',
     winterStart: [9, 1],
     summerStart: [3, 1],
-    winterLectureFrom: [9, 29],
-    summerLectureFrom: [3, 15],
-    winterLectureWeeks: 17,
-    summerLectureWeeks: 16,
+    winterLectureFrom: [9, 25],
+    summerLectureFrom: [3, 25],
+    winterLectureWeeks: 20,
+    summerLectureWeeks: 17,
+    christmasBreak: [[12, 22], [1, 6]],
   },
   hda: {
     label: 'Hochschule Darmstadt (h_da)',
-    description: 'WiSe 1.9.–28.2., SoSe 1.3.–31.8. · Vorlesungen ab Anfang Oktober bzw. Mitte März',
-    winterStart: [9, 1],
-    summerStart: [3, 1],
-    winterLectureFrom: [9, 29],
-    summerLectureFrom: [3, 15],
+    description: 'WiSe 1.10.–31.3., SoSe 1.4.–30.9. · Vorlesungen ab Anfang/Mitte Oktober bzw. Mitte April',
+    winterStart: [10, 1],
+    summerStart: [4, 1],
+    winterLectureFrom: [10, 6],
+    summerLectureFrom: [4, 11],
     winterLectureWeeks: 17,
-    summerLectureWeeks: 16,
+    summerLectureWeeks: 15,
+    christmasBreak: [[12, 21], [1, 8]],
   },
 }
 
@@ -77,8 +84,9 @@ export function buildSemester(
   )
   const weeks = winter ? rule.winterLectureWeeks : rule.summerLectureWeeks
   const lectureEnd = addDays(lectureStart, (weeks - 1) * 7 + 4)
+  const [breakFrom, breakTo] = rule.christmasBreak
   const breaks: DateRange[] = winter
-    ? [{ start: `${year}-12-22`, end: `${year + 1}-01-06`, label: 'Weihnachtspause' }]
+    ? [{ start: iso(year, breakFrom), end: iso(year + 1, breakTo), label: 'Weihnachtspause' }]
     : []
   return {
     name: semesterName(kind, year),
@@ -101,6 +109,12 @@ export function semesterForDate(modelId: SemesterModelId, date: ISODate): Semest
     buildSemester(modelId, 'winter', year),
   ]
   return candidates.find((s) => date >= s.start && date <= s.end) ?? candidates[2]
+}
+
+/** Vorschlag bei der Einrichtung: nach Vorlesungsende schon das kommende Semester */
+export function suggestedSemester(modelId: SemesterModelId, date: ISODate): SemesterDraft {
+  const current = semesterForDate(modelId, date)
+  return date > current.lectureEnd ? nextSemesterDraft(modelId, current) : current
 }
 
 export function nextSemesterDraft(modelId: SemesterModelId, semester: SemesterDraft): SemesterDraft {

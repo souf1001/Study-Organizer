@@ -49,7 +49,7 @@ describe('iCal-Import', () => {
 
   it('ordnet Termine Modulen zu', () => {
     const ana = newModule('s', { name: 'Analysis 1', code: 'ANA1' })
-    const events = eventsFromIcs(ICS, { id: 'sub', name: 'Moodle', url: '', enabled: true, lastSync: null, lastError: null }, [ana], new Date('2026-10-01'))
+    const events = eventsFromIcs(ICS, { id: 'sub', name: 'Moodle', kind: 'url', url: '', enabled: true, lastSync: null, lastError: null }, [ana], new Date('2026-10-01'))
     expect(events.every((e) => e.moduleId === ana.id)).toBe(true)
     expect(events.every((e) => e.subscriptionId === 'sub')).toBe(true)
   })
@@ -57,5 +57,25 @@ describe('iCal-Import', () => {
   it('akzeptiert webcal-Links und lehnt andere Protokolle ab', () => {
     expect(normalizeCalendarUrl('webcal://moodle.example.de/cal.ics')).toBe('https://moodle.example.de/cal.ics')
     expect(() => normalizeCalendarUrl('file:///etc/passwd')).toThrow()
+  })
+})
+
+describe('Abo-Abgleich', () => {
+  it('maskiert geheime Parameter', async () => {
+    const { maskCalendarUrl } = await import('../src/backend/ics')
+    expect(maskCalendarUrl('https://lernen.h-da.de/calendar/export_execute.php?userid=1&authtoken=geheim')).toBe(
+      'lernen.h-da.de/calendar/export_execute.php?…',
+    )
+  })
+
+  it('behält ältere Termine, die im rollierenden Fenster fehlen', async () => {
+    const { mergeSubscriptionEvents } = await import('../src/backend/ics')
+    const now = new Date('2026-11-20T12:00:00Z')
+    const base = { kind: 'deadline' as const, allDay: false, moduleId: null, location: '', notes: '', subscriptionId: 's' }
+    const old = { ...base, id: 'a', title: 'Alt', start: '2026-10-01T10:00:00Z', end: '2026-10-01T10:00:00Z', externalId: 'old' }
+    const future = { ...base, id: 'b', title: 'Veraltet', start: '2026-12-01T10:00:00Z', end: '2026-12-01T10:00:00Z', externalId: 'gone' }
+    const incoming = [{ ...base, id: 'c', title: 'Neu', start: '2026-12-05T10:00:00Z', end: '2026-12-05T10:00:00Z', externalId: 'new' }]
+    const merged = mergeSubscriptionEvents([old, future], incoming, now)
+    expect(merged.map((e) => e.title)).toEqual(['Alt', 'Neu'])
   })
 })

@@ -1,0 +1,258 @@
+.file-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.file-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 42px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.zoom-label {
+  min-width: 52px;
+  text-align: center;
+}
+
+.page-input {
+  width: 38px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  text-align: center;
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.page-input:focus {
+  border-color: var(--accent);
+}
+
+/* ---- PDF ---- */
+.pdf-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.pdf-page {
+  position: relative;
+  flex: none;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.08);
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+}
+
+.pdf-page canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-page .ink-layer {
+  z-index: 2;
+}
+
+.pdf-page .ink-marker {
+  mix-blend-mode: multiply;
+}
+
+/* Textebene von pdf.js (unsichtbar, aber markierbar) */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+  z-index: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 90, 255, 0.25);
+}
+
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+/* ---- Video & Audio ---- */
+.media-player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  outline: none;
+  background: var(--bg);
+}
+
+.media-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+.media-stage video {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.media-stage.audio {
+  background: var(--bg-subtle);
+}
+
+.media-stage.audio video {
+  display: none;
+}
+
+.audio-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.media-player:fullscreen .media-controls {
+  background: #111;
+  color: #eee;
+}
+
+.media-controls {
+  flex: none;
+  padding: 4px 12px 8px;
+  border-top: 1px solid var(--border);
+}
+
+.media-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.media-time {
+  margin-left: 8px;
+}
+
+.seek,
+.volume {
+  appearance: none;
+  background: transparent;
+  height: 16px;
+}
+
+.seek {
+  width: 100%;
+}
+
+.volume {
+  width: 80px;
+}
+
+.seek::-webkit-slider-runnable-track,
+.volume::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--bg-active);
+}
+
+.seek::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, var(--accent) var(--progress), var(--bg-active) var(--progress));
+}
+
+.seek::-webkit-slider-thumb,
+.volume::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+/* ---- Bilder & Text ---- */
+.image-stage {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  background: var(--bg-subtle);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.image-stage.fit {
+  align-items: center;
+}
+
+.image-stage.fit img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.image-stage img {
+  border-radius: 4px;
+  box-shadow: var(--shadow-card);
+  transition: transform var(--duration) var(--ease);
+}
+
+.text-view {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: 20px 24px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

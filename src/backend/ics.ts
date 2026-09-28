@@ -33,7 +33,12 @@ export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
       .getAllProperties('categories')
       .flatMap((p) => p.getValues().map((v) => String(v)))
 
-    const push = (item: InstanceType<typeof ICAL.Event>, start: InstanceType<typeof ICAL.Time>, end: InstanceType<typeof ICAL.Time>, uid: string): void => {
+    const push = (
+      item: InstanceType<typeof ICAL.Event>,
+      start: InstanceType<typeof ICAL.Time>,
+      end: InstanceType<typeof ICAL.Time>,
+      uid: string,
+    ): void => {
       const startDate = start.toJSDate()
       const endDate = end ? end.toJSDate() : startDate
       if (endDate < from || startDate > to) return
@@ -51,10 +56,19 @@ export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
 
     if (event.isRecurring()) {
       const iterator = event.iterator()
-      for (let i = 0, next = iterator.next(); next && i < MAX_OCCURRENCES; i++, next = iterator.next()) {
+      for (
+        let i = 0, next = iterator.next();
+        next && i < MAX_OCCURRENCES;
+        i++, next = iterator.next()
+      ) {
         const details = event.getOccurrenceDetails(next)
         if (details.startDate.toJSDate() > to) break
-        push(details.item, details.startDate, details.endDate, `${event.uid}#${details.recurrenceId.toString()}`)
+        push(
+          details.item,
+          details.startDate,
+          details.endDate,
+          `${event.uid}#${details.recurrenceId.toString()}`,
+        )
       }
     } else {
       push(event, event.startDate, event.endDate, event.uid)
@@ -77,9 +91,13 @@ export function classifyEvent(text: string): EventKind {
 /** Ordnet einen Termin einem Modul zu (über Kürzel oder Namen) */
 export function matchModule(event: ParsedEvent, modules: Module[]): string | null {
   const haystack = `${event.title} ${event.categories.join(' ')} ${event.description}`.toLowerCase()
-  const byCode = modules.find((m) => m.code.trim().length >= 2 && haystack.includes(m.code.trim().toLowerCase()))
+  const byCode = modules.find(
+    (m) => m.code.trim().length >= 2 && haystack.includes(m.code.trim().toLowerCase()),
+  )
   if (byCode) return byCode.id
-  const byName = modules.find((m) => m.name.trim().length >= 3 && haystack.includes(m.name.trim().toLowerCase()))
+  const byName = modules.find(
+    (m) => m.name.trim().length >= 3 && haystack.includes(m.name.trim().toLowerCase()),
+  )
   return byName?.id ?? null
 }
 
@@ -100,25 +118,56 @@ export async function fetchCalendar(url: string, fetchImpl: typeof fetch = fetch
   })
   if (!response.ok) throw new Error(`Kalender nicht erreichbar (HTTP ${response.status}).`)
   const text = await response.text()
-  if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Die Adresse liefert keinen iCal-Kalender.')
+  if (!text.includes('BEGIN:VCALENDAR'))
+    throw new Error('Die Adresse liefert keinen iCal-Kalender.')
   return text
 }
 
-/** Wandelt ein Abo in Termine um. Bestehende Termine desselben Abos werden ersetzt. */
-export function eventsFromIcs(text: string, subscription: Subscription, modules: Module[], now = new Date()): CalendarEvent[] {
+/** Adresse ohne geheime Parameter (Token) – nur zur Anzeige */
+export function maskCalendarUrl(url: string): string {
+  const u = new URL(normalizeCalendarUrl(url))
+  return `${u.host}${u.pathname}${u.search ? '?…' : ''}`
+}
+
+/**
+ * Neue Termine eines Abos mit den vorhandenen zusammenführen. Viele Systeme (z. B. Moodle)
+ * liefern nur ein rollierendes Zeitfenster – ältere Termine bleiben deshalb erhalten.
+ */
+export function mergeSubscriptionEvents(
+  existing: CalendarEvent[],
+  incoming: CalendarEvent[],
+  now = new Date(),
+): CalendarEvent[] {
+  const cutoff = new Date(now.getTime() - 3 * 86_400_000).toISOString()
+  const incomingIds = new Set(incoming.map((e) => e.externalId))
+  const kept = existing.filter((e) => e.start < cutoff && !incomingIds.has(e.externalId))
+  return [...kept, ...incoming]
+}
+
+/** Wandelt eine iCal-Datei in Termine des Abos um. */
+export function eventsFromIcs(
+  text: string,
+  subscription: Subscription,
+  modules: Module[],
+  now = new Date(),
+): CalendarEvent[] {
   const from = new Date(now.getTime() - 90 * 86_400_000)
   const to = new Date(now.getTime() + 400 * 86_400_000)
-  return parseIcs(text, from, to).map((e) => ({
-    id: newId(),
-    title: e.title,
-    kind: classifyEvent(`${e.title} ${e.categories.join(' ')}`),
-    start: e.start.toISOString(),
-    end: e.end.toISOString(),
-    allDay: e.allDay,
-    moduleId: matchModule(e, modules),
-    location: e.location,
-    notes: e.description.slice(0, 2000),
-    subscriptionId: subscription.id,
-    externalId: e.uid,
-  }))
+  return parseIcs(text, from, to).map((e) => {
+    const kind = classifyEvent(`${e.title} ${e.categories.join(' ')}`)
+    return {
+      id: newId(),
+      title: e.title,
+      // Termine ohne Dauer (z. B. Moodle-Abgaben) sind Fristen
+      kind: kind === 'other' && e.start.getTime() === e.end.getTime() ? 'deadline' : kind,
+      start: e.start.toISOString(),
+      end: e.end.toISOString(),
+      allDay: e.allDay,
+      moduleId: matchModule(e, modules),
+      location: e.location,
+      notes: e.description.slice(0, 2000),
+      subscriptionId: subscription.id,
+      externalId: e.uid,
+    }
+  })
 }

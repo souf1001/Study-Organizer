@@ -1,0 +1,450 @@
+.note-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- Werkzeugleiste ---- */
+.note-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 42px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.toolbar-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border);
+  flex: none;
+}
+
+.toolbar-select {
+  height: 28px;
+  max-width: 150px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.toolbar-select:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.toolbar-select.narrow {
+  max-width: 76px;
+}
+
+.ink-color {
+  width: 20px;
+  height: 20px;
+  margin: 0 2px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  padding: 0;
+  flex: none;
+}
+
+.ink-color[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.ink-size {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  flex: none;
+}
+
+.ink-size span {
+  display: block;
+  border-radius: 50%;
+  background: var(--text-2);
+}
+
+.ink-size:hover {
+  background: var(--bg-hover);
+}
+
+.ink-size[aria-pressed='true'] {
+  background: var(--bg-active);
+}
+
+.ink-size[aria-pressed='true'] span {
+  background: var(--text);
+}
+
+.paper-popover {
+  width: 360px;
+}
+
+/* ---- Seite ---- */
+.note-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 16px 48px;
+  background: var(--bg);
+}
+
+.note-page {
+  position: relative;
+  margin: 0 auto;
+  padding: 48px 64px 96px;
+  border-radius: 4px;
+  user-select: text;
+}
+
+/* Mit Zeichnungen hat die Seite eine feste Breite und einen Rand wie ein Blatt Papier */
+.note-page.fixed,
+.note-page:not(.paper-plain),
+.note-page:not([data-color='auto']) {
+  box-shadow: var(--shadow-card);
+}
+
+.note-page.paper-plain[data-color='auto']:not(.fixed) {
+  padding-top: 24px;
+}
+
+.note-page.paper-college {
+  padding-left: 96px;
+}
+
+.note-page.paper-cornell {
+  padding-left: 224px;
+}
+
+.note-title {
+  display: block;
+  width: 100%;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-bottom: 18px;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.note-footer {
+  text-align: center;
+  margin-top: 14px;
+}
+
+.ink-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ink-layer.drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.ink-layer.erasing {
+  cursor: cell;
+}
+
+.paper[data-tone='light'] .ink-marker {
+  mix-blend-mode: multiply;
+}
+
+/* ---- Textinhalt ---- */
+.note-prose {
+  outline: none;
+  line-height: 1.65;
+  color: var(--text);
+  min-height: 300px;
+  caret-color: var(--accent);
+}
+
+.note-prose > * + * {
+  margin-top: 0.55em;
+}
+
+.note-prose p {
+  margin: 0;
+}
+
+.note-prose h1,
+.note-prose h2,
+.note-prose h3 {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  margin-top: 1.4em;
+}
+
+.note-prose h1 { font-size: 1.75em; }
+.note-prose h2 { font-size: 1.4em; }
+.note-prose h3 { font-size: 1.15em; }
+
+.note-prose ul,
+.note-prose ol {
+  padding-left: 1.5em;
+  margin: 0.3em 0;
+}
+
+.note-prose li p {
+  margin: 0;
+}
+
+.note-prose ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+
+.note-prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.note-prose ul[data-type='taskList'] li > label {
+  margin-top: 0.3em;
+  flex: none;
+}
+
+.note-prose ul[data-type='taskList'] li > div {
+  flex: 1;
+}
+
+.note-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.note-prose ul[data-type='taskList'] input[type='checkbox'] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-strong);
+  display: grid;
+  place-content: center;
+}
+
+.note-prose ul[data-type='taskList'] input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.note-prose ul[data-type='taskList'] input[type='checkbox']:checked::after {
+  content: '';
+  width: 8px;
+  height: 4.5px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.note-prose blockquote {
+  margin: 0.6em 0;
+  padding-left: 14px;
+  border-left: 3px solid var(--text);
+}
+
+.note-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: #c7254e;
+}
+
+.paper[data-tone='dark'] .note-prose code {
+  color: #ff8d8d;
+}
+
+.note-prose pre {
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  overflow-x: auto;
+}
+
+.note-prose pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: 0.86em;
+}
+
+.note-prose hr {
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+  margin: 1.4em 0;
+}
+
+.note-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.note-prose img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.note-prose img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+.note-prose mark {
+  border-radius: 2px;
+  padding: 0 1px;
+  color: inherit;
+}
+
+.note-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  table-layout: fixed;
+}
+
+.note-prose th,
+.note-prose td {
+  border: 1px solid var(--border-strong);
+  padding: 6px 10px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.note-prose th {
+  background: var(--bg-subtle);
+  font-weight: 600;
+}
+
+.note-prose .selectedCell {
+  background: var(--accent-soft);
+}
+
+.note-prose [data-type='block-math'] {
+  margin: 0.8em 0;
+  text-align: center;
+  cursor: pointer;
+}
+
+.note-prose [data-type='inline-math'] {
+  cursor: pointer;
+}
+
+.note-prose p.is-empty:first-child::before,
+.note-prose .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--text-3);
+}
+
+/* Liniertes Papier: Text sitzt auf den Linien */
+.note-page.paper-lined .note-prose,
+.note-page.paper-college .note-prose,
+.note-page.paper-cornell .note-prose {
+  line-height: 32px;
+}
+
+.note-page.paper-lined .note-prose > * + *,
+.note-page.paper-college .note-prose > * + *,
+.note-page.paper-cornell .note-prose > * + * {
+  margin-top: 0;
+}
+
+.note-page.paper-lined .note-title,
+.note-page.paper-college .note-title,
+.note-page.paper-cornell .note-title {
+  line-height: 64px;
+  margin: -16px 0 0;
+  height: 64px;
+}
+
+.note-page.paper-lined .note-prose h1,
+.note-page.paper-lined .note-prose h2,
+.note-page.paper-college .note-prose h1,
+.note-page.paper-college .note-prose h2,
+.note-page.paper-cornell .note-prose h1,
+.note-page.paper-cornell .note-prose h2 {
+  line-height: 64px;
+  margin-top: 0;
+}
+
+.note-page.paper-lined .note-prose h3,
+.note-page.paper-college .note-prose h3,
+.note-page.paper-cornell .note-prose h3 {
+  line-height: 32px;
+  margin-top: 0;
+}
+
+/* ---- Slash-Menü ---- */
+.slash-menu {
+  width: 280px;
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.slash-item {
+  height: auto;
+  padding: 6px 8px;
+}
+
+.slash-item[aria-selected='true'] {
+  background: var(--bg-hover);
+}
+
+.slash-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  flex: none;
+}
+
+.slash-title {
+  display: block;
+  font-weight: 500;
+}
+
+.slash-hint {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+@media print {
+  .note-toolbar,
+  .note-footer {
+    display: none;
+  }
+}

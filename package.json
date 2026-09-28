@@ -10,7 +10,7 @@
   "author": "Soufian Kroud",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node scripts/copy-assets.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "lint": "eslint .",
@@ -19,10 +19,12 @@
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
-    "dist:linux": "npm run build && electron-builder --linux --publish never"
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "postinstall": "node scripts/copy-assets.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -47,6 +49,7 @@
     "@fontsource-variable/source-serif-4": "^5.3.0",
     "@fontsource/atkinson-hyperlegible": "^5.3.0",
     "@fontsource/caveat": "^5.3.0",
+    "@tiptap/core": "^3.31.3",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-list": "^3.31.3",

@@ -1,0 +1,109 @@
+.folder-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0 18px;
+}
+
+.room-input {
+  width: 140px;
+  font-size: var(--text-sm);
+}
+
+.lab-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.lab-state svg {
+  width: 15px;
+  height: 15px;
+}
+
+.folder-contents {
+  position: relative;
+  min-height: 160px;
+  border-radius: var(--radius-lg);
+}
+
+.folder-contents.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
+  background: var(--accent-soft);
+}
+
+.drop-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.item-row {
+  min-height: 40px;
+}
+
+.item-row.selected {
+  background: var(--accent-soft);
+}
+
+.item-row .checkbox {
+  opacity: 0;
+}
+
+.item-row:hover .checkbox,
+.item-row .checkbox:checked,
+.folder-contents:has(.selection-bar) .item-row .checkbox {
+  opacity: 1;
+}
+
+.check-spacer {
+  width: 16px;
+  flex: none;
+}
+
+.item-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-3);
+  flex: none;
+}
+
+.item-thumb {
+  width: 24px;
+  height: 24px;
+  margin: -3px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex: none;
+  box-shadow: var(--shadow-card);
+}
+
+.selection-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-pop);
+}

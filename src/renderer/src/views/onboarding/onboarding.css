@@ -1,0 +1,118 @@
+.onboarding {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: auto;
+}
+
+.onb-top {
+  height: 40px;
+  flex: none;
+}
+
+.onb-body {
+  width: min(640px, 100% - 40px);
+  margin: 4vh auto 40px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.onb-step,
+.onb-welcome {
+  flex: 1;
+}
+
+.onb-welcome {
+  padding-top: 8vh;
+}
+
+.onb-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-subtle);
+  color: var(--text);
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-card);
+}
+
+.onb-title {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.onb-subtitle {
+  margin-top: 10px;
+  color: var(--text-2);
+  font-size: var(--text-lg);
+  line-height: 1.55;
+  max-width: 560px;
+}
+
+.onb-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.onb-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 32px;
+  margin-top: 32px;
+  border-top: 1px solid var(--border);
+}
+
+.onb-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.onb-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  transition: width var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.onb-dots span.on {
+  width: 18px;
+  border-radius: 3px;
+  background: var(--text);
+}
+
+.onb-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onb-module {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onb-module-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onb-module-row .onb-code {
+  width: 110px;
+  flex: none;
+}
+
+.onb-toggle {
+  font-weight: 500;
+}

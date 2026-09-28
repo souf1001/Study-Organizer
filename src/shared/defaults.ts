@@ -95,7 +95,7 @@ export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
     items: raw.items ?? [],
     events: raw.events ?? [],
     tasks: raw.tasks ?? [],
-    subscriptions: raw.subscriptions ?? [],
+    subscriptions: (raw.subscriptions ?? []).map((sub) => ({ ...sub, kind: sub.kind ?? 'url' })),
   }
 }
 

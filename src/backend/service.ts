@@ -12,11 +12,13 @@ import type {
   MoodleSyncResult,
   NoteDoc,
   RecordOf,
+  Subscription,
   SyncResult,
 } from '../shared/types'
 import { checkKey, listModels, streamChat } from './ai'
-import { eventsFromIcs, fetchCalendar } from './ics'
-import { MoodleClient, connectMoodle, syncMoodle } from './moodle'
+import { newId } from '../shared/defaults'
+import { eventsFromIcs, fetchCalendar, maskCalendarUrl, mergeSubscriptionEvents, normalizeCalendarUrl } from './ics'
+import { MoodleClient, connectMoodle, moodleSiteInfo, syncMoodle } from './moodle'
 import type { Store } from './store'
 
 /** Ablage für geheime Werte (API-Keys, Moodle-Token) – verschlüsselt, getrennt von db.json */
@@ -81,23 +83,58 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     },
 
     // ---- Kalender-Abos ----
-    syncSubscription: async (id: string): Promise<SyncResult> => {
+    // Abo-Adressen enthalten oft einen persönlichen Schlüssel (z. B. Moodle authtoken) und
+    // werden deshalb verschlüsselt abgelegt. In db.json steht nur eine gekürzte Anzeige-Adresse.
+    calendarSubscribe: async (name: string, url: string): Promise<Subscription> => {
+      const full = normalizeCalendarUrl(url)
+      const subscription: Subscription = {
+        id: newId(),
+        name: name.trim() || new URL(full).host,
+        kind: 'url',
+        url: maskCalendarUrl(full),
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
+      await secrets.set(`ics:${subscription.id}`, full)
+      store.put('subscriptions', subscription)
+      await service.calendarSync(subscription.id)
+      return store.get().subscriptions.find((s) => s.id === subscription.id) ?? subscription
+    },
+    calendarUnsubscribe: async (id: string) => {
+      await secrets.remove(`ics:${id}`)
+      await store.remove('subscriptions', id)
+    },
+    calendarSync: async (id: string): Promise<SyncResult> => {
       const subscription = store.get().subscriptions.find((s) => s.id === id)
-      if (!subscription) throw new Error('Abo nicht gefunden')
+      if (!subscription || subscription.kind !== 'url') throw new Error('Abo nicht gefunden')
       try {
-        const text = await fetchCalendar(subscription.url, fetchImpl)
-        const events = eventsFromIcs(text, subscription, store.get().modules)
-        store.replaceMany('events', (e) => e.subscriptionId === id, events)
+        const url = await secrets.get(`ics:${id}`)
+        if (!url) throw new Error('Adresse fehlt – bitte das Abo neu anlegen.')
+        const incoming = eventsFromIcs(await fetchCalendar(url, fetchImpl), subscription, store.get().modules)
+        const existing = store.get().events.filter((e) => e.subscriptionId === id)
+        store.replaceMany('events', (e) => e.subscriptionId === id, mergeSubscriptionEvents(existing, incoming))
         store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString(), lastError: null })
-        return { count: events.length, error: null }
+        return { count: incoming.length, error: null }
       } catch (error) {
         const message = (error as Error).message
         store.put('subscriptions', { ...subscription, lastError: message })
         return { count: 0, error: message }
       }
     },
+    /** .ics-Datei einmalig importieren; derselbe Dateiname ersetzt den vorherigen Import */
+    calendarImportFile: async (name: string, text: string): Promise<SyncResult> => {
+      if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Das ist keine iCal-Datei (.ics).')
+      const existing = store.get().subscriptions.find((s) => s.kind === 'file' && s.name === name)
+      const subscription: Subscription = existing ?? { id: newId(), name, kind: 'file', url: 'Datei-Import', enabled: false, lastSync: null, lastError: null }
+      const events = eventsFromIcs(text, subscription, store.get().modules)
+      store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString() })
+      store.replaceMany('events', (e) => e.subscriptionId === subscription.id, events)
+      return { count: events.length, error: null }
+    },
 
     // ---- Moodle ----
+    moodleSiteInfo: (url: string) => moodleSiteInfo(url, fetchImpl),
     moodleConnect: async (input: MoodleConnectInput): Promise<MoodleCourse[]> => {
       const result = await connectMoodle(input, fetchImpl)
       await secrets.set('moodle', result.token)
@@ -129,8 +166,8 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
 
     /** Alle Abos und Moodle abgleichen (beim Start und regelmäßig) */
     syncAll: async () => {
-      for (const s of store.get().subscriptions.filter((s) => s.enabled)) {
-        await service.syncSubscription(s.id)
+      for (const s of store.get().subscriptions.filter((s) => s.enabled && s.kind === 'url')) {
+        await service.calendarSync(s.id)
       }
       if (store.get().settings.moodle.url && (await secrets.get('moodle'))) {
         await service.moodleSync().catch(() => undefined)

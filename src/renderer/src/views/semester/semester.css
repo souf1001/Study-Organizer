@@ -1,0 +1,28 @@
+.semester-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.break-row {
+  display: grid;
+  grid-template-columns: 1fr 150px 150px 28px;
+  gap: 6px;
+}
+
+.carry {
+  margin-top: 18px;
+}
+
+.carry-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}

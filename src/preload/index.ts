@@ -61,10 +61,17 @@ const api: Api = {
     },
   },
 
-  syncSubscription: (id) => invoke('calendar:sync', id),
+  calendar: {
+    subscribe: (name, url) => invoke('calendar:subscribe', name, url),
+    unsubscribe: (id) => invoke('calendar:unsubscribe', id),
+    sync: (id) => invoke('calendar:sync', id),
+    importFile: (name, text) => invoke('calendar:importFile', name, text),
+  },
 
   moodle: {
+    siteInfo: (url) => invoke('moodle:siteInfo', url),
     connect: (input) => invoke('moodle:connect', input),
+    connectSso: (url) => invoke('moodle:connectSso', url),
     courses: () => invoke('moodle:courses'),
     sync: () => invoke('moodle:sync'),
     disconnect: () => invoke('moodle:disconnect'),

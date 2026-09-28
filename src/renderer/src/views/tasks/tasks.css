@@ -1,0 +1,82 @@
+.task-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 2px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius);
+}
+
+.task-row:hover {
+  background: var(--bg-hover);
+}
+
+.task-row.done .task-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-due {
+  width: 150px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.task-due.overdue {
+  color: var(--danger);
+  font-weight: 550;
+}
+
+.task-row .icon-btn {
+  opacity: 0;
+}
+
+.task-row:hover .icon-btn {
+  opacity: 1;
+}
+
+.task-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 4px 8px;
+  margin: 0 -8px 6px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border-strong);
+}
+
+.task-add:focus-within {
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.task-add .input-bare {
+  flex: 1;
+}
+
+.task-add .select {
+  width: 170px;
+  height: 28px;
+}
+
+.task-date {
+  width: 140px;
+  height: 28px;
+}
+
+.task-done summary {
+  padding: 8px 0;
+  cursor: default;
+}

@@ -1,0 +1,201 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: default;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-3);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.selectable {
+  user-select: text;
+}
+
+.muted {
+  color: var(--text-2);
+}
+
+.faint {
+  color: var(--text-3);
+}
+
+.small {
+  font-size: var(--text-sm);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Fensterleiste unter macOS verschiebbar machen */
+.drag {
+  -webkit-app-region: drag;
+}
+
+.drag button,
+.drag input,
+.drag select,
+.drag a,
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Modul-Farbpunkt */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dot, var(--c-gray));
+}
+
+.color-gray { --dot: var(--c-gray); --dot-bg: var(--c-gray-bg); }
+.color-brown { --dot: var(--c-brown); --dot-bg: var(--c-brown-bg); }
+.color-orange { --dot: var(--c-orange); --dot-bg: var(--c-orange-bg); }
+.color-yellow { --dot: var(--c-yellow); --dot-bg: var(--c-yellow-bg); }
+.color-green { --dot: var(--c-green); --dot-bg: var(--c-green-bg); }
+.color-blue { --dot: var(--c-blue); --dot-bg: var(--c-blue-bg); }
+.color-purple { --dot: var(--c-purple); --dot-bg: var(--c-purple-bg); }
+.color-pink { --dot: var(--c-pink); --dot-bg: var(--c-pink-bg); }
+.color-red { --dot: var(--c-red); --dot-bg: var(--c-red-bg); }
+
+/* Seitenlayout für Ansichten */
+.page {
+  height: 100%;
+  overflow: auto;
+}
+
+.page-inner {
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: 36px 48px 96px;
+}
+
+.page-title {
+  font-size: var(--text-title);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  margin-top: 6px;
+  color: var(--text-2);
+}
+
+.section {
+  margin-top: 36px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-title .spacer + * {
+  font-weight: 400;
+}
+
+@media (max-width: 720px) {
+  .page-inner {
+    padding: 24px 20px 80px;
+  }
+}

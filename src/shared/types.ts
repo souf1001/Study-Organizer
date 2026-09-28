@@ -152,6 +152,9 @@ export interface Task {
 export interface Subscription {
   id: ID
   name: string
+  /** 'url' = Abo (Adresse liegt verschlüsselt im Schlüsselbund), 'file' = einmalig importierte .ics-Datei */
+  kind: 'url' | 'file'
+  /** Nur zur Anzeige, ohne geheime Parameter */
   url: string
   enabled: boolean
   lastSync: string | null
@@ -305,6 +308,14 @@ export interface MoodleCourse {
   id: number
   fullname: string
   shortname: string
+}
+
+export interface MoodleSiteInfo {
+  siteName: string
+  /** Offizielle Adresse der Moodle-Instanz */
+  url: string
+  /** Anmeldung nur über Hochschul-Login (SSO) möglich */
+  ssoRequired: boolean
 }
 
 export interface MoodleConnectInput {

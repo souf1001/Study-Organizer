@@ -1,0 +1,98 @@
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0 40px;
+}
+
+.home-time {
+  width: 76px;
+  flex: none;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.home-room {
+  gap: 4px;
+  margin-right: 8px;
+}
+
+.home-subtitle {
+  margin-top: 20px;
+}
+
+.home-empty {
+  padding: 6px 0;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 14px 16px;
+}
+
+.banner > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  flex: none;
+}
+
+.banner-title {
+  font-weight: 600;
+}
+
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.recent-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition: box-shadow var(--duration) var(--ease), transform var(--duration) var(--ease);
+}
+
+.recent-card:hover {
+  box-shadow: 0 0 0 1px var(--border-strong), 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.recent-card > svg {
+  width: 18px;
+  height: 18px;
+  color: var(--text-3);
+}
+
+.recent-title {
+  width: 100%;
+  font-weight: 550;
+}
+
+.recent-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.ai-progress {
+  white-space: pre-wrap;
+  max-height: 50vh;
+  overflow: auto;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: 1.6;
+}

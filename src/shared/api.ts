@@ -8,10 +8,12 @@ import type {
   Item,
   MoodleConnectInput,
   MoodleCourse,
+  MoodleSiteInfo,
   MoodleSyncResult,
   NoteDoc,
   RecordOf,
   SearchHit,
+  Subscription,
   SyncResult,
   FileTarget,
 } from './types'
@@ -50,10 +52,20 @@ export interface Api {
     stream(request: AiRequest, onText: (chunk: string) => void): AiStream
   }
 
-  syncSubscription(id: ID): Promise<SyncResult>
+  calendar: {
+    /** Kalender-Abo anlegen (iCal-Adresse von Moodle, Stud.IP, ILIAS, OBS …) und sofort abgleichen */
+    subscribe(name: string, url: string): Promise<Subscription>
+    unsubscribe(id: ID): Promise<void>
+    sync(id: ID): Promise<SyncResult>
+    /** Einmaliger Import einer .ics-Datei (z. B. Stundenplan aus my h_da / HISinOne) */
+    importFile(name: string, text: string): Promise<SyncResult>
+  }
 
   moodle: {
+    siteInfo(url: string): Promise<MoodleSiteInfo>
     connect(input: MoodleConnectInput): Promise<MoodleCourse[]>
+    /** Anmeldung über den Hochschul-Login (nur Desktop) */
+    connectSso?(url: string): Promise<MoodleCourse[]>
     courses(): Promise<MoodleCourse[]>
     sync(): Promise<MoodleSyncResult>
     disconnect(): Promise<void>

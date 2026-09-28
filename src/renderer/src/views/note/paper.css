@@ -1,0 +1,164 @@
+/* Papier-Hintergründe als CSS-Verläufe – skalieren sauber und kosten keine Bilder. */
+.paper {
+  --paper-line: rgba(60, 80, 130, 0.16);
+  --paper-line-strong: rgba(60, 80, 130, 0.26);
+  --paper-margin: rgba(220, 70, 70, 0.4);
+  --line-gap: 32px;
+  --grid-gap: 20px;
+  background-color: var(--paper-bg, var(--bg));
+}
+
+.paper[data-tone='dark'] {
+  --paper-line: rgba(255, 255, 255, 0.09);
+  --paper-line-strong: rgba(255, 255, 255, 0.16);
+  --paper-margin: rgba(240, 110, 110, 0.35);
+}
+
+.paper[data-color='white'] { --paper-bg: #ffffff; }
+.paper[data-color='cream'] { --paper-bg: #fbf7ec; }
+.paper[data-color='gray'] { --paper-bg: #f1f1ef; }
+.paper[data-color='dark'] { --paper-bg: #1d1d1f; }
+
+/* Text- und Tintenfarbe passend zum Papier, unabhängig vom App-Theme */
+.paper[data-tone='light'] {
+  --text: #1f1f1d;
+  --text-2: #6c6b67;
+  --text-3: #a09f9a;
+  --ink: #1f1f1d;
+  --border: rgba(20, 20, 18, 0.09);
+  --border-strong: rgba(20, 20, 18, 0.17);
+  --bg-subtle: rgba(20, 20, 18, 0.045);
+  --bg-hover: rgba(20, 20, 18, 0.045);
+  color: var(--text);
+}
+
+.paper[data-tone='dark'] {
+  --text: #e9e9e7;
+  --text-2: #9c9b97;
+  --text-3: #6d6c69;
+  --ink: #ececea;
+  --border: rgba(255, 255, 255, 0.085);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --bg-subtle: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  color: var(--text);
+}
+
+.paper-lined,
+.paper-college,
+.paper-cornell {
+  background-image: linear-gradient(to bottom, transparent calc(var(--line-gap) - 1px), var(--paper-line) calc(var(--line-gap) - 1px));
+  background-size: 100% var(--line-gap);
+}
+
+.paper-college {
+  background-image:
+    linear-gradient(to right, transparent 71px, var(--paper-margin) 71px, var(--paper-margin) 72.5px, transparent 72.5px),
+    linear-gradient(to bottom, transparent calc(var(--line-gap) - 1px), var(--paper-line) calc(var(--line-gap) - 1px));
+  background-size: 100% 100%, 100% var(--line-gap);
+}
+
+.paper-cornell {
+  background-image:
+    linear-gradient(to right, transparent 199px, var(--paper-line-strong) 199px, var(--paper-line-strong) 201px, transparent 201px),
+    linear-gradient(to bottom, transparent calc(var(--line-gap) - 1px), var(--paper-line) calc(var(--line-gap) - 1px));
+  background-size: 100% 100%, 100% var(--line-gap);
+}
+
+.paper-grid {
+  background-image:
+    linear-gradient(to right, var(--paper-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--paper-line) 1px, transparent 1px);
+  background-size: var(--grid-gap) var(--grid-gap);
+}
+
+.paper-dots {
+  background-image: radial-gradient(circle at 1px 1px, var(--paper-line-strong) 1.2px, transparent 1.6px);
+  background-size: var(--grid-gap) var(--grid-gap);
+}
+
+.paper-millimeter {
+  background-image:
+    linear-gradient(to right, var(--paper-line-strong) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--paper-line-strong) 1px, transparent 1px),
+    linear-gradient(to right, var(--paper-line) 0.5px, transparent 0.5px),
+    linear-gradient(to bottom, var(--paper-line) 0.5px, transparent 0.5px);
+  background-size: 38px 38px, 38px 38px, 3.8px 3.8px, 3.8px 3.8px;
+}
+
+/* Auswahl in Einstellungen und Menüs */
+.paper-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.paper-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.paper-option:hover {
+  background: var(--bg-hover);
+}
+
+.paper-option[aria-checked='true'] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.paper-thumb {
+  width: 100%;
+  height: 56px;
+  border-radius: 4px;
+  box-shadow: var(--shadow-card);
+  --paper-bg: #ffffff;
+  --line-gap: 9px;
+  --grid-gap: 7px;
+}
+
+.paper-thumb.paper-college {
+  background-image:
+    linear-gradient(to right, transparent 14px, var(--paper-margin) 14px, var(--paper-margin) 15px, transparent 15px),
+    linear-gradient(to bottom, transparent calc(var(--line-gap) - 1px), var(--paper-line) calc(var(--line-gap) - 1px));
+}
+
+.paper-thumb.paper-cornell {
+  background-image:
+    linear-gradient(to right, transparent 26px, var(--paper-line-strong) 26px, var(--paper-line-strong) 27px, transparent 27px),
+    linear-gradient(to bottom, transparent calc(var(--line-gap) - 1px), var(--paper-line) calc(var(--line-gap) - 1px));
+}
+
+.paper-thumb.paper-millimeter {
+  background-size: 14px 14px, 14px 14px, 2.8px 2.8px, 2.8px 2.8px;
+}
+
+.paper-colors {
+  display: flex;
+  gap: 6px;
+}
+
+.paper-color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  padding: 0;
+}
+
+.paper-color[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--bg-elevated), 0 0 0 4px var(--accent);
+}
+
+.paper-color-auto { background: linear-gradient(135deg, #ffffff 50%, #1d1d1f 50%); }
+.paper-color-white { background: #ffffff; }
+.paper-color-cream { background: #fbf7ec; }
+.paper-color-gray { background: #f1f1ef; }
+.paper-color-dark { background: #1d1d1f; }
