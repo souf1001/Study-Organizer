@@ -286,3 +286,17 @@
 .agenda-empty {
   padding-top: 20px;
 }
+
+/* Prüfungen fallen auf, egal in welcher Modulfarbe */
+.cal-event.kind-exam {
+  border-left-color: var(--c-red);
+}
+
+.cal-chip.kind-exam::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-red);
+  flex: none;
+}

@@ -128,7 +128,9 @@ function Palette() {
     return q ? [...modules, ...folders, ...items, ...fullText, ...commands] : [...items, ...commands, ...modules]
   }, [db, query, hits])
 
-  useEffect(() => setSelected(0), [query])
+  useEffect(() => {
+    setSelected(0)
+  }, [query])
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [selected])

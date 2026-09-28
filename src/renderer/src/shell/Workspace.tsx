@@ -9,6 +9,7 @@ import { modKey } from '@/lib/format'
 import { DRAG_VIEW_TYPE, MAX_PANES, useWorkspace, type Pane, type View } from '@/lib/workspace'
 import { IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
+import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import { HomeView } from '@/views/home/HomeView'
 import { ModuleView } from '@/views/module/ModuleView'
 import { FolderView } from '@/views/folder/FolderView'
@@ -168,9 +169,11 @@ function PaneView({ pane, count }: { pane: Pane; count: number }) {
     >
       <PaneHeader pane={pane} count={count} />
       <div className="pane-body">
-        <Suspense fallback={null}>
-          <ViewContent view={pane.view} paneId={pane.id} />
-        </Suspense>
+        <ErrorBoundary resetKey={JSON.stringify(pane.view)}>
+          <Suspense fallback={null}>
+            <ViewContent view={pane.view} paneId={pane.id} />
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </section>
   )

@@ -1,10 +1,11 @@
 // KI-Chat mit Unterlagen als Kontext (offene Bereiche, Modul, Ordner oder Auswahl).
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import 'katex/dist/katex.min.css'
 import { ArrowUp, Copy, FilePlus, MessageCircle, RotateCcw, Settings, Square } from 'lucide-react'
 import type { AiMessage, Db, ID, Item } from '@shared/types'
 import { api } from '@/lib/api'
 import { activeSemester, semesterModules } from '@/lib/actions'
-import { buildContext, collectDocs, createNoteFromMarkdown, markdownToHtml, systemPrompt } from '@/lib/ai'
+import { buildContext, collectDocs, createNoteFromMarkdown, markdownToHtml, renderMath, systemPrompt } from '@/lib/ai'
 import { useDb } from '@/lib/db'
 import { openView, useWorkspace, type View } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
@@ -59,12 +60,21 @@ function contextKey(context: Context): string {
   return JSON.stringify(context)
 }
 
+/** Bereinigtes Markdown-HTML inklusive Formeln */
+function Markdown({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const html = useMemo(() => markdownToHtml(text), [text])
+  useLayoutEffect(() => {
+    if (ref.current) renderMath(ref.current)
+  }, [html])
+  return <div ref={ref} className="chat-markdown selectable" dangerouslySetInnerHTML={{ __html: html }} />
+}
+
 function Message({ message, onSave }: { message: AiMessage; onSave?: () => void }) {
-  const html = useMemo(() => (message.role === 'assistant' ? markdownToHtml(message.content) : ''), [message])
   if (message.role === 'user') return <div className="chat-user selectable">{message.content}</div>
   return (
     <div className="chat-assistant">
-      <div className="chat-markdown selectable" dangerouslySetInnerHTML={{ __html: html }} />
+      <Markdown text={message.content} />
       {onSave && (
         <div className="chat-actions">
           <IconButton small label="Kopieren" onClick={() => void navigator.clipboard.writeText(message.content).then(() => toast('Kopiert'))}>
@@ -91,7 +101,9 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
   useEffect(() => {
     histories.set(paneId, messages)
   }, [paneId, messages])
-  useEffect(() => endRef.current?.scrollIntoView({ block: 'end' }), [messages, streaming?.text])
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, streaming?.text])
 
   if (!db.settings.ai.enabled) {
     return (
@@ -213,7 +225,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
           {streaming && (
             <div className="chat-assistant">
               {streaming.text ? (
-                <div className="chat-markdown selectable" dangerouslySetInnerHTML={{ __html: markdownToHtml(streaming.text) }} />
+                <Markdown text={streaming.text} />
               ) : (
                 <span className="row small muted">
                   <span className="spinner" /> Unterlagen werden gelesen …

@@ -1,6 +1,7 @@
 // KI-Funktionen: Kontext aus Notizen/Folien bauen, Zusammenfassungen als Notiz anlegen.
 import { generateJSON } from '@tiptap/core'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
 import { marked } from 'marked'
 import { create } from 'zustand'
 import { newNoteItem } from '@shared/defaults'
@@ -18,9 +19,33 @@ export interface ContextDoc {
   text: string
 }
 
+const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/** $$…$$ und $…$ werden zu Formel-Platzhaltern, die Editor (TipTap) und Chat (KaTeX) verstehen */
+function protectMath(markdown: string): string {
+  // Code-Blöcke nicht anfassen
+  return markdown
+    .split(/(```[\s\S]*?```)/g)
+    .map((part) =>
+      part.startsWith('```')
+        ? part
+        : part
+            .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n<div data-type="block-math" data-latex="${escapeAttr(tex.trim())}"></div>\n`)
+            .replace(/(^|[^\\$])\$([^\s$](?:[^$\n]*[^\s$])?)\$(?!\d)/g, (_, pre: string, tex: string) => `${pre}<span data-type="inline-math" data-latex="${escapeAttr(tex)}"></span>`),
+    )
+    .join('')
+}
+
+/** Formel-Platzhalter in einem Element mit KaTeX darstellen */
+export function renderMath(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('[data-type="inline-math"], [data-type="block-math"]').forEach((el) => {
+    katex.render(el.dataset.latex ?? '', el, { throwOnError: false, displayMode: el.dataset.type === 'block-math' })
+  })
+}
+
 /** Markdown → sicheres HTML (KI-Antworten können beliebigen Text enthalten) */
 export function markdownToHtml(markdown: string): string {
-  return DOMPurify.sanitize(marked.parse(markdown, { async: false, gfm: true, breaks: false }), {
+  return DOMPurify.sanitize(marked.parse(protectMath(markdown), { async: false, gfm: true, breaks: false }), {
     FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'img'],
     FORBID_ATTR: ['style'],
   })

@@ -11,6 +11,11 @@ import { createSecrets } from './secrets'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOUR = 60 * 60 * 1000
 
+// Eigener Datenordner (z. B. für Tests oder eine portable Installation): dann liegen auch
+// Browser-Profil und verschlüsselte Keys dort statt im Benutzerprofil.
+const customDataDir = process.env.STUDY_ORGANIZER_DATA
+if (customDataDir) app.setPath('userData', path.join(customDataDir, 'electron-profile'))
+
 registerSchemePrivileges()
 // Datums- und Zeitfelder auf Deutsch (TT.MM.JJJJ, 24-Stunden-Format)
 app.commandLine.appendSwitch('lang', 'de-DE')
@@ -94,7 +99,7 @@ async function main(): Promise<void> {
   await app.whenReady()
 
   const userData = app.getPath('userData')
-  const store = await Store.open(process.env.STUDY_ORGANIZER_DATA ?? path.join(userData, 'data'))
+  const store = await Store.open(customDataDir ?? path.join(userData, 'data'))
   const service = createService(store, createSecrets(path.join(userData, 'secrets.json')))
 
   handleFileProtocol(store)

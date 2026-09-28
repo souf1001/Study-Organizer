@@ -16,7 +16,12 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 
 function Chip({ entry, onClick }: { entry: Entry; onClick: () => void }) {
   return (
-    <button type="button" className={`cal-chip color-${entry.color} ${entry.source}`} onClick={onClick} title={`${entry.title} · ${entry.subtitle}`}>
+    <button
+      type="button"
+      className={`cal-chip color-${entry.color} ${entry.source} ${entry.source === 'event' ? `kind-${entry.event.kind}` : ''}`}
+      onClick={onClick}
+      title={`${entry.title} · ${entry.subtitle}`}
+    >
       {!entry.allDay && <span className="tabular">{formatTime(entry.start.toISOString())}</span>}
       <span className="truncate">{entry.title}</span>
     </button>
@@ -93,7 +98,7 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
                     <button
                       key={e.key}
                       type="button"
-                      className={`cal-event color-${e.color} ${e.source}`}
+                      className={`cal-event color-${e.color} ${e.source} ${e.source === 'event' ? `kind-${e.event.kind}` : ''}`}
                       style={{ top: y, height, left: `calc(${(column / count) * 100}% + 2px)`, width: `calc(${100 / count}% - 4px)` }}
                       onClick={() => onSelect(e)}
                       onDoubleClick={(ev) => ev.stopPropagation()}
