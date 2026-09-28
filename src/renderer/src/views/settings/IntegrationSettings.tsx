@@ -69,7 +69,15 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
           </Button>
         </SettingRow>
       ) : (
-        <SettingRow label="Anmelden" description="Das Passwort wird nur einmal an Moodle geschickt und nicht gespeichert – gespeichert wird nur ein Zugangs-Token." stacked>
+        <SettingRow
+          label="Anmelden"
+          description={
+            info.ssoRequired
+              ? 'Diese Moodle-Instanz nutzt den Hochschul-Login, der nur in der Desktop-App funktioniert. Versuch es mit Benutzername und Passwort, einem Sicherheitsschlüssel oder dem Kalender-Export (unten).'
+              : 'Das Passwort wird nur einmal an Moodle geschickt und nicht gespeichert – gespeichert wird nur ein Zugangs-Token.'
+          }
+          stacked
+        >
           <div className="inline-form">
             <div className="row">
               <Input value={username} placeholder="Benutzername" autoComplete="username" onChange={(e) => setUsername(e.target.value)} />

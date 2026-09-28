@@ -24,7 +24,11 @@
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "postinstall": "node scripts/copy-assets.mjs",
     "test:e2e": "playwright test",
-    "icon": "node scripts/render-icon.mjs"
+    "icon": "node scripts/render-icon.mjs",
+    "web:dev": "tsx watch src/server/index.ts",
+    "web:build": "node scripts/copy-assets.mjs && vite build --config vite.web.config.ts && esbuild src/server/index.ts src/server/admin.ts --bundle --platform=node --format=esm --packages=external --outdir=out/server",
+    "web:start": "NODE_ENV=production node out/server/index.js",
+    "test:web": "playwright test --config playwright.web.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -51,6 +55,7 @@
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "@tiptap/suggestion": "^3.31.3",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -59,6 +64,7 @@
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.12.0",
@@ -71,6 +77,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-resizable-panels": "^4.14.1",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1",
     "vite": "^7.3.6",
@@ -79,8 +86,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "express": "^5.2.1",
     "ical.js": "^2.2.1",
-    "openai": "^7.23.0"
+    "openai": "^7.23.0",
+    "undici": "^8.11.2"
   },
   "homepage": "https://github.com/souf1001/Study-Organizer"
 }

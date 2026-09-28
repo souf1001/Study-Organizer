@@ -6,7 +6,7 @@ import { MODULE_COLORS, newId, newModule } from '@shared/defaults'
 import { today } from '@shared/dates'
 import { suggestedSemester, SEMESTER_MODELS, type SemesterDraft } from '@shared/semester'
 import type { Db, InstitutionType, Module, SemesterModelId, Settings, ThemeSetting } from '@shared/types'
-import { api } from '@/lib/api'
+import { api, isWeb } from '@/lib/api'
 import { putRecord, updateDb, useDb } from '@/lib/db'
 import { Button, IconButton } from '@/ui/Button'
 import { Field, Input, Segmented, Select, Switch } from '@/ui/Field'
@@ -159,8 +159,9 @@ export function Onboarding() {
           </div>
           <h1 className="onb-title">Willkommen beim Study Organizer</h1>
           <p className="onb-subtitle">
-            Module, Vorlesungen, Notizen, Folien und Termine an einem Ort. Kein Konto nötig – deine Daten bleiben auf deinem
-            Rechner. Die Einrichtung dauert etwa zwei Minuten.
+            Module, Vorlesungen, Notizen, Folien und Termine an einem Ort.{' '}
+            {isWeb ? 'Deine Daten liegen geschützt in deinem Konto.' : 'Kein Konto nötig – deine Daten bleiben auf deinem Rechner.'} Die Einrichtung
+            dauert etwa zwei Minuten.
           </p>
         </div>
       ),
@@ -290,7 +291,7 @@ export function Onboarding() {
               <Field label="Anbieter" hint={provider.note}>
                 <Select
                   value={ai.provider}
-                  options={AI_PROVIDERS.map((p) => ({ value: p.id, label: p.free ? `${p.name} · kostenlos nutzbar` : p.name }))}
+                  options={AI_PROVIDERS.filter((p) => !(isWeb && p.local)).map((p) => ({ value: p.id, label: p.free ? `${p.name} · kostenlos nutzbar` : p.name }))}
                   onChange={(id) => setAi({ ...ai, provider: id, model: '', baseUrl: '' })}
                 />
               </Field>

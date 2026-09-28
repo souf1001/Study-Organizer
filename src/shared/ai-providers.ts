@@ -16,6 +16,8 @@ export interface AiProvider {
   keyOptional?: boolean
   /** Basis-URL darf geändert werden (lokale oder eigene Server) */
   customBaseUrl?: boolean
+  /** Läuft auf dem eigenen Rechner – in der Web-Version nicht erreichbar */
+  local?: boolean
 }
 
 export const AI_PROVIDERS: AiProvider[] = [
@@ -120,6 +122,7 @@ export const AI_PROVIDERS: AiProvider[] = [
     free: true,
     keyOptional: true,
     customBaseUrl: true,
+    local: true,
   },
   {
     id: 'lmstudio',
@@ -132,6 +135,7 @@ export const AI_PROVIDERS: AiProvider[] = [
     free: true,
     keyOptional: true,
     customBaseUrl: true,
+    local: true,
   },
   {
     id: 'custom',

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { ExternalLink, Minus, PenLine, Plus, ScanLine } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import type { Annotations, Item, Stroke } from '@shared/types'
-import { api } from '@/lib/api'
+import { api, openFileLabel } from '@/lib/api'
 import { openPdf, pdfjs } from '@/lib/pdf'
 import { updateSettings, useDb } from '@/lib/db'
 import { IconButton } from '@/ui/Button'
@@ -191,7 +191,7 @@ export function PdfViewer({ item }: { item: Item }) {
           <InkToolbar tool={tool} onTool={setTool} penOnly={settings.penOnly} onPenOnly={(penOnly) => updateSettings('editor', { penOnly })} />
         )}
         <span className="spacer" />
-        <IconButton label="Mit Standard-App öffnen" onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
+        <IconButton label={openFileLabel} onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
       </div>
       <div className="pdf-scroll" ref={scrollRef} onScroll={onScroll}>
         {pdf &&

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { Settings } from '@shared/types'
-import { api } from '@/lib/api'
+import { api, isWeb } from '@/lib/api'
+import { account } from '@/lib/web-api'
+import { AuthScreen } from '@/views/auth/AuthScreen'
 import { loadDb, useDbStore } from '@/lib/db'
 import { DialogHost } from '@/ui/Dialogs'
 import { MenuHost } from '@/ui/Menu'
@@ -35,18 +37,40 @@ function useAppearance(appearance: Settings['appearance'] | undefined): void {
   }, [appearance, systemDark])
 }
 
+type Session = { state: 'checking' } | { state: 'anonymous'; allowRegistration: boolean } | { state: 'ready' }
+
 export function App() {
   const db = useDbStore((s) => s.db)
   const [error, setError] = useState<string | null>(null)
+  // Desktop: keine Anmeldung. Web: erst prüfen, ob eine Sitzung besteht.
+  const [session, setSession] = useState<Session>(isWeb ? { state: 'checking' } : { state: 'ready' })
 
   useEffect(() => {
+    if (!isWeb) return
+    account
+      .status()
+      .then(({ user, allowRegistration }) => setSession(user ? { state: 'ready' } : { state: 'anonymous', allowRegistration }))
+      .catch((e: Error) => setError(e.message))
+    const onLoggedOut = () => {
+      useDbStore.setState({ db: null })
+      setSession({ state: 'anonymous', allowRegistration: true })
+    }
+    window.addEventListener('study:logged-out', onLoggedOut)
+    return () => window.removeEventListener('study:logged-out', onLoggedOut)
+  }, [])
+
+  useEffect(() => {
+    if (session.state !== 'ready') return
     loadDb().catch((e: Error) => setError(e.message))
     return api.onChange(() => void loadDb())
-  }, [])
+  }, [session.state])
 
   useAppearance(db?.settings.appearance)
 
   if (error) return <div className="empty">Daten konnten nicht geladen werden: {error}</div>
+  if (session.state === 'anonymous') {
+    return <AuthScreen allowRegistration={session.allowRegistration} onDone={() => setSession({ state: 'ready' })} />
+  }
   if (!db) return <div className="boot" />
   return (
     <>

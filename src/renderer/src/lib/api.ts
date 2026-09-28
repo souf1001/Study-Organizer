@@ -1,5 +1,6 @@
-// Zugriff auf die Datenhaltung. In der Desktop-App kommt die Umsetzung aus dem Preload-Skript.
+// Zugriff auf die Datenhaltung: in der Desktop-App aus dem Preload-Skript, im Browser per HTTP.
 import type { Api } from '@shared/api'
+import { webApi } from './web-api'
 
 declare global {
   interface Window {
@@ -7,6 +8,9 @@ declare global {
   }
 }
 
-if (!window.studyApi) throw new Error('Study Organizer muss in der Desktop-App gestartet werden.')
+export const api: Api = window.studyApi ?? webApi
 
-export const api: Api = window.studyApi
+export const isWeb = api.platform === 'web'
+
+/** Beschriftung für „Datei mit anderem Programm öffnen“ */
+export const openFileLabel = isWeb ? 'Herunterladen' : 'Mit Standard-App öffnen'

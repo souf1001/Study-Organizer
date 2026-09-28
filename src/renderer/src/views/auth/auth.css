@@ -1,0 +1,30 @@
+.auth-card {
+  width: min(400px, 100% - 40px);
+  margin: 12vh auto 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.auth-card .onb-logo {
+  margin-bottom: 4px;
+}
+
+.auth-card .onb-subtitle {
+  margin-top: -8px;
+}
+
+.auth-card .segmented {
+  align-self: flex-start;
+}
+
+.auth-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-error {
+  color: var(--danger);
+}

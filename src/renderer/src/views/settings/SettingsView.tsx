@@ -5,7 +5,7 @@ import { SEMESTER_MODELS } from '@shared/semester'
 import { sessionFolderName } from '@shared/schedule'
 import { today } from '@shared/dates'
 import type { AccentId, CalendarViewId, FontId, Semester, SemesterModelId } from '@shared/types'
-import { api } from '@/lib/api'
+import { api, isWeb } from '@/lib/api'
 import { activeSemester } from '@/lib/actions'
 import { removeRecord, updateDb, updateSettings, useDb } from '@/lib/db'
 import { formatDay, modKey } from '@/lib/format'
@@ -17,6 +17,7 @@ import { toast, toastError } from '@/ui/Toast'
 import { FONTS, PEN_COLORS, PEN_SIZES } from '../note/paper'
 import { PaperColorPicker, PaperPicker } from '../note/PaperPicker'
 import { SemesterDialog } from '../semester/SemesterDialog'
+import { AccountSettings } from './AccountSettings'
 import { AiSettings } from './AiSettings'
 import { IntegrationSettings } from './IntegrationSettings'
 import './settings.css'
@@ -316,6 +317,26 @@ function DataSection() {
     localStorage.clear()
     window.location.reload()
   }
+  if (isWeb) {
+    return (
+      <>
+        <SettingGroup title="Export">
+          <SettingRow label="Daten herunterladen" description="Alle Semester, Module, Termine, Aufgaben und Notizen als JSON-Datei. Hochgeladene Dateien lädst du einzeln herunter.">
+            <Button icon={<HardDriveDownload />} onClick={() => void api.backup()}>
+              Export herunterladen
+            </Button>
+          </SettingRow>
+        </SettingGroup>
+        <SettingGroup title="Gefahrenzone">
+          <SettingRow label="Alle Daten zurücksetzen" description="Löscht alle Inhalte deines Kontos und startet die Einrichtung neu. Das Konto bleibt bestehen.">
+            <Button variant="danger" icon={<Trash2 />} onClick={() => void reset()}>
+              Zurücksetzen
+            </Button>
+          </SettingRow>
+        </SettingGroup>
+      </>
+    )
+  }
   return (
     <>
       <SettingGroup title="Speicherort">
@@ -367,7 +388,10 @@ function AboutSection() {
   return (
     <>
       <SettingGroup title="Study Organizer">
-        <SettingRow label="Version" description="Deine Daten bleiben lokal auf diesem Gerät. Kein Konto, kein Tracking.">
+        <SettingRow
+          label="Version"
+          description={isWeb ? 'Web-Version. Deine Daten liegen in deinem Konto auf diesem Server. Kein Tracking.' : 'Deine Daten bleiben lokal auf diesem Gerät. Kein Konto, kein Tracking.'}
+        >
           <span className="muted tabular">{__APP_VERSION__}</span>
         </SettingRow>
       </SettingGroup>
@@ -383,6 +407,7 @@ function AboutSection() {
 }
 
 const SECTIONS = [
+  ...(isWeb ? [{ id: 'account', label: 'Konto & Speicher', render: () => <AccountSettings /> }] : []),
   { id: 'profile', label: 'Profil', render: () => <ProfileSection /> },
   { id: 'study', label: 'Studium & Semester', render: () => <StudySection /> },
   { id: 'appearance', label: 'Darstellung', render: () => <AppearanceSection /> },
@@ -390,7 +415,7 @@ const SECTIONS = [
   { id: 'calendar', label: 'Kalender', render: () => <CalendarSection /> },
   { id: 'integrations', label: 'Moodle & Kalender-Abos', render: () => <IntegrationSettings /> },
   { id: 'ai', label: 'KI', render: () => <AiSettings /> },
-  { id: 'data', label: 'Daten & Backup', render: () => <DataSection /> },
+  { id: 'data', label: isWeb ? 'Export & Zurücksetzen' : 'Daten & Backup', render: () => <DataSection /> },
   { id: 'about', label: 'Über & Tastenkürzel', render: () => <AboutSection /> },
 ]
 

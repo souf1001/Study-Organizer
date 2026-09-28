@@ -2,7 +2,7 @@
 import { useEffect, useState, type WheelEvent } from 'react'
 import { ExternalLink, Maximize2, Minus, Plus, RotateCw } from 'lucide-react'
 import type { Item } from '@shared/types'
-import { api } from '@/lib/api'
+import { api, openFileLabel } from '@/lib/api'
 import { formatSize } from '@/lib/format'
 import { Button, IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
@@ -29,7 +29,7 @@ function ImageViewer({ item }: { item: Item }) {
         <IconButton label="Einpassen" pressed={zoom === 'fit'} onClick={() => setZoom('fit')}><Maximize2 /></IconButton>
         <IconButton label="Drehen" onClick={() => setRotation((r) => (r + 90) % 360)}><RotateCw /></IconButton>
         <span className="spacer" />
-        <IconButton label="Mit Standard-App öffnen" onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
+        <IconButton label={openFileLabel} onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
       </div>
       <div className={`image-stage ${zoom === 'fit' ? 'fit' : ''}`} onWheel={onWheel}>
         <img
@@ -62,7 +62,7 @@ function TextViewer({ item }: { item: Item }) {
       <div className="file-toolbar">
         <span className="small muted">{formatSize(item.size)}</span>
         <span className="spacer" />
-        <IconButton label="Mit Standard-App öffnen" onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
+        <IconButton label={openFileLabel} onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
       </div>
       <pre className="text-view selectable">{text}</pre>
     </div>
@@ -77,7 +77,7 @@ function OtherFile({ item }: { item: Item }) {
       title={item.title}
       action={
         <Button icon={<ExternalLink />} onClick={() => void api.openFile(item).catch(toastError)}>
-          Mit Standard-App öffnen
+          {openFileLabel}
         </Button>
       }
     >

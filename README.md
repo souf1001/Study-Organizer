@@ -43,6 +43,8 @@ Ein ruhiger, minimalistischer Organizer fürs Studium: Semester, Module, Vorlesu
   <img src="docs/screenshots/ki-chat.png" width="49%" alt="KI-Chat" />
 </p>
 
+> **Web-Version:** Dieser Branch (`webapp`) enthält zusätzlich eine Server-Version mit Benutzerkonten und Speicherlimit pro Konto – Anleitung in [docs/webapp.md](docs/webapp.md). Lokal testen: `npm install && npm run web:dev` → <http://localhost:3000>.
+
 ## Installation
 
 Die fertigen Installationsdateien werden automatisch auf GitHub gebaut.
@@ -128,6 +130,9 @@ Weitere Befehle:
 | `npm run build` | Baut die App nach `out/` |
 | `npm run test:e2e` | Startet die echte App und klickt die wichtigsten Abläufe durch (Playwright); unter Linux ohne Bildschirm: `xvfb-run -a npm run test:e2e` |
 | `npm run dist:win` / `dist:mac` / `dist:linux` | Baut die Installationsdatei für das jeweilige System nach `release/` |
+| `npm run web:dev` | Web-Version mit Server lokal starten (<http://localhost:3000>) |
+| `npm run web:build` / `web:start` | Web-Version bauen bzw. im Produktionsmodus starten |
+| `npm run test:web` | Browser-Test der Web-Version (vorher `npm run web:build`) |
 
 **Neue Version veröffentlichen:** Version in `package.json` erhöhen, committen, dann
 
@@ -146,6 +151,7 @@ src/
   backend/    Speicher (JSON + Dateien), KI-Aufrufe, iCal, Moodle – läuft in Node.js
   main/       Electron-Hauptprozess: Fenster, sichere IPC, Datei-Protokoll, Schlüsselbund, Moodle-SSO
   preload/    Brücke zur Oberfläche (window.studyApi, siehe shared/api.ts)
+  server/     Web-Version: HTTP-API, Konten, Speicherlimit, Schutz vor internen Netzen
   renderer/   Oberfläche mit React
     src/lib/     Datenzugriff, Arbeitsfläche (Split-Screen), Aktionen, KI-Kontext
     src/shell/   Seitenleiste, Bereiche, Befehlspalette

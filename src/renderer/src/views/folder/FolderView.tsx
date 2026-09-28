@@ -22,7 +22,7 @@ import {
 import { SESSION_LABELS } from '@shared/schedule'
 import type { Folder, ID, Item } from '@shared/types'
 import { isoDateOf } from '@shared/dates'
-import { api } from '@/lib/api'
+import { api, openFileLabel } from '@/lib/api'
 import {
   childFolders,
   createFolder,
@@ -90,7 +90,7 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
     e.preventDefault()
     showMenu(e, [
       { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane({ type: 'item', id: item.id }) },
-      ...(item.kind === 'file' ? [{ label: 'Mit Standard-App öffnen', icon: <ExternalLink />, onClick: () => void api.openFile(item).catch(toastError) }] : []),
+      ...(item.kind === 'file' ? [{ label: openFileLabel, icon: <ExternalLink />, onClick: () => void api.openFile(item).catch(toastError) }] : []),
       ...(db.settings.ai.enabled ? [{ label: 'Mit KI zusammenfassen', icon: <ScrollText />, onClick: () => void summarizeItems([item]) }] : []),
       { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameItem(item) },
       { separator: true },

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Download, ExternalLink, Plug } from 'lucide-react'
 import { AI_PROVIDERS, getProvider } from '@shared/ai-providers'
-import { api } from '@/lib/api'
+import { api, isWeb } from '@/lib/api'
 import { updateSettings, useDb } from '@/lib/db'
 import { Button } from '@/ui/Button'
 import { Input, Select, Switch } from '@/ui/Field'
@@ -72,7 +72,7 @@ export function AiSettings() {
         <SettingRow label="Dienst" description={provider.note}>
           <Select
             value={ai.provider}
-            options={AI_PROVIDERS.map((p) => ({ value: p.id, label: p.free ? `${p.name} · kostenlos nutzbar` : p.name }))}
+            options={AI_PROVIDERS.filter((p) => !(isWeb && p.local)).map((p) => ({ value: p.id, label: p.free ? `${p.name} · kostenlos nutzbar` : p.name }))}
             onChange={(id) => updateSettings('ai', { provider: id, model: '', baseUrl: '' })}
           />
         </SettingRow>
