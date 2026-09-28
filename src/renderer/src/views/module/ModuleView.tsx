@@ -19,7 +19,7 @@ import {
   Upload,
   User,
 } from 'lucide-react'
-import { today } from '@shared/dates'
+import { isoDateOf, today } from '@shared/dates'
 import { moduleOccurrences, SESSION_LABELS, type Occurrence } from '@shared/schedule'
 import type { Module, SessionKind } from '@shared/types'
 import {
@@ -195,7 +195,7 @@ function Overview({ module, occurrences }: { module: Module; occurrences: Occurr
               <div key={e.id} className="list-row clickable" onClick={(ev) => openView({ type: 'calendar' }, ev)}>
                 <GraduationCap size={16} className="faint" />
                 <span>{e.title}</span>
-                <span className="meta">{formatDay(e.start.slice(0, 10))}</span>
+                <span className="meta">{formatDay(isoDateOf(e.start))}</span>
               </div>
             ))}
           </div>

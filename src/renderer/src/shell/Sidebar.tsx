@@ -23,7 +23,7 @@ import {
   Upload,
 } from 'lucide-react'
 import type { Folder, Item, Module } from '@shared/types'
-import { today } from '@shared/dates'
+import { isoDateOf, today } from '@shared/dates'
 import {
   activeSemester,
   childFolders,
@@ -267,7 +267,7 @@ export function Sidebar() {
   const [moduleDialog, setModuleDialog] = useState<{ module?: Module } | null>(null)
   const [semesterDialog, setSemesterDialog] = useState(false)
 
-  const openTasks = db.tasks.filter((t) => !t.done && t.due && t.due.slice(0, 10) <= today()).length
+  const openTasks = db.tasks.filter((t) => !t.done && t.due && isoDateOf(t.due) <= today()).length
   const initials = (db.profile.name || 'S').trim().slice(0, 1).toUpperCase()
 
   const semesterMenu = (e: MouseEvent<HTMLButtonElement>) =>

@@ -49,7 +49,8 @@ export function InkLayer({ width, height, displayScale = 1, strokes, tool, penOn
   }
 
   const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
-    if (!tool || e.button > 0) return
+    // Nur Hauptknopf – oder der Radierer eines Stifts (buttons === 32)
+    if (!tool || (e.button > 0 && e.buttons !== 32)) return
     if (penOnly && e.pointerType === 'touch') return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)

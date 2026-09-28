@@ -99,3 +99,16 @@ describe('Store', () => {
     expect(JSON.parse(text).modules).toHaveLength(1)
   })
 })
+
+describe('Atomares Schreiben', () => {
+  it('überlebt einen fehlgeschlagenen Schreibvorgang und schreibt parallele Änderungen der Reihe nach', async () => {
+    const { writeAtomic } = await import('../src/backend/store')
+    const file = path.join(dir, 'x.json')
+    await expect(writeAtomic(path.join(dir, 'fehlt', 'x.json'), '1')).rejects.toThrow()
+    await Promise.all([writeAtomic(file, '"a"'), writeAtomic(file, '"b"'), writeAtomic(file, '"c"')])
+    expect(await readFile(file, 'utf8')).toBe('"c"')
+    store.put('modules', newModule('s'))
+    await store.flush()
+    expect(JSON.parse(await readFile(path.join(dir, 'db.json'), 'utf8')).modules).toHaveLength(1)
+  })
+})

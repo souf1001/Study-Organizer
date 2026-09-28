@@ -44,6 +44,9 @@ function createWindow(): BrowserWindow {
   })
 
   window.once('ready-to-show', () => window.show())
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null
+  })
 
   // Links immer im Browser öffnen, nie im App-Fenster
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -78,7 +81,7 @@ function setupMenu(): void {
 function startBackgroundSync(service: Service, store: Store): void {
   const run = async (): Promise<void> => {
     await service.syncAll().catch(() => undefined)
-    mainWindow?.webContents.send('db:changed')
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('db:changed')
   }
   setTimeout(() => void run(), 5_000)
   let lastRun = Date.now()
@@ -115,8 +118,9 @@ async function main(): Promise<void> {
   startBackgroundSync(service, store)
 
   app.on('second-instance', () => {
-    if (mainWindow?.isMinimized()) mainWindow.restore()
-    mainWindow?.focus()
+    if (!mainWindow) mainWindow = createWindow()
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
   })
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()

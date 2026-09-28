@@ -14,10 +14,29 @@ import { assertFileName, assertId, detectFile, titleFromFileName } from './files
 const SAVE_DELAY_MS = 250
 const PATCH_KEYS: (keyof DbPatch)[] = ['onboarded', 'activeSemesterId', 'profile', 'settings']
 
-async function writeAtomic(file: string, data: string): Promise<void> {
-  const tmp = `${file}.${process.pid}.tmp`
-  await fs.writeFile(tmp, data, 'utf8')
-  await fs.rename(tmp, file)
+let tmpCounter = 0
+const fileQueues = new Map<string, Promise<void>>()
+
+/** Schreibt über eine eigene Temp-Datei und benennt dann um – nie halb geschriebene Dateien. */
+async function writeFileNow(file: string, data: string, mode?: number): Promise<void> {
+  const tmp = `${file}.${process.pid}.${++tmpCounter}.tmp`
+  try {
+    await fs.writeFile(tmp, data, { encoding: 'utf8', mode })
+    await fs.rename(tmp, file)
+  } catch (error) {
+    await fs.rm(tmp, { force: true })
+    throw error
+  }
+}
+
+/** Schreibvorgänge auf dieselbe Datei nacheinander ausführen, damit der neueste Stand gewinnt */
+export function writeAtomic(file: string, data: string, mode?: number): Promise<void> {
+  const previous = fileQueues.get(file) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(() => writeFileNow(file, data, mode))
+  const settled = next.catch(() => undefined)
+  fileQueues.set(file, settled)
+  void settled.then(() => fileQueues.get(file) === settled && fileQueues.delete(file))
+  return next
 }
 
 async function readJson<T>(file: string): Promise<T | null> {
@@ -32,7 +51,6 @@ async function readJson<T>(file: string): Promise<T | null> {
 export class Store {
   private db: Db = createDefaultDb()
   private saveTimer: NodeJS.Timeout | null = null
-  private writing: Promise<void> = Promise.resolve()
   private textCache = new Map<string, string>()
 
   private constructor(readonly dir: string) {}
@@ -68,16 +86,17 @@ export class Store {
 
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer)
-    this.saveTimer = setTimeout(() => void this.flush(), SAVE_DELAY_MS)
+    this.saveTimer = setTimeout(() => {
+      // Fehler landen im Log; die nächste Änderung versucht es erneut
+      this.flush().catch((error) => console.error('db.json konnte nicht gespeichert werden:', error))
+    }, SAVE_DELAY_MS)
   }
 
   /** Schreibt ausstehende Änderungen sofort (z. B. vor dem Beenden) */
   flush(): Promise<void> {
     if (this.saveTimer) clearTimeout(this.saveTimer)
     this.saveTimer = null
-    const data = JSON.stringify(this.db)
-    this.writing = this.writing.then(() => writeAtomic(this.dbFile, data))
-    return this.writing
+    return writeAtomic(this.dbFile, JSON.stringify(this.db))
   }
 
   // ---- Datensätze ----
@@ -280,7 +299,7 @@ export class Store {
 
   async reset(): Promise<void> {
     if (this.saveTimer) clearTimeout(this.saveTimer)
-    await this.writing
+    await (fileQueues.get(this.dbFile) ?? Promise.resolve())
     for (const sub of ['notes', 'files', 'text', 'annotations']) {
       await fs.rm(path.join(this.dir, sub), { recursive: true, force: true })
       await fs.mkdir(path.join(this.dir, sub), { recursive: true })

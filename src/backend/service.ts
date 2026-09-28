@@ -111,14 +111,18 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       try {
         const url = await secrets.get(`ics:${id}`)
         if (!url) throw new Error('Adresse fehlt – bitte das Abo neu anlegen.')
-        const incoming = eventsFromIcs(await fetchCalendar(url, fetchImpl), subscription, store.get().modules)
+        const text = await fetchCalendar(url, fetchImpl)
+        // Während des Abrufs gelöscht? Dann nichts zurückschreiben.
+        if (!store.get().subscriptions.some((s) => s.id === id)) return { count: 0, error: null }
+        const incoming = eventsFromIcs(text, subscription, store.get().modules)
         const existing = store.get().events.filter((e) => e.subscriptionId === id)
         store.replaceMany('events', (e) => e.subscriptionId === id, mergeSubscriptionEvents(existing, incoming))
         store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString(), lastError: null })
         return { count: incoming.length, error: null }
       } catch (error) {
         const message = (error as Error).message
-        store.put('subscriptions', { ...subscription, lastError: message })
+        const current = store.get().subscriptions.find((s) => s.id === id)
+        if (current) store.put('subscriptions', { ...current, lastError: message })
         return { count: 0, error: message }
       }
     },

@@ -88,17 +88,22 @@ export function classifyEvent(text: string): EventKind {
   return KIND_RULES.find(([pattern]) => pattern.test(text))?.[1] ?? 'other'
 }
 
-/** Ordnet einen Termin einem Modul zu (über Kürzel oder Namen) */
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Ganzes Wort (nicht Teil eines anderen Worts), ohne Groß-/Kleinschreibung */
+const wordPattern = (s: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(s)}($|[^\\p{L}\\p{N}])`, 'iu')
+
+/** Ordnet einen Termin einem Modul zu: Kategorie (Moodle-Kurzname), dann Kürzel, dann Name */
 export function matchModule(event: ParsedEvent, modules: Module[]): string | null {
-  const haystack = `${event.title} ${event.categories.join(' ')} ${event.description}`.toLowerCase()
-  const byCode = modules.find(
-    (m) => m.code.trim().length >= 2 && haystack.includes(m.code.trim().toLowerCase()),
+  const categories = event.categories.map((c) => c.trim().toLowerCase())
+  const text = `${event.title} ${event.categories.join(' ')} ${event.description}`
+  const code = (m: Module) => m.code.trim()
+  const name = (m: Module) => m.name.trim()
+  return (
+    modules.find((m) => categories.includes(code(m).toLowerCase()) || categories.includes(name(m).toLowerCase()))?.id ??
+    modules.find((m) => code(m).length >= 2 && wordPattern(code(m)).test(text))?.id ??
+    modules.find((m) => name(m).length >= 3 && wordPattern(name(m)).test(text))?.id ??
+    null
   )
-  if (byCode) return byCode.id
-  const byName = modules.find(
-    (m) => m.name.trim().length >= 3 && haystack.includes(m.name.trim().toLowerCase()),
-  )
-  return byName?.id ?? null
 }
 
 export function normalizeCalendarUrl(url: string): string {

@@ -344,17 +344,13 @@ async function syncCourseFiles(
         if (file.type !== 'file' || file.filesize > MAX_FILE_BYTES) continue
         const externalId = `moodle:file:${file.fileurl}@${file.timemodified}`
         if (db.items.some((i) => i.externalId === externalId)) continue
-        const outdated = db.items.find((i) =>
-          i.externalId?.startsWith(`moodle:file:${file.fileurl}@`),
-        )
-        if (outdated) await store.remove('items', outdated.id)
+        // Erst die neue Version laden, dann die alte ersetzen (ein Fehler lässt die alte Datei stehen)
         const bytes = await client.download(file.fileurl)
         const folderId = folderNamed(section.name || 'Allgemein', rootId)
-        const item = await store.addFile(
-          { moduleId, folderId },
-          { name: file.filename, type: '', bytes },
-        )
+        const item = await store.addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes })
         store.put('items', { ...item, source: 'moodle', externalId })
+        const outdated = db.items.find((i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`))
+        if (outdated) await store.remove('items', outdated.id)
         count += 1
       }
     }

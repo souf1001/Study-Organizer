@@ -77,8 +77,12 @@ export function entriesBetween(db: Db, from: ISODate, to: ISODate): Entry[] {
   return entries.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
 
+/** Termine an einem Tag. Das Ende ist exklusiv (iCal: ganztägig bis 00:00 des Folgetags). */
 export function entriesOn(entries: Entry[], day: ISODate): Entry[] {
-  return entries.filter((e) => toISODate(e.start) <= day && toISODate(e.end) >= day)
+  return entries.filter((e) => {
+    const last = e.end > e.start ? new Date(e.end.getTime() - 1) : e.end
+    return toISODate(e.start) <= day && toISODate(last) >= day
+  })
 }
 
 /** Überlappende Termine nebeneinander anordnen: Spalte und Spaltenzahl je Termin */

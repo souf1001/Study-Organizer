@@ -2,6 +2,7 @@
 import { promises as fs } from 'node:fs'
 import { safeStorage } from 'electron'
 import type { Secrets } from '../backend/service'
+import { writeAtomic } from '../backend/store'
 
 export function createSecrets(file: string): Secrets {
   let cache: Record<string, string> | null = null
@@ -18,9 +19,8 @@ export function createSecrets(file: string): Secrets {
   }
 
   async function save(all: Record<string, string>): Promise<void> {
-    const tmp = `${file}.tmp`
-    await fs.writeFile(tmp, JSON.stringify(all), { encoding: 'utf8', mode: 0o600 })
-    await fs.rename(tmp, file)
+    // Nur für den eigenen Benutzer lesbar
+    await writeAtomic(file, JSON.stringify(all), 0o600)
   }
 
   const encode = (value: string): string =>

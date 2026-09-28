@@ -79,3 +79,15 @@ describe('Abo-Abgleich', () => {
     expect(merged.map((e) => e.title)).toEqual(['Alt', 'Neu'])
   })
 })
+
+describe('Modulzuordnung', () => {
+  it('trifft Kürzel nur als ganzes Wort', async () => {
+    const { matchModule } = await import('../src/backend/ics')
+    const se = newModule('s', { name: 'Software Engineering', code: 'SE' })
+    const ma = newModule('s', { name: 'Mathematik', code: 'MA' })
+    const base = { uid: 'x', start: new Date(), end: new Date(), allDay: false, location: '', description: '', categories: [] as string[] }
+    expect(matchModule({ ...base, title: 'Seminar Datenbanken' }, [se, ma])).toBeNull()
+    expect(matchModule({ ...base, title: 'Klausur SE', description: 'Material mitbringen' }, [se, ma])).toBe(se.id)
+    expect(matchModule({ ...base, title: 'Abgabe', categories: ['MA'] }, [se, ma])).toBe(ma.id)
+  })
+})

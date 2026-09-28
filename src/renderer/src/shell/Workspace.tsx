@@ -81,11 +81,11 @@ function ViewContent({ view, paneId }: { view: View; paneId: string }) {
       return <ChatView view={view} paneId={paneId} />
     case 'module': {
       const module = db.modules.find((m) => m.id === view.id)
-      return module ? <ModuleView module={module} tab={view.tab ?? 'overview'} paneId={paneId} /> : missing
+      return module ? <ModuleView key={module.id} module={module} tab={view.tab ?? 'overview'} paneId={paneId} /> : missing
     }
     case 'folder': {
       const folder = db.folders.find((f) => f.id === view.id)
-      return folder ? <FolderView folder={folder} /> : missing
+      return folder ? <FolderView key={folder.id} folder={folder} /> : missing
     }
     case 'item': {
       const item = db.items.find((i) => i.id === view.id)
