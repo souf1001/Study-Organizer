@@ -71,8 +71,30 @@ export function assertFileName(name: unknown): asserts name is string {
   if (typeof name !== 'string' || !SAFE_FILE_NAME.test(name)) throw new Error('Ungültiger Dateiname')
 }
 
-/** Titel aus Dateinamen: Endung weg, Unterstriche zu Leerzeichen */
+/** Titel aus Dateinamen: Unterstriche zu Leerzeichen; die Endung fällt nur bei bekannten Typen weg */
 export function titleFromFileName(name: string): string {
-  const base = name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim()
+  const known = detectFile(name).fileType !== 'other'
+  const base = (known ? name.replace(/\.[^.]+$/, '') : name).replace(/[_]+/g, ' ').trim()
   return base || name
+}
+
+// Diese Typen dürfen direkt mit der Standard-App geöffnet werden. Alles andere (Programme,
+// Skripte, Verknüpfungen …) nur nach ausdrücklicher Bestätigung.
+const SAFE_TO_OPEN = new Set([
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'pps', 'ppsx', 'xls', 'xlsx', 'odt', 'odp', 'ods', 'rtf', 'key', 'pages', 'numbers', 'epub',
+  'txt', 'md', 'csv', 'tex', 'bib', 'json', 'ipynb',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'heic', 'tif', 'tiff', 'svg',
+  'mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'ogv', 'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'flac',
+  'zip',
+])
+
+export function isSafeToOpen(fileName: string): boolean {
+  return SAFE_TO_OPEN.has(extensionOf(fileName))
+}
+
+/** Windows: Datei als „aus dem Internet“ markieren, damit SmartScreen & Co. greifen */
+export async function markAsDownloaded(file: string): Promise<void> {
+  if (process.platform !== 'win32') return
+  const { promises: fs } = await import('node:fs')
+  await fs.writeFile(`${file}:Zone.Identifier`, '[ZoneTransfer]\r\nZoneId=3\r\n').catch(() => undefined)
 }

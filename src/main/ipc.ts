@@ -4,6 +4,7 @@ import path from 'node:path'
 import { BrowserWindow, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import type { AiRequest, FileInput, FileTarget } from '../shared/types'
 import { toISODate } from '../shared/dates'
+import { isSafeToOpen } from '../backend/files'
 import type { Service } from '../backend/service'
 import type { Store } from '../backend/store'
 import { moodleSsoLogin } from './moodle-sso'
@@ -44,7 +45,24 @@ export function registerIpc(service: Service, store: Store): void {
       return items
     },
     'files:open': async (fileName: string) => {
-      const error = await shell.openPath(store.filePath(fileName))
+      const file = store.filePath(fileName)
+      if (!isSafeToOpen(fileName)) {
+        const item = store.get().items.find((i) => i.fileName === fileName)
+        const window = BrowserWindow.getFocusedWindow()
+        const options = {
+          type: 'warning' as const,
+          buttons: ['Abbrechen', 'Im Ordner zeigen', 'Trotzdem öffnen'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Datei öffnen?',
+          message: `„${item?.title ?? fileName}“ ist kein Dokument, sondern möglicherweise ein Programm oder Skript (.${fileName.split('.').pop()}).`,
+          detail: 'Öffne solche Dateien nur, wenn du ihrer Herkunft vertraust.',
+        }
+        const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
+        if (response === 0) return
+        if (response === 1) return shell.showItemInFolder(file)
+      }
+      const error = await shell.openPath(file)
       if (error) throw new Error(error)
     },
     'ai:setKey': service.aiSetKey,

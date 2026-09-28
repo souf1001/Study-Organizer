@@ -27,24 +27,25 @@ export async function streamChat(
   request: AiRequest,
   onText: (chunk: string) => void,
   signal: AbortSignal,
+  fetchImpl?: typeof fetch,
 ): Promise<string> {
   if (!settings.enabled) throw new Error('KI ist in den Einstellungen deaktiviert.')
   const t = target(settings)
   try {
     return t.api === 'anthropic'
-      ? await streamAnthropic(apiKey, t.model, request, onText, signal)
-      : await streamOpenAi(t.baseUrl, apiKey, t.model, request, onText, signal)
+      ? await streamAnthropic(apiKey, t.model, request, onText, signal, fetchImpl)
+      : await streamOpenAi(t.baseUrl, apiKey, t.model, request, onText, signal, fetchImpl)
   } catch (error) {
     throw new Error(describeAiError(error), { cause: error })
   }
 }
 
-export async function listModels(settings: AiSettings, apiKey: string): Promise<string[]> {
+export async function listModels(settings: AiSettings, apiKey: string, fetchImpl?: typeof fetch): Promise<string[]> {
   const t = target({ ...settings, model: settings.model || 'placeholder' })
   try {
     return t.api === 'anthropic'
-      ? await listAnthropicModels(apiKey)
-      : await listOpenAiModels(t.baseUrl, apiKey)
+      ? await listAnthropicModels(apiKey, fetchImpl)
+      : await listOpenAiModels(t.baseUrl, apiKey, fetchImpl)
   } catch (error) {
     throw new Error(describeAiError(error), { cause: error })
   }

@@ -1,5 +1,5 @@
 // Alle Backend-Funktionen an einer Stelle. Electron (IPC) und der Web-Server rufen nur diese auf.
-import { AI_PROVIDERS } from '../shared/ai-providers'
+import { AI_PROVIDERS, getProvider } from '../shared/ai-providers'
 import type {
   AiRequest,
   Annotations,
@@ -38,16 +38,50 @@ const aiSecret = (provider: string): string => {
   return `ai:${provider}`
 }
 
+// Geheimnisse werden zusammen mit ihrer Zieladresse gespeichert. So kann eine geänderte
+// Einstellung einen Key oder Token nie an einen anderen Server schicken.
+interface BoundSecret {
+  value: string
+  target: string
+}
+
+async function readBound(secrets: Secrets, name: string, target: string): Promise<string | null> {
+  const raw = await secrets.get(name)
+  if (!raw) return null
+  try {
+    const bound = JSON.parse(raw) as BoundSecret
+    if (bound.target !== target) throw new Error('Die Adresse hat sich geändert – bitte den Key bzw. die Anmeldung neu speichern.')
+    return bound.value
+  } catch (error) {
+    if (error instanceof SyntaxError) return null
+    throw error
+  }
+}
+
+const writeBound = (secrets: Secrets, name: string, value: string, target: string) =>
+  secrets.set(name, JSON.stringify({ value, target } satisfies BoundSecret))
+
+/** Wohin ein KI-Key geschickt werden darf: feste Anbieter-Adresse oder die eingestellte eigene */
+function aiTarget(settings: { provider: string; baseUrl: string }): string {
+  const provider = getProvider(settings.provider)
+  return provider.customBaseUrl ? settings.baseUrl.trim() || provider.baseUrl : provider.baseUrl
+}
+
 export type Service = ReturnType<typeof createService>
 
 export function createService(store: Store, secrets: Secrets, options: ServiceOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch
 
   async function moodleClient(): Promise<MoodleClient> {
-    const token = await secrets.get('moodle')
     const { url } = store.get().settings.moodle
+    const token = url ? await readBound(secrets, 'moodle', url) : null
     if (!token || !url) throw new Error('Moodle ist nicht verbunden.')
     return new MoodleClient(url, token, fetchImpl)
+  }
+
+  const aiKey = async () => {
+    const settings = store.get().settings.ai
+    return checkKey(settings, await readBound(secrets, aiSecret(settings.provider), aiTarget(settings)))
   }
 
   const service = {
@@ -68,19 +102,14 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     // ---- KI ----
     aiSetKey: async (provider: string, key: string) => {
       const name = aiSecret(provider)
-      if (key.trim()) await secrets.set(name, key.trim())
+      const settings = store.get().settings.ai
+      if (key.trim()) await writeBound(secrets, name, key.trim(), aiTarget({ ...settings, provider }))
       else await secrets.remove(name)
     },
     aiHasKey: async (provider: string) => Boolean(await secrets.get(aiSecret(provider))),
-    aiListModels: async () => {
-      const settings = store.get().settings.ai
-      return listModels(settings, checkKey(settings, await secrets.get(aiSecret(settings.provider))))
-    },
-    aiStream: async (request: AiRequest, onText: (chunk: string) => void, signal: AbortSignal) => {
-      const settings = store.get().settings.ai
-      const key = checkKey(settings, await secrets.get(aiSecret(settings.provider)))
-      return streamChat(settings, key, request, onText, signal)
-    },
+    aiListModels: async () => listModels(store.get().settings.ai, await aiKey(), fetchImpl),
+    aiStream: async (request: AiRequest, onText: (chunk: string) => void, signal: AbortSignal) =>
+      streamChat(store.get().settings.ai, await aiKey(), request, onText, signal, fetchImpl),
 
     // ---- Kalender-Abos ----
     // Abo-Adressen enthalten oft einen persönlichen Schlüssel (z. B. Moodle authtoken) und
@@ -141,7 +170,7 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     moodleSiteInfo: (url: string) => moodleSiteInfo(url, fetchImpl),
     moodleConnect: async (input: MoodleConnectInput): Promise<MoodleCourse[]> => {
       const result = await connectMoodle(input, fetchImpl)
-      await secrets.set('moodle', result.token)
+      await writeBound(secrets, 'moodle', result.token, result.site)
       const settings = store.get().settings
       store.update({
         settings: {
@@ -173,7 +202,7 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       for (const s of store.get().subscriptions.filter((s) => s.enabled && s.kind === 'url')) {
         await service.calendarSync(s.id)
       }
-      if (store.get().settings.moodle.url && (await secrets.get('moodle'))) {
+      if (store.get().settings.moodle.url && (await secrets.get('moodle').catch(() => null))) {
         await service.moodleSync().catch(() => undefined)
       }
     },

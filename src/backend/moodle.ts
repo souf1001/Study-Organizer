@@ -3,6 +3,7 @@
 import type { MoodleCourse, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
 import { newFolder, newTask, newEvent } from '../shared/defaults'
 import { classifyEvent } from './ics'
+import { markAsDownloaded } from './files'
 import type { Store } from './store'
 
 type Params = Record<string, unknown>
@@ -349,6 +350,7 @@ async function syncCourseFiles(
         const folderId = folderNamed(section.name || 'Allgemein', rootId)
         const item = await store.addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes })
         store.put('items', { ...item, source: 'moodle', externalId })
+        await markAsDownloaded(store.filePath(item.fileName!))
         const outdated = db.items.find((i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`))
         if (outdated) await store.remove('items', outdated.id)
         count += 1

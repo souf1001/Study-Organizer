@@ -2,9 +2,9 @@
 import OpenAI from 'openai'
 import type { AiRequest } from '../shared/types'
 
-function client(baseURL: string, apiKey: string): OpenAI {
+function client(baseURL: string, apiKey: string, fetchImpl?: typeof fetch): OpenAI {
   // Lokale Server (Ollama, LM Studio) brauchen keinen Key, das SDK aber einen Wert.
-  return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed' })
+  return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', fetch: fetchImpl })
 }
 
 export async function streamOpenAi(
@@ -14,8 +14,9 @@ export async function streamOpenAi(
   request: AiRequest,
   onText: (chunk: string) => void,
   signal: AbortSignal,
+  fetchImpl?: typeof fetch,
 ): Promise<string> {
-  const stream = await client(baseUrl, apiKey).chat.completions.create(
+  const stream = await client(baseUrl, apiKey, fetchImpl).chat.completions.create(
     {
       model,
       stream: true,
@@ -34,9 +35,9 @@ export async function streamOpenAi(
   return text
 }
 
-export async function listOpenAiModels(baseUrl: string, apiKey: string): Promise<string[]> {
+export async function listOpenAiModels(baseUrl: string, apiKey: string, fetchImpl?: typeof fetch): Promise<string[]> {
   const ids: string[] = []
-  for await (const model of client(baseUrl, apiKey).models.list()) ids.push(model.id)
+  for await (const model of client(baseUrl, apiKey, fetchImpl).models.list()) ids.push(model.id)
   return ids.sort()
 }
 

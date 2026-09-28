@@ -2,7 +2,7 @@
 // Moodle leitet nach dem Login auf moodlemobile://token=<base64> weiter. Diese Weiterleitung
 // fangen wir im Anmeldefenster ab, bevor das Betriebssystem sie verarbeitet.
 import { createHash, randomBytes } from 'node:crypto'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, session } from 'electron'
 
 const md5 = (value: string) => createHash('md5').update(value).digest('hex')
 
@@ -21,6 +21,9 @@ export function parseLaunchToken(url: string, site: string, passport: string): s
 export function moodleSsoLogin(site: string, parent: BrowserWindow | null): Promise<string> {
   const passport = randomBytes(8).toString('hex')
   const launch = `${site}/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=${passport}&urlscheme=moodlemobile`
+
+  // Fremde Anmeldeseiten bekommen keine Berechtigungen (Kamera, Mikrofon, Benachrichtigungen …)
+  session.fromPartition('moodle-sso').setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
 
   return new Promise((resolve, reject) => {
     const window = new BrowserWindow({
