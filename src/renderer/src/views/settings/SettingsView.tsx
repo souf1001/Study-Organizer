@@ -321,7 +321,7 @@ function DataSection() {
     return (
       <>
         <SettingGroup title="Export">
-          <SettingRow label="Daten herunterladen" description="Alle Semester, Module, Termine, Aufgaben und Notizen als JSON-Datei. Hochgeladene Dateien lädst du einzeln herunter.">
+          <SettingRow label="Daten herunterladen" description="Alle Daten deines Kontos als ZIP: Semester, Module, Termine, Notizen, Dateien und Markierungen (ohne API-Keys). Entpackt lässt es sich auch als Datenordner der Desktop-App verwenden.">
             <Button icon={<HardDriveDownload />} onClick={() => void api.backup()}>
               Export herunterladen
             </Button>

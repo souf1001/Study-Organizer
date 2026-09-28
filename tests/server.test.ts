@@ -14,7 +14,8 @@ process.env.USER_QUOTA_MB = '1'
 process.env.COOKIE_SECURE = 'false'
 
 const { createApp } = await import('../src/server/index')
-const { isBlockedAddress, assertAllowedUrl } = await import('../src/server/net-guard')
+const { isBlockedAddress, assertAllowedUrl, withoutCredentials } = await import('../src/server/net-guard')
+const { Accounts } = await import('../src/server/accounts')
 
 let server: Server
 let base: string
@@ -75,6 +76,20 @@ describe('Anmeldung', () => {
     expect(right.status).toBe(200)
   })
 
+  it('übernimmt Änderungen des Verwaltungs-Tools, während der Server läuft', async () => {
+    const cookie = await register('admin-reset@uni.de')
+    // Wie admin.js: eigene Instanz, schreibt direkt in accounts.json
+    const admin = await Accounts.open(process.env.DATA_DIR!)
+    await admin.changePassword(admin.findByEmail('admin-reset@uni.de')!.id, 'neues-passwort-456')
+    expect((await call(cookie, 'GET', '/api/db')).status).toBe(401)
+    const login = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email: 'admin-reset@uni.de', password: 'neues-passwort-456' }),
+    })
+    expect(login.status).toBe(200)
+  })
+
   it('beendet die Sitzung beim Abmelden', async () => {
     const cookie = await register('logout@uni.de')
     await call(cookie, 'POST', '/api/auth/logout')
@@ -113,7 +128,60 @@ describe('Konten sind getrennt', () => {
   })
 })
 
+describe('Daten', () => {
+  it('nimmt .json-Dateien als Datei an, nicht als Anfrage', async () => {
+    const a = await register('json@uni.de')
+    const bytes = new TextEncoder().encode('{"titel":"Übung"}')
+    const upload = await call(a, 'POST', '/api/files?moduleId=m1&name=daten.json', bytes, { 'Content-Type': 'application/json' })
+    expect(upload.status).toBe(200)
+    const item = await upload.json()
+    expect(await (await call(a, 'GET', `/api/files/${item.fileName}`)).text()).toBe('{"titel":"Übung"}')
+  })
+
+  it('prüft Änderungen an Einstellungen', async () => {
+    const a = await register('patch@uni.de')
+    expect((await call(a, 'PATCH', '/api/db', { onboarded: 'ja' })).status).toBe(400)
+    expect((await call(a, 'PATCH', '/api/db', { settings: [] })).status).toBe(400)
+    expect((await call(a, 'PATCH', '/api/db', { items: [] })).status).toBe(400)
+    expect((await call(a, 'PATCH', '/api/db', { onboarded: true })).status).toBe(200)
+    expect((await (await call(a, 'GET', '/api/db')).json()).onboarded).toBe(true)
+  })
+
+  it('exportiert alle Daten als ZIP', async () => {
+    const a = await register('export@uni.de')
+    await call(a, 'PUT', '/api/notes/n1', { content: null, strokes: [], paper: 'plain', paperColor: 'auto', font: 'inter', height: 1000, text: 'x' })
+    await call(a, 'POST', '/api/files?moduleId=m1&name=folie.pdf', new Uint8Array([37, 80, 68, 70]), { 'Content-Type': 'application/pdf' })
+    const response = await call(a, 'GET', '/api/export')
+    expect(response.headers.get('content-type')).toBe('application/zip')
+    const zip = Buffer.from(await response.arrayBuffer())
+    expect(zip.subarray(0, 2).toString()).toBe('PK')
+    for (const name of ['db.json', 'notes/n1.json', 'files/']) expect(zip.includes(name)).toBe(true)
+    expect(zip.includes('secrets.json')).toBe(false)
+  })
+})
+
 describe('Speicherlimit', () => {
+  it('parallele Uploads überschreiten das Limit nicht gemeinsam', async () => {
+    const a = await register('parallel@uni.de')
+    const part = new Uint8Array(400_000)
+    const responses = await Promise.all(
+      [1, 2, 3].map((n) => call(a, 'POST', `/api/files?moduleId=m1&name=teil${n}.pdf`, part, { 'Content-Type': 'application/pdf' })),
+    )
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 200, 413])
+    const usage = await (await call(a, 'GET', '/api/account/usage')).json()
+    expect(usage.used).toBeLessThanOrEqual(usage.quota)
+  })
+
+  it('rechnet aufgeklappte Serientermine an, nicht nur die Kalenderdatei', async () => {
+    const a = await register('serie@uni.de')
+    // 2 KB Kalender, aber 1000 stündliche Termine mit je 2 KB Beschreibung (≈ 2,5 MB bei 1 MB Limit)
+    const start = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10).replaceAll('-', '')
+    const text = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:s\nSUMMARY:Serie\nDESCRIPTION:${'x'.repeat(2000)}\nDTSTART:${start}T000000Z\nRRULE:FREQ=HOURLY\nEND:VEVENT\nEND:VCALENDAR`
+    const response = await call(a, 'POST', '/api/calendar/import', { name: 'serie.ics', text })
+    expect(response.status).toBe(413)
+    expect((await (await call(a, 'GET', '/api/db')).json()).events).toHaveLength(0)
+  })
+
   it('lehnt Dateien ab, die nicht mehr ins Kontingent passen', async () => {
     const a = await register('voll@uni.de')
     const big = new Uint8Array(1_200_000)
@@ -127,7 +195,7 @@ describe('Speicherlimit', () => {
 
 describe('Schutz vor internen Adressen (SSRF)', () => {
   it('erkennt private und lokale Adressen', () => {
-    for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.169.254', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) {
+    for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.169.254', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '64:ff9b::a00:5', '2002:a00:1::1', '::a00:1']) {
       expect(isBlockedAddress(ip)).toBe(true)
     }
     for (const ip of ['8.8.8.8', '141.100.1.1', '2a00:1450:4001::1']) expect(isBlockedAddress(ip)).toBe(false)
@@ -138,6 +206,11 @@ describe('Schutz vor internen Adressen (SSRF)', () => {
     expect(() => assertAllowedUrl(new URL('http://[::1]/'))).toThrow()
     expect(() => assertAllowedUrl(new URL('file:///etc/passwd'))).toThrow()
     expect(() => assertAllowedUrl(new URL('https://lernen.h-da.de/'))).not.toThrow()
+  })
+
+  it('schickt bei Weiterleitung auf einen anderen Server keine Keys mit', () => {
+    const kept = withoutCredentials({ Authorization: 'Bearer geheim', 'x-api-key': 'geheim', Accept: 'application/json' })
+    expect([...kept.keys()]).toEqual(['accept'])
   })
 
   it('Kalender-Abos auf interne Adressen schlagen fehl', async () => {

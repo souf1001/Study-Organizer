@@ -59,6 +59,7 @@
     "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^5.2.0",
     "dompurify": "^3.4.16",
     "electron": "^44.4.5",
@@ -89,7 +90,8 @@
     "express": "^5.2.1",
     "ical.js": "^2.2.1",
     "openai": "^7.23.0",
-    "undici": "^8.11.2"
+    "undici": "^8.11.2",
+    "yazl": "^3.3.1"
   },
   "homepage": "https://github.com/souf1001/Study-Organizer"
 }

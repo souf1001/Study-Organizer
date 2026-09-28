@@ -14,11 +14,12 @@ export interface UserSpace {
   service: Service
 }
 
+/** Größe eines Ordners; der tmp-Ordner laufender Uploads zählt über `pending` */
 async function folderSize(dir: string): Promise<number> {
   let total = 0
   for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
     const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) total += await folderSize(full)
+    if (entry.isDirectory() && entry.name !== 'tmp') total += await folderSize(full)
     else if (entry.isFile()) total += (await fs.stat(full)).size
   }
   return total
@@ -33,7 +34,10 @@ export class QuotaError extends Error {
 
 export class Users {
   private spaces = new Map<string, Promise<UserSpace>>()
-  private usageCache = new Map<string, { bytes: number; at: number }>()
+  /** Gemessene Ordnergröße, kurz zwischengespeichert */
+  private measured = new Map<string, { bytes: number; at: number }>()
+  /** Bytes, die gerade geschrieben werden (Uploads, Moodle-Downloads …) */
+  private pending = new Map<string, number>()
 
   constructor(private readonly root: string) {}
 
@@ -49,38 +53,79 @@ export class Users {
         const dir = this.dir(userId)
         const store = await Store.open(path.join(dir, 'data'))
         const secrets = createServerSecrets(path.join(dir, 'secrets.json'), config.secretKey)
-        const service = createService(store, secrets, { fetchImpl: safeFetch })
+        const service = createService(store, secrets, {
+          fetchImpl: safeFetch,
+          reserveSpace: (bytes) => this.reserve(userId, bytes),
+        })
         return { dir, store, service }
       })()
       this.spaces.set(userId, space)
+      // Fehlgeschlagen (z. B. Platte voll)? Beim nächsten Aufruf neu versuchen.
+      space.catch(() => this.spaces.get(userId) === space && this.spaces.delete(userId))
     }
     return space
   }
 
+  /** Belegter Speicher inklusive der gerade laufenden Schreibvorgänge */
   async usage(userId: string): Promise<number> {
-    const cached = this.usageCache.get(userId)
-    if (cached && Date.now() - cached.at < 5_000) return cached.bytes
-    const bytes = await folderSize(this.dir(userId))
-    this.usageCache.set(userId, { bytes, at: Date.now() })
-    return bytes
+    let cached = this.measured.get(userId)
+    if (!cached || Date.now() - cached.at > 5_000) {
+      cached = { bytes: await folderSize(this.dir(userId)), at: Date.now() }
+      this.measured.set(userId, cached)
+    }
+    return cached.bytes + (this.pending.get(userId) ?? 0)
   }
 
-  /** Wirft, wenn `incoming` Bytes nicht mehr ins Limit passen */
-  async reserve(userId: string, incoming: number): Promise<void> {
-    const used = await this.usage(userId)
-    if (used + incoming > config.quotaBytes) throw new QuotaError(used, config.quotaBytes)
-    this.usageCache.set(userId, { bytes: used + incoming, at: Date.now() })
+  /**
+   * Hält `bytes` im Speicherlimit frei, bis die zurückgegebene Funktion aufgerufen wird.
+   * Die Bytes werden vor der Prüfung angerechnet – so können parallele Anfragen das Limit
+   * nicht gemeinsam überschreiten.
+   */
+  async reserve(userId: string, bytes: number): Promise<() => void> {
+    const change = (delta: number) => this.pending.set(userId, (this.pending.get(userId) ?? 0) + delta)
+    change(bytes)
+    let used: number
+    try {
+      used = await this.usage(userId)
+    } catch (error) {
+      change(-bytes)
+      throw error
+    }
+    if (used > config.quotaBytes) {
+      change(-bytes)
+      throw new QuotaError(used - bytes, config.quotaBytes)
+    }
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      change(-bytes)
+      // Bis zur nächsten Messung mitzählen, was gerade geschrieben wurde
+      const cached = this.measured.get(userId)
+      if (cached) cached.bytes += bytes
+    }
   }
 
+  /** Führt `work` nur aus, wenn `bytes` noch ins Limit passen */
+  async withQuota<T>(userId: string, bytes: number, work: () => Promise<T> | T): Promise<T> {
+    const release = await this.reserve(userId, bytes)
+    try {
+      return await work()
+    } finally {
+      release()
+    }
+  }
+
+  /** Nach dem Löschen: beim nächsten Mal neu messen */
   forgetUsage(userId: string): void {
-    this.usageCache.delete(userId)
+    this.measured.delete(userId)
   }
 
   async remove(userId: string): Promise<void> {
-    const space = await this.spaces.get(userId)
+    const space = await this.spaces.get(userId)?.catch(() => undefined)
     await space?.store.flush().catch(() => undefined)
     this.spaces.delete(userId)
-    this.usageCache.delete(userId)
+    this.measured.delete(userId)
     await fs.rm(this.dir(userId), { recursive: true, force: true })
   }
 }

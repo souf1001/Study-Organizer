@@ -2,6 +2,7 @@
 import ICAL from 'ical.js'
 import type { CalendarEvent, EventKind, Module, Subscription } from '../shared/types'
 import { newId } from '../shared/defaults'
+import { readLimited } from './http'
 
 export interface ParsedEvent {
   uid: string
@@ -15,10 +16,14 @@ export interface ParsedEvent {
 }
 
 const MAX_OCCURRENCES = 1000
+/** Höchstens so viele Termine pro Kalender (ein Stundenplan hat wenige hundert) */
+const MAX_EVENTS = 5000
+const MAX_CALENDAR_BYTES = 10 * 1024 * 1024
 
 export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
+  // Zeitzonen (VTIMEZONE) löst ical.js aus der Datei selbst auf. Nicht global registrieren,
+  // sonst könnte ein Kalender die Zeitzonen anderer Kalender verändern.
   const root = new ICAL.Component(ICAL.parse(text))
-  for (const tz of root.getAllSubcomponents('vtimezone')) ICAL.TimezoneService.register(tz)
 
   const vevents = root.getAllSubcomponents('vevent')
   const exceptions = vevents.filter((v) => v.hasProperty('recurrence-id'))
@@ -41,7 +46,7 @@ export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
     ): void => {
       const startDate = start.toJSDate()
       const endDate = end ? end.toJSDate() : startDate
-      if (endDate < from || startDate > to) return
+      if (endDate < from || startDate > to || result.length >= MAX_EVENTS) return
       result.push({
         uid,
         title: item.summary || '(ohne Titel)',
@@ -122,7 +127,7 @@ export async function fetchCalendar(url: string, fetchImpl: typeof fetch = fetch
     signal: AbortSignal.timeout(20_000),
   })
   if (!response.ok) throw new Error(`Kalender nicht erreichbar (HTTP ${response.status}).`)
-  const text = await response.text()
+  const text = new TextDecoder().decode(await readLimited(response, MAX_CALENDAR_BYTES, 'Der Kalender'))
   if (!text.includes('BEGIN:VCALENDAR'))
     throw new Error('Die Adresse liefert keinen iCal-Kalender.')
   return text
@@ -162,14 +167,14 @@ export function eventsFromIcs(
     const kind = classifyEvent(`${e.title} ${e.categories.join(' ')}`)
     return {
       id: newId(),
-      title: e.title,
+      title: e.title.slice(0, 300),
       // Termine ohne Dauer (z. B. Moodle-Abgaben) sind Fristen
       kind: kind === 'other' && e.start.getTime() === e.end.getTime() ? 'deadline' : kind,
       start: e.start.toISOString(),
       end: e.end.toISOString(),
       allDay: e.allDay,
       moduleId: matchModule(e, modules),
-      location: e.location,
+      location: e.location.slice(0, 300),
       notes: e.description.slice(0, 2000),
       subscriptionId: subscription.id,
       externalId: e.uid,

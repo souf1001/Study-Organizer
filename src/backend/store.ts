@@ -14,6 +14,9 @@ import { assertFileName, assertId, detectFile, titleFromFileName } from './files
 const SAVE_DELAY_MS = 250
 const PATCH_KEYS: (keyof DbPatch)[] = ['onboarded', 'activeSemesterId', 'profile', 'settings']
 
+const isObject = (value: unknown): value is object =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
 let tmpCounter = 0
 const fileQueues = new Map<string, Promise<void>>()
 
@@ -125,8 +128,14 @@ export class Store {
   }
 
   update(patch: DbPatch): void {
-    for (const key of Object.keys(patch) as (keyof DbPatch)[]) {
-      if (!PATCH_KEYS.includes(key)) throw new Error(`Feld nicht erlaubt: ${key}`)
+    if (!isObject(patch)) throw new Error('Ungültige Änderung')
+    for (const [key, value] of Object.entries(patch)) {
+      if (!PATCH_KEYS.includes(key as keyof DbPatch)) throw new Error(`Feld nicht erlaubt: ${key}`)
+      const valid =
+        key === 'onboarded' ? typeof value === 'boolean'
+        : key === 'activeSemesterId' ? value === null || typeof value === 'string'
+        : isObject(value)
+      if (!valid) throw new Error(`Ungültiger Wert für ${key}`)
     }
     Object.assign(this.db, patch)
     this.scheduleSave()

@@ -17,5 +17,7 @@ export default defineConfig({
   resolve: { alias: { '@shared': resolve('src/shared'), '@': resolve('src/renderer/src') } },
   plugins: [react(), stripCspMeta],
   define: { __APP_VERSION__: JSON.stringify(version) },
+  // Entwicklung: nur Code und Pakete ausliefern, nie den Datenordner (Konten, Notizen, Dateien)
+  server: { fs: { allow: [resolve('src'), resolve('node_modules')] } },
   build: { outDir: resolve('out/web'), emptyOutDir: true },
 })

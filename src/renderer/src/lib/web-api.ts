@@ -25,7 +25,8 @@ async function request<T>(method: string, url: string, body?: unknown, init: Req
   })
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as { error?: string } | null
-    if (response.status === 401) window.dispatchEvent(new Event('study:logged-out'))
+    // 401 heißt „Sitzung ungültig“ – außer beim Anmelden selbst (falsches Passwort)
+    if (response.status === 401 && url !== '/api/auth/login') window.dispatchEvent(new Event('study:logged-out'))
     throw new HttpError(data?.error ?? `Serverfehler (HTTP ${response.status})`, response.status)
   }
   return (await response.json()) as T

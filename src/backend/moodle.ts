@@ -4,6 +4,8 @@ import type { MoodleCourse, MoodleSiteInfo, MoodleSyncResult } from '../shared/t
 import { newFolder, newTask, newEvent } from '../shared/defaults'
 import { classifyEvent } from './ics'
 import { markAsDownloaded } from './files'
+import { readLimited } from './http'
+import type { ReserveSpace } from './service'
 import type { Store } from './store'
 
 type Params = Record<string, unknown>
@@ -202,7 +204,7 @@ export class MoodleClient {
     url.searchParams.set('token', this.token)
     const response = await this.fetchImpl(url, { signal: AbortSignal.timeout(120_000) })
     if (!response.ok) throw new Error(`Download fehlgeschlagen (HTTP ${response.status}).`)
-    return new Uint8Array(await response.arrayBuffer())
+    return readLimited(response, MAX_FILE_BYTES, 'Die Datei')
   }
 }
 
@@ -233,7 +235,11 @@ export async function connectMoodle(
 const toIso = (unix: number): string => new Date(unix * 1000).toISOString()
 
 /** Holt Abgaben, Termine und (optional) Dateien der zugeordneten Kurse */
-export async function syncMoodle(store: Store, client: MoodleClient): Promise<MoodleSyncResult> {
+export async function syncMoodle(
+  store: Store,
+  client: MoodleClient,
+  reserveSpace: ReserveSpace = async () => () => undefined,
+): Promise<MoodleSyncResult> {
   const result: MoodleSyncResult = { tasks: 0, events: 0, files: 0, errors: [] }
   const db = store.get()
   const courseMap = db.settings.moodle.courseMap
@@ -303,7 +309,7 @@ export async function syncMoodle(store: Store, client: MoodleClient): Promise<Mo
   if (db.settings.moodle.syncFiles) {
     for (const courseId of courseIds) {
       try {
-        result.files += await syncCourseFiles(store, client, courseId, moduleFor(courseId)!)
+        result.files += await syncCourseFiles(store, client, courseId, moduleFor(courseId)!, reserveSpace)
       } catch (error) {
         result.errors.push(`Dateien: ${(error as Error).message}`)
       }
@@ -324,6 +330,7 @@ async function syncCourseFiles(
   client: MoodleClient,
   courseId: number,
   moduleId: string,
+  reserveSpace: ReserveSpace,
 ): Promise<number> {
   const db = store.get()
   const folderNamed = (name: string, parentId: string | null): string => {
@@ -347,8 +354,9 @@ async function syncCourseFiles(
         if (db.items.some((i) => i.externalId === externalId)) continue
         // Erst die neue Version laden, dann die alte ersetzen (ein Fehler lässt die alte Datei stehen)
         const bytes = await client.download(file.fileurl)
+        const release = await reserveSpace(bytes.length)
         const folderId = folderNamed(section.name || 'Allgemein', rootId)
-        const item = await store.addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes })
+        const item = await store.addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes }).finally(release)
         store.put('items', { ...item, source: 'moodle', externalId })
         await markAsDownloaded(store.filePath(item.fileName!))
         const outdated = db.items.find((i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`))

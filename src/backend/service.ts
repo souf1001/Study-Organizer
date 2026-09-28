@@ -31,7 +31,13 @@ export interface Secrets {
 export interface ServiceOptions {
   /** Web-Server: prüft Adressen vor dem Abruf (Schutz vor Zugriff auf interne Netze) */
   fetchImpl?: typeof fetch
+  /** Web-Server: hält Platz im Speicherlimit frei (wirft, wenn er nicht reicht); Rückgabe gibt ihn wieder frei */
+  reserveSpace?: ReserveSpace
 }
+
+export type ReserveSpace = (bytes: number) => Promise<() => void>
+const noLimit: ReserveSpace = async () => () => undefined
+const jsonSize = (value: unknown) => Buffer.byteLength(JSON.stringify(value))
 
 const aiSecret = (provider: string): string => {
   if (!AI_PROVIDERS.some((p) => p.id === provider)) throw new Error('Unbekannter Anbieter')
@@ -71,6 +77,7 @@ export type Service = ReturnType<typeof createService>
 
 export function createService(store: Store, secrets: Secrets, options: ServiceOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch
+  const reserveSpace = options.reserveSpace ?? noLimit
 
   async function moodleClient(): Promise<MoodleClient> {
     const { url } = store.get().settings.moodle
@@ -145,7 +152,10 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
         if (!store.get().subscriptions.some((s) => s.id === id)) return { count: 0, error: null }
         const incoming = eventsFromIcs(text, subscription, store.get().modules)
         const existing = store.get().events.filter((e) => e.subscriptionId === id)
-        store.replaceMany('events', (e) => e.subscriptionId === id, mergeSubscriptionEvents(existing, incoming))
+        const merged = mergeSubscriptionEvents(existing, incoming)
+        const release = await reserveSpace(jsonSize(merged))
+        store.replaceMany('events', (e) => e.subscriptionId === id, merged)
+        release()
         store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString(), lastError: null })
         return { count: incoming.length, error: null }
       } catch (error) {
@@ -161,8 +171,10 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       const existing = store.get().subscriptions.find((s) => s.kind === 'file' && s.name === name)
       const subscription: Subscription = existing ?? { id: newId(), name, kind: 'file', url: 'Datei-Import', enabled: false, lastSync: null, lastError: null }
       const events = eventsFromIcs(text, subscription, store.get().modules)
+      const release = await reserveSpace(jsonSize(events))
       store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString() })
       store.replaceMany('events', (e) => e.subscriptionId === subscription.id, events)
+      release()
       return { count: events.length, error: null }
     },
 
@@ -185,7 +197,7 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       if (userId === null) throw new Error('Moodle ist nicht verbunden.')
       return (await moodleClient()).courses(userId)
     },
-    moodleSync: async (): Promise<MoodleSyncResult> => syncMoodle(store, await moodleClient()),
+    moodleSync: async (): Promise<MoodleSyncResult> => syncMoodle(store, await moodleClient(), reserveSpace),
     moodleDisconnect: async () => {
       await secrets.remove('moodle')
       const settings = store.get().settings

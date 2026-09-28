@@ -91,3 +91,33 @@ describe('Modulzuordnung', () => {
     expect(matchModule({ ...base, title: 'Abgabe', categories: ['MA'] }, [se, ma])).toBe(ma.id)
   })
 })
+
+describe('Schutz vor übergroßen Kalendern', () => {
+  const vcal = (body: string) => `BEGIN:VCALENDAR\nVERSION:2.0\n${body}\nEND:VCALENDAR`
+
+  it('kürzt lange Titel und begrenzt die Zahl der Termine', () => {
+    const text = vcal(`BEGIN:VEVENT\nUID:viel\nSUMMARY:${'x'.repeat(5000)}\nDTSTART:20260901T000000Z\nDTEND:20260901T001000Z\nRRULE:FREQ=HOURLY\nEND:VEVENT`)
+    const sub = { id: 'sub1', name: 'x', kind: 'url' as const, url: '', enabled: true, lastSync: null, lastError: null }
+    const events = eventsFromIcs(text, sub, [], new Date('2026-09-02'))
+    expect(events.length).toBeLessThanOrEqual(1000)
+    expect(events[0].title).toHaveLength(300)
+  })
+
+  it('ein Kalender verändert nicht die Zeitzonen eines anderen', () => {
+    const withoutZone = vcal('BEGIN:VEVENT\nUID:b\nSUMMARY:B\nDTSTART;TZID=Europe/Berlin:20261012T100000\nEND:VEVENT')
+    const before = parseIcs(withoutZone, new Date('2026-01-01'), new Date('2027-01-01'))[0].start.getTime()
+    // Kalender mit gefälschter Zeitzone „Europe/Berlin“ (+10 Stunden)
+    const fake = vcal(
+      'BEGIN:VTIMEZONE\nTZID:Europe/Berlin\nBEGIN:STANDARD\nDTSTART:19700101T000000\nTZOFFSETFROM:+1000\nTZOFFSETTO:+1000\nEND:STANDARD\nEND:VTIMEZONE\n' +
+        'BEGIN:VEVENT\nUID:a\nSUMMARY:A\nDTSTART;TZID=Europe/Berlin:20261012T100000\nEND:VEVENT',
+    )
+    expect(parseIcs(fake, new Date('2026-01-01'), new Date('2027-01-01'))[0].start.toISOString()).toBe('2026-10-12T00:00:00.000Z')
+    expect(parseIcs(withoutZone, new Date('2026-01-01'), new Date('2027-01-01'))[0].start.getTime()).toBe(before)
+  })
+
+  it('bricht zu große Downloads ab', async () => {
+    const { readLimited } = await import('../src/backend/http')
+    await expect(readLimited(new Response(new Uint8Array(2048)), 1024, 'Der Kalender')).rejects.toThrow('zu groß')
+    expect((await readLimited(new Response(new Uint8Array(10)), 1024, 'Der Kalender')).length).toBe(10)
+  })
+})

@@ -23,8 +23,10 @@ for (const [net, prefix] of [
   blocked.addSubnet(net, prefix, 'ipv4')
 }
 for (const [net, prefix] of [
-  ['::', 128],
-  ['::1', 128],
+  ['::', 96], // unbestimmt, Loopback und IPv4-kompatibel
+  ['64:ff9b::', 96], // NAT64 (führt zu IPv4-Adressen)
+  ['64:ff9b:1::', 48],
+  ['2002::', 16], // 6to4 (enthält eine IPv4-Adresse)
   ['fc00::', 7],
   ['fe80::', 10],
   ['ff00::', 8],
@@ -66,6 +68,14 @@ export function assertAllowedUrl(url: URL): void {
 }
 
 const MAX_REDIRECTS = 5
+/** Header, die bei einer Weiterleitung auf einen anderen Server bleiben dürfen – alles andere (Keys, Tokens) fällt weg */
+const SAFE_HEADERS = ['accept', 'accept-language', 'content-type', 'user-agent']
+
+export function withoutCredentials(headers: HeadersInit | undefined): Headers {
+  const kept = new Headers()
+  for (const [name, value] of new Headers(headers)) if (SAFE_HEADERS.includes(name)) kept.set(name, value)
+  return kept
+}
 
 /** fetch mit SSRF-Schutz; Weiterleitungen werden einzeln geprüft */
 export const safeFetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
@@ -77,7 +87,9 @@ export const safeFetch = (async (input: string | URL | Request, init: RequestIni
     const response = await undiciFetch(url, { ...(request as object), redirect: 'manual', dispatcher: agent } as Parameters<typeof undiciFetch>[1])
     const location = response.headers.get('location')
     if (response.status >= 300 && response.status < 400 && location) {
-      url = new URL(location, url)
+      const next = new URL(location, url)
+      if (next.origin !== url.origin) request = { ...request, headers: withoutCredentials(request.headers) }
+      url = next
       // Nach 303 bzw. bei POST-Weiterleitung wie Browser: GET ohne Body
       if (response.status === 303 || ((response.status === 301 || response.status === 302) && request.method === 'POST')) {
         request = { ...request, method: 'GET', body: undefined }

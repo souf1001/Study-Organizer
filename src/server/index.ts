@@ -66,5 +66,7 @@ export async function createApp(client: ClientMode = config.production ? 'static
 
 if (process.env.NODE_ENV !== 'test') {
   const app = await createApp()
-  app.listen(config.port, () => console.log(`Study Organizer läuft auf http://localhost:${config.port}`))
+  // Entwicklung nur auf diesem Rechner erreichbar, in Produktion (Docker) für den Reverse-Proxy
+  const host = config.production ? '0.0.0.0' : '127.0.0.1'
+  app.listen(config.port, host, () => console.log(`Study Organizer läuft auf http://localhost:${config.port}`))
 }

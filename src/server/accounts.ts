@@ -1,6 +1,6 @@
 // Benutzerkonten und Sitzungen. Passwörter mit scrypt gehasht, Sitzungs-Tokens nur als SHA-256 gespeichert.
 import { createHash, randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto'
-import { promises as fs } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { writeAtomic } from '../backend/store'
@@ -45,6 +45,9 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return timingSafeEqual(actual, expected)
 }
 
+// Für unbekannte E-Mails wird gegen diesen Hash geprüft, damit die Antwortzeit nicht verrät, ob es ein Konto gibt
+const dummyHash = hashPassword(randomBytes(16).toString('hex'))
+
 export function validateCredentials(email: string, password: string): string | null {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return 'Bitte eine gültige E-Mail-Adresse angeben.'
   if (password.length < 10) return 'Das Passwort muss mindestens 10 Zeichen lang sein.'
@@ -52,35 +55,70 @@ export function validateCredentials(email: string, password: string): string | n
   return null
 }
 
+// Die Datei ist die Quelle der Wahrheit: Ändert sie jemand anderes (z. B. admin.js, während der
+// Server läuft), wird sie vor dem nächsten Zugriff neu gelesen.
 export class Accounts {
   private data: AccountsFile = { users: [], sessions: [] }
+  private version = ''
+  private saving = 0
 
   private constructor(private readonly file: string) {}
 
   static async open(dataDir: string): Promise<Accounts> {
     const accounts = new Accounts(path.join(dataDir, 'accounts.json'))
-    try {
-      accounts.data = JSON.parse(await fs.readFile(accounts.file, 'utf8')) as AccountsFile
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
+    accounts.reload()
     return accounts
   }
 
-  private save(): Promise<void> {
-    return writeAtomic(this.file, JSON.stringify(this.data), 0o600)
+  private fileVersion(): string {
+    try {
+      const { mtimeMs, size } = statSync(this.file)
+      return `${mtimeMs}:${size}`
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      throw error
+    }
+  }
+
+  /** Neu einlesen, falls sich die Datei seit dem letzten Lesen oder Schreiben geändert hat */
+  private reload(): AccountsFile {
+    const version = this.fileVersion()
+    if (this.saving === 0 && version !== this.version) {
+      this.data = version ? (JSON.parse(readFileSync(this.file, 'utf8')) as AccountsFile) : { users: [], sessions: [] }
+      this.version = version
+    }
+    return this.data
+  }
+
+  /** Liest den aktuellen Stand, ändert ihn und speichert – ohne Pause dazwischen */
+  private async change(apply: (data: AccountsFile) => void): Promise<void> {
+    apply(this.reload())
+    this.saving += 1
+    try {
+      await writeAtomic(this.file, JSON.stringify(this.data), 0o600)
+    } finally {
+      this.saving -= 1
+      if (this.saving === 0) this.version = this.fileVersion()
+    }
   }
 
   findByEmail(email: string): User | undefined {
-    return this.data.users.find((u) => u.email === email.trim().toLowerCase())
+    return this.reload().users.find((u) => u.email === email.trim().toLowerCase())
   }
 
   get(id: string): User | undefined {
-    return this.data.users.find((u) => u.id === id)
+    return this.reload().users.find((u) => u.id === id)
   }
 
   all(): User[] {
-    return this.data.users
+    return this.reload().users
+  }
+
+  /** Prüft E-Mail und Passwort */
+  async verifyLogin(email: string, password: string): Promise<User | undefined> {
+    const user = this.findByEmail(email)
+    const ok = await verifyPassword(password, user?.passwordHash ?? (await dummyHash))
+    return user && ok ? user : undefined
   }
 
   async create(email: string, password: string, name: string): Promise<User> {
@@ -93,40 +131,47 @@ export class Accounts {
       passwordHash: await hashPassword(password),
       createdAt: new Date().toISOString(),
     }
-    this.data.users.push(user)
-    await this.save()
+    await this.change((data) => {
+      // Während des Hashens angelegt?
+      if (data.users.some((u) => u.email === normalized)) throw new Error('Für diese E-Mail-Adresse gibt es schon ein Konto.')
+      data.users.push(user)
+    })
     return user
   }
 
   async changePassword(userId: string, password: string): Promise<void> {
-    const user = this.get(userId)
-    if (!user) throw new Error('Konto nicht gefunden')
-    user.passwordHash = await hashPassword(password)
-    // Alle anderen Sitzungen beenden
-    this.data.sessions = this.data.sessions.filter((s) => s.userId !== userId)
-    await this.save()
+    const passwordHash = await hashPassword(password)
+    await this.change((data) => {
+      const user = data.users.find((u) => u.id === userId)
+      if (!user) throw new Error('Konto nicht gefunden')
+      user.passwordHash = passwordHash
+      // Alle Sitzungen beenden
+      data.sessions = data.sessions.filter((s) => s.userId !== userId)
+    })
   }
 
   async remove(userId: string): Promise<void> {
-    this.data.users = this.data.users.filter((u) => u.id !== userId)
-    this.data.sessions = this.data.sessions.filter((s) => s.userId !== userId)
-    await this.save()
+    await this.change((data) => {
+      data.users = data.users.filter((u) => u.id !== userId)
+      data.sessions = data.sessions.filter((s) => s.userId !== userId)
+    })
   }
 
   /** Neue Sitzung; der Klartext-Token geht nur in das Cookie */
   async createSession(userId: string, days: number): Promise<string> {
     const token = randomBytes(32).toString('base64url')
     const now = Date.now()
-    this.data.sessions = this.data.sessions.filter((s) => new Date(s.expiresAt).getTime() > now)
-    this.data.sessions.push({ tokenHash: sha256(token), userId, expiresAt: new Date(now + days * 86_400_000).toISOString() })
-    await this.save()
+    await this.change((data) => {
+      data.sessions = data.sessions.filter((s) => new Date(s.expiresAt).getTime() > now)
+      data.sessions.push({ tokenHash: sha256(token), userId, expiresAt: new Date(now + days * 86_400_000).toISOString() })
+    })
     return token
   }
 
   userForToken(token: string | undefined): User | undefined {
     if (!token) return undefined
     const hash = sha256(token)
-    const session = this.data.sessions.find((s) => s.tokenHash === hash)
+    const session = this.reload().sessions.find((s) => s.tokenHash === hash)
     if (!session || new Date(session.expiresAt).getTime() < Date.now()) return undefined
     return this.get(session.userId)
   }
@@ -134,7 +179,8 @@ export class Accounts {
   async endSession(token: string | undefined): Promise<void> {
     if (!token) return
     const hash = sha256(token)
-    this.data.sessions = this.data.sessions.filter((s) => s.tokenHash !== hash)
-    await this.save()
+    await this.change((data) => {
+      data.sessions = data.sessions.filter((s) => s.tokenHash !== hash)
+    })
   }
 }

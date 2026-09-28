@@ -47,14 +47,18 @@ export function App() {
 
   useEffect(() => {
     if (!isWeb) return
-    account
-      .status()
-      .then(({ user, allowRegistration }) => setSession(user ? { state: 'ready' } : { state: 'anonymous', allowRegistration }))
-      .catch((e: Error) => setError(e.message))
-    const onLoggedOut = () => {
-      useDbStore.setState({ db: null })
-      setSession({ state: 'anonymous', allowRegistration: true })
-    }
+    const check = () =>
+      account
+        .status()
+        .then(({ user, allowRegistration }) => {
+          if (user) return setSession({ state: 'ready' })
+          useDbStore.setState({ db: null })
+          setSession({ state: 'anonymous', allowRegistration })
+        })
+        .catch((e: Error) => setError(e.message))
+    void check()
+    // Sitzung abgelaufen oder beendet: zurück zur Anmeldung
+    const onLoggedOut = () => void check()
     window.addEventListener('study:logged-out', onLoggedOut)
     return () => window.removeEventListener('study:logged-out', onLoggedOut)
   }, [])

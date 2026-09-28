@@ -15,13 +15,15 @@ Browser ──HTTPS──▶ Caddy (Zertifikat) ──▶ Node-Server (src/serve
 - **Dieselbe Oberfläche**: Die Oberfläche erkennt, ob sie in der Desktop-App oder im Browser läuft (`src/renderer/src/lib/api.ts`). Im Browser spricht sie per HTTP mit dem Server (`web-api.ts`).
 - **Dieselbe Logik**: Der Server nutzt dieselben Backend-Funktionen wie die Desktop-App (`src/backend/service.ts`), nur je Konto in einem eigenen Ordner.
 - **Konten**: E-Mail und Passwort. Passwörter werden mit scrypt gehasht, das Sitzungs-Cookie ist `HttpOnly`, `SameSite=Strict` und hinter HTTPS `Secure`.
-- **Speicherlimit**: `USER_QUOTA_MB` pro Konto (Standard 500 MB). Uploads über dem Limit lehnt der Server ab. Unter Einstellungen → Konto & Speicher sieht man die Belegung.
+- **Speicherlimit**: `USER_QUOTA_MB` pro Konto (Standard 500 MB). Alles, was Speicher belegt, zählt mit: Uploads, Notizen, Moodle-Dateien und Kalender-Abos. Über dem Limit lehnt der Server ab. Unter Einstellungen → Konto & Speicher sieht man die Belegung.
+- **Export**: Einstellungen → Export & Zurücksetzen lädt ein ZIP mit allen Daten des Kontos herunter (Notizen, Dateien, Markierungen). Der Aufbau ist derselbe wie der Datenordner der Desktop-App.
 - **Sicherheit**:
   - Schutz vor Cross-Site-Anfragen (eigener Header plus Herkunftsprüfung).
   - Strenge Content-Security-Policy.
   - Dateien werden mit `sandbox` ausgeliefert, unbekannte Typen nur als Download.
   - Bremse gegen Passwort-Raten.
-  - **Schutz vor Zugriffen auf interne Netze**: Kalender-Abos, Moodle und KI-Anbieter dürfen keine privaten oder lokalen Adressen aufrufen, auch nicht über Weiterleitungen oder DNS-Tricks.
+  - **Schutz vor Zugriffen auf interne Netze**: Kalender-Abos, Moodle und KI-Anbieter dürfen keine privaten oder lokalen Adressen aufrufen, auch nicht über Weiterleitungen oder DNS-Tricks. Leitet ein Server auf einen anderen weiter, werden API-Keys nicht mitgeschickt.
+  - Downloads von fremden Servern sind begrenzt (Kalender 10 MB, Moodle-Dateien 250 MB).
 - **Unterschiede zur Desktop-App**:
   - Moodle-Anmeldung per Hochschul-Login (SSO) gibt es nur in der Desktop-App. Im Browser gehen Passwort, Sicherheitsschlüssel oder Kalender-Abo.
   - Lokale KI (Ollama, LM Studio) ist nicht erreichbar.
@@ -34,7 +36,7 @@ npm install
 npm run web:dev
 ```
 
-Dann <http://localhost:3000> öffnen, Konto erstellen, fertig. Änderungen an der Oberfläche laden sofort neu. Die Daten landen im Ordner `./data`.
+Dann <http://localhost:3000> öffnen, Konto erstellen, fertig. Änderungen an der Oberfläche laden sofort neu. Die Daten landen im Ordner `./data`. Im Entwicklungsmodus ist der Server nur auf dem eigenen Rechner erreichbar (`127.0.0.1`).
 
 ## Auf einem eigenen Server betreiben (Schritt für Schritt)
 
@@ -87,7 +89,7 @@ docker run --rm -v study-organizer_study-data:/data -v "$PWD":/backup busybox ta
 
 ### Verwaltung (Passwort vergessen, Konto löschen)
 
-Es gibt keinen E-Mail-Versand. Passwörter setzt der Betreiber zurück:
+Es gibt keinen E-Mail-Versand. Passwörter setzt der Betreiber zurück. Das geht auch, während der Server läuft: Der Server liest die Änderung beim nächsten Zugriff ein.
 
 ```bash
 docker compose exec app node out/server/admin.js list

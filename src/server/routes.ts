@@ -5,13 +5,16 @@ import path from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import express, { type NextFunction, type Request, type Response, type Router } from 'express'
+import { ZipFile } from 'yazl'
 import { COLLECTIONS, type CollectionName } from '../shared/types'
+import { toISODate } from '../shared/dates'
 import { detectFile, mimeForFileName } from '../backend/files'
 import { Accounts, publicUser, validateCredentials, verifyPassword, type User } from './accounts'
 import { config } from './config'
 import { QuotaError, Users, type UserSpace } from './users'
 
-const SESSION_COOKIE = 'sid'
+// Mit __Host- kann keine Subdomain das Cookie setzen (geht nur über HTTPS)
+const SESSION_COOKIE = config.cookieSecure ? '__Host-sid' : 'sid'
 const JSON_LIMIT = '20mb'
 
 declare module 'express-serve-static-core' {
@@ -29,14 +32,10 @@ function readCookie(req: Request, name: string): string | undefined {
   return undefined
 }
 
+const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: config.cookieSecure, path: '/' } as const
+
 function setSessionCookie(res: Response, token: string): void {
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: config.cookieSecure,
-    path: '/',
-    maxAge: config.sessionDays * 86_400_000,
-  })
+  res.cookie(SESSION_COOKIE, token, { ...cookieOptions, maxAge: config.sessionDays * 86_400_000 })
 }
 
 /** Async-Handler mit einheitlicher Fehlerbehandlung */
@@ -72,7 +71,15 @@ const str = (value: unknown, max = 10_000): string => {
 
 export function apiRouter(accounts: Accounts, users: Users): Router {
   const api = express.Router()
-  api.use(express.json({ limit: JSON_LIMIT }))
+  const json = express.json({ limit: JSON_LIMIT })
+  // Uploads kommen roh an – auch eine hochgeladene .json-Datei darf hier nicht als JSON gelesen werden
+  api.use((req, res, next) => {
+    if (req.method === 'POST' && req.path === '/files') return next()
+    json(req, res, (error?: unknown) => {
+      req.body ??= {}
+      next(error)
+    })
+  })
 
   // Schutz vor Cross-Site-Anfragen: eigener Header (erzwingt CORS-Preflight) + passende Herkunft
   api.use((req, _res, next) => {
@@ -110,9 +117,8 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
     handle(async (req, res) => {
       const ip = req.ip ?? 'unknown'
       checkThrottle(ip)
-      const user = accounts.findByEmail(str(req.body.email, 200))
-      const ok = user ? await verifyPassword(str(req.body.password, 500), user.passwordHash) : false
-      if (!user || !ok) {
+      const user = await accounts.verifyLogin(str(req.body.email, 200), str(req.body.password, 500))
+      if (!user) {
         recordFailure(ip)
         throw Object.assign(new Error('E-Mail oder Passwort ist falsch.'), { status: 401 })
       }
@@ -125,7 +131,7 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
     '/auth/logout',
     handle(async (req, res) => {
       await accounts.endSession(readCookie(req, SESSION_COOKIE))
-      res.clearCookie(SESSION_COOKIE, { path: '/' })
+      res.clearCookie(SESSION_COOKIE, cookieOptions)
       return { ok: true }
     }),
   )
@@ -170,7 +176,7 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
       }
       await users.remove(userId(req))
       await accounts.remove(userId(req))
-      res.clearCookie(SESSION_COOKIE, { path: '/' })
+      res.clearCookie(SESSION_COOKIE, cookieOptions)
       return { ok: true }
     }),
   )
@@ -190,10 +196,9 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
   api.get('/db', handle((req) => service(req).loadDb()))
   api.put(
     '/records/:collection',
-    handle(async (req) => {
-      await users.reserve(userId(req), jsonSize(req.body))
-      service(req).put(collection(String(req.params.collection)), req.body)
-    }),
+    handle((req) =>
+      users.withQuota(userId(req), jsonSize(req.body), () => service(req).put(collection(String(req.params.collection)), req.body)),
+    ),
   )
   api.delete(
     '/records/:collection/:id',
@@ -202,31 +207,29 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
       users.forgetUsage(userId(req))
     }),
   )
-  api.patch('/db', handle((req) => service(req).update(req.body)))
+  api.patch(
+    '/db',
+    handle((req) => users.withQuota(userId(req), jsonSize(req.body), () => service(req).update(req.body))),
+  )
 
   api.get('/notes/:id', handle((req) => service(req).readNote(String(req.params.id))))
   api.put(
     '/notes/:id',
-    handle(async (req) => {
-      await users.reserve(userId(req), jsonSize(req.body))
-      await service(req).writeNote(String(req.params.id), req.body)
-    }),
+    handle((req) => users.withQuota(userId(req), jsonSize(req.body), () => service(req).writeNote(String(req.params.id), req.body))),
   )
   api.get('/annotations/:id', handle((req) => service(req).readAnnotations(String(req.params.id))))
   api.put(
     '/annotations/:id',
-    handle(async (req) => {
-      await users.reserve(userId(req), jsonSize(req.body))
-      await service(req).writeAnnotations(String(req.params.id), req.body)
-    }),
+    handle((req) =>
+      users.withQuota(userId(req), jsonSize(req.body), () => service(req).writeAnnotations(String(req.params.id), req.body)),
+    ),
   )
   api.get('/text/:id', handle(async (req) => ({ text: await service(req).readText(String(req.params.id)) })))
   api.put(
     '/text/:id',
     handle(async (req) => {
       const text = str(req.body.text, 5_000_000)
-      await users.reserve(userId(req), Buffer.byteLength(text))
-      await service(req).writeText(String(req.params.id), text)
+      await users.withQuota(userId(req), Buffer.byteLength(text), () => service(req).writeText(String(req.params.id), text))
     }),
   )
   api.get('/search', handle((req) => service(req).search(String(req.query.q ?? ''))))
@@ -240,28 +243,28 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
       if (length > config.maxUploadBytes) {
         throw Object.assign(new Error(`Datei zu groß (höchstens ${Math.round(config.maxUploadBytes / 1024 / 1024)} MB).`), { status: 413 })
       }
-      await users.reserve(userId(req), length)
-      const tmpDir = path.join(req.space!.dir, 'tmp')
-      await fs.mkdir(tmpDir, { recursive: true })
-      const tmp = path.join(tmpDir, randomUUID())
-      let received = 0
-      const limit = new Transform({
-        transform(chunk: Buffer, _encoding, callback) {
-          received += chunk.length
-          callback(received > length ? new Error('Datei größer als angegeben') : null, chunk)
-        },
+      return users.withQuota(userId(req), length, async () => {
+        const tmpDir = path.join(req.space!.dir, 'tmp')
+        await fs.mkdir(tmpDir, { recursive: true })
+        const tmp = path.join(tmpDir, randomUUID())
+        let received = 0
+        const limit = new Transform({
+          transform(chunk: Buffer, _encoding, callback) {
+            received += chunk.length
+            callback(received > length ? new Error('Datei größer als angegeben') : null, chunk)
+          },
+        })
+        try {
+          await pipeline(req, limit, createWriteStream(tmp))
+          const q = req.query as Record<string, string | undefined>
+          return await service(req).addFile(
+            { moduleId: str(q.moduleId, 64), folderId: q.folderId || null, attachedTo: q.attachedTo || null },
+            { name: str(q.name ?? 'Datei', 255), type: str(req.headers['content-type'] ?? '', 200), path: tmp },
+          )
+        } finally {
+          await fs.rm(tmp, { force: true })
+        }
       })
-      try {
-        await pipeline(req, limit, createWriteStream(tmp))
-        const q = req.query as Record<string, string | undefined>
-        return await service(req).addFile(
-          { moduleId: str(q.moduleId, 64), folderId: q.folderId || null, attachedTo: q.attachedTo || null },
-          { name: str(q.name ?? 'Datei', 255), type: str(req.headers['content-type'] ?? '', 200), path: tmp },
-        )
-      } finally {
-        await fs.rm(tmp, { force: true })
-        users.forgetUsage(userId(req))
-      }
     }),
   )
 
@@ -279,7 +282,7 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
     res.setHeader('Content-Disposition', inline ? 'inline' : 'attachment')
     res.setHeader('Cache-Control', 'private, max-age=0')
     res.sendFile(file, { dotfiles: 'deny', acceptRanges: true }, (error) => {
-      if (error && !res.headersSent) next(Object.assign(error, { status: 404 }))
+      if (error && !res.headersSent) next(Object.assign(new Error('Datei nicht gefunden'), { status: 404 }))
     })
   })
 
@@ -317,14 +320,7 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
   api.post('/calendar/subscribe', handle((req) => service(req).calendarSubscribe(str(req.body.name ?? '', 200), str(req.body.url, 2000))))
   api.delete('/calendar/:id', handle((req) => service(req).calendarUnsubscribe(String(req.params.id))))
   api.post('/calendar/:id/sync', handle((req) => service(req).calendarSync(String(req.params.id))))
-  api.post(
-    '/calendar/import',
-    handle(async (req) => {
-      const text = str(req.body.text, 10_000_000)
-      await users.reserve(userId(req), Buffer.byteLength(text) / 4)
-      return service(req).calendarImportFile(str(req.body.name, 255), text)
-    }),
-  )
+  api.post('/calendar/import', handle((req) => service(req).calendarImportFile(str(req.body.name, 255), str(req.body.text, 10_000_000))))
   api.post('/moodle/site-info', handle((req) => service(req).moodleSiteInfo(str(req.body.url, 500))))
   api.post('/moodle/connect', handle((req) => service(req).moodleConnect(req.body)))
   api.get('/moodle/courses', handle((req) => service(req).moodleCourses()))
@@ -339,16 +335,27 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
   api.post('/moodle/disconnect', handle((req) => service(req).moodleDisconnect()))
 
   // ---- Daten exportieren / zurücksetzen ----
-  api.get(
-    '/export',
-    handle(async (req, res) => {
-      const db = service(req).loadDb()
-      const notes: Record<string, unknown> = {}
-      for (const item of db.items.filter((i) => i.kind === 'note')) notes[item.id] = await service(req).readNote(item.id)
-      res.setHeader('Content-Disposition', `attachment; filename="study-organizer-export-${new Date().toISOString().slice(0, 10)}.json"`)
-      return { exportedAt: new Date().toISOString(), db, notes }
-    }),
-  )
+  // ZIP mit demselben Aufbau wie der Datenordner der Desktop-App: db.json, notes/, files/, text/, annotations/
+  api.get('/export', async (req, res, next) => {
+    try {
+      const { store } = req.space!
+      await store.flush()
+      const entries = await fs.readdir(store.dir, { recursive: true, withFileTypes: true })
+      const zip = new ZipFile()
+      for (const entry of entries) {
+        if (!entry.isFile() || entry.name.endsWith('.tmp')) continue
+        const full = path.join(entry.parentPath, entry.name)
+        zip.addFile(full, path.relative(store.dir, full).split(path.sep).join('/'))
+      }
+      zip.end()
+      res.setHeader('Content-Type', 'application/zip')
+      res.setHeader('Content-Disposition', `attachment; filename="study-organizer-${toISODate(new Date())}.zip"`)
+      await pipeline(zip.outputStream, res)
+    } catch (error) {
+      if (res.headersSent) res.destroy()
+      else next(error)
+    }
+  })
   api.post(
     '/reset',
     handle(async (req) => {
@@ -361,8 +368,10 @@ export function apiRouter(accounts: Accounts, users: Users): Router {
   api.use((error: Error & { status?: number; type?: string }, _req: Request, res: Response, _next: NextFunction) => {
     void _next
     const status = error instanceof QuotaError ? 413 : error.type === 'entity.too.large' ? 413 : (error.status ?? 400)
-    if (status >= 500) console.error(error)
-    res.status(status).json({ error: error.message })
+    // Systemfehler (Dateisystem o. Ä.) nur ins Log – die Meldung enthält Pfade des Servers
+    const internal = status >= 500 || Boolean((error as NodeJS.ErrnoException).syscall)
+    if (internal) console.error(error)
+    res.status(status).json({ error: internal ? 'Interner Fehler – bitte erneut versuchen.' : error.message })
   })
 
   return api

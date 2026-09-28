@@ -71,7 +71,26 @@ test('Konto anlegen und die App im Browser nutzen', async ({ page }) => {
   await expect(page.getByText(/von 50 MB belegt/)).toBeVisible()
   await shot(page, 'web-03-account')
 
+  // Export: ZIP mit allen Daten
+  await page.locator('.settings-nav .nav-item', { hasText: 'Export' }).click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export herunterladen' }).click()
+  expect((await download).suggestedFilename()).toMatch(/^study-organizer-\d{4}-\d{2}-\d{2}\.zip$/)
+
   // Abmelden führt zurück zur Anmeldung
+  await page.locator('.settings-nav .nav-item', { hasText: 'Konto & Speicher' }).click()
   await page.getByRole('button', { name: 'Abmelden' }).click()
   await expect(page.getByRole('button', { name: 'Anmelden' }).last()).toBeVisible()
+
+  // Falsches Passwort: Fehlermeldung, Eingaben bleiben stehen
+  await page.getByLabel('E-Mail').fill('soufian@h-da.de')
+  await page.getByLabel('Passwort').fill('falsches-passwort')
+  await page.getByRole('button', { name: 'Anmelden' }).last().click()
+  await expect(page.getByText('E-Mail oder Passwort ist falsch.')).toBeVisible()
+  await expect(page.getByLabel('E-Mail')).toHaveValue('soufian@h-da.de')
+
+  // Richtiges Passwort: die zuletzt geöffnete Notiz ist wieder da
+  await page.getByLabel('Passwort').fill('ein-sicheres-passwort')
+  await page.getByRole('button', { name: 'Anmelden' }).last().click()
+  await expect(page.locator('.note-prose')).toContainText('JOIN verbindet Tabellen')
 })
