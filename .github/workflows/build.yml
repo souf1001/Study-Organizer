@@ -5,7 +5,7 @@ name: Installationspakete
 
 on:
   push:
-    branches: [main, webapp]
+    branches: [main, webapp, 'feature/**']
     tags: ['v*']
   workflow_dispatch:
 
