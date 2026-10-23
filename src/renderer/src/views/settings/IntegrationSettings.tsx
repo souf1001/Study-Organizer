@@ -338,13 +338,13 @@ function TucanCalendarSection() {
             <div className="row">
               <Input
                 value={feedName}
-                placeholder="Name des Stundenplans/Kurses"
+                placeholder="Name, z. B. Moodle"
                 onChange={(e) => setFeedName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()}
               />
               <Input
                 value={feedUrl}
-                placeholder="WebCal- / iCal-URL, z.B. webcal://... oder https://..."
+                placeholder="https://… oder webcal://…"
                 onChange={(e) => setFeedUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()}
               />
