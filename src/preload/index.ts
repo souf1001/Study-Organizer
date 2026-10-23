@@ -64,8 +64,13 @@ const api: Api = {
   calendar: {
     subscribe: (name, url) => invoke('calendar:subscribe', name, url),
     unsubscribe: (id) => invoke('calendar:unsubscribe', id),
+    removeSubscription: (id) => invoke('calendar:unsubscribe', id),
     sync: (id) => invoke('calendar:sync', id),
     importFile: (name, text) => invoke('calendar:importFile', name, text),
+  },
+
+  tucan: {
+    startWizard: () => invoke('tucan:startWizard'),
   },
 
   moodle: {

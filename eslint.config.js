@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 
 export default tseslint.config(
-  { ignores: ['out', 'release', 'node_modules', 'build', 'src/renderer/public'] },
+  { ignores: ['out', 'release', 'node_modules', 'build', 'src/renderer/public', '.agents/**', '.vitest/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

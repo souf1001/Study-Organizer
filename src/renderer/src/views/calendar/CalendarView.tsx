@@ -1,12 +1,33 @@
 // Kalender: Woche, Monat oder Liste – Vorlesungen mit Raum, Prüfungen, Fristen, Praktika.
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, List, Plus, Rows3 } from 'lucide-react'
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import {
+  CalendarDays,
+  CalendarSync,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  FileUp,
+  Globe,
+  List,
+  Plus,
+  RefreshCw,
+  Rows3,
+  Settings,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { addDays, diffDays, parseISODate, startOfWeek, today, toISODate } from '@shared/dates'
-import type { CalendarEvent, CalendarViewId, ISODate } from '@shared/types'
-import { useDb } from '@/lib/db'
-import { formatDay, formatLongDay, formatMonth, formatTime } from '@/lib/format'
+import type { CalendarEvent, CalendarViewId, ISODate, Subscription } from '@shared/types'
+import { pickFiles } from '@/lib/actions'
+import { api } from '@/lib/api'
+import { loadDb, useDb } from '@/lib/db'
+import { formatDateTime, formatDay, formatLongDay, formatMonth, formatTime } from '@/lib/format'
+import { openView } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
+import { confirm } from '@/ui/Dialogs'
 import { Segmented } from '@/ui/Field'
+import { Modal } from '@/ui/Modal'
+import { toast, toastError } from '@/ui/Toast'
 import { entriesBetween, entriesOn, layoutDay, weekDays, type Entry } from './entries'
 import { EntryDialog, EventDialog } from './EventDialog'
 import './calendar.css'
@@ -178,6 +199,113 @@ function Agenda({ from, entries, onSelect }: { from: ISODate; entries: Entry[]; 
   )
 }
 
+function SubscriptionsDialog({ onClose }: { onClose: () => void }) {
+  const db = useDb()
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+
+  const handleSync = async (sub: Subscription) => {
+    setSyncingId(sub.id)
+    try {
+      const res = await api.calendar.sync(sub.id)
+      await loadDb()
+      toast(`${res.count} ${res.count === 1 ? 'Termin' : 'Termine'} aktualisiert`)
+    } catch (err) {
+      toastError(err)
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const handleUnsubscribe = async (sub: Subscription) => {
+    const ok = await confirm({
+      title: `„${sub.name}“ entfernen?`,
+      message: 'Alle zugehörigen Termine werden aus dem Kalender gelöscht.',
+      confirmLabel: 'Entfernen',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await api.calendar.unsubscribe(sub.id)
+      await loadDb()
+      toast(`„${sub.name}“ wurde entfernt`)
+    } catch (err) {
+      toastError(err)
+    }
+  }
+
+  return (
+    <Modal
+      title="Kalender-Abonnements & Importe"
+      onClose={onClose}
+      wide
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          <Button
+            variant="ghost"
+            icon={<Settings size={15} />}
+            onClick={() => {
+              onClose()
+              openView({ type: 'settings', section: 'integrations' })
+            }}
+          >
+            Integrationen & Feeds
+          </Button>
+          <Button onClick={onClose}>Schließen</Button>
+        </div>
+      }
+    >
+      {db.subscriptions.length === 0 ? (
+        <div className="cal-subs-empty">
+          Keine aktiven Kalender-Abonnements oder importierten Dateien vorhanden.
+        </div>
+      ) : (
+        <div className="cal-subs-list">
+          {db.subscriptions.map((sub) => {
+            const eventCount = db.events.filter((e) => e.subscriptionId === sub.id).length
+            return (
+              <div key={sub.id} className="cal-sub-item">
+                <div className="cal-sub-info">
+                  <div className="cal-sub-icon">
+                    {sub.kind === 'file' ? <FileText size={20} /> : <Globe size={20} />}
+                  </div>
+                  <div className="cal-sub-text">
+                    <div className="cal-sub-name">{sub.name}</div>
+                    <div className="cal-sub-meta">
+                      {sub.kind === 'file' ? 'Datei-Import' : sub.url}
+                      {sub.lastSync && (
+                        <> · {sub.kind === 'file' ? 'Importiert' : 'Abgeglichen'} {formatDateTime(sub.lastSync)}</>
+                      )}
+                      {` · ${eventCount} ${eventCount === 1 ? 'Termin' : 'Termine'}`}
+                    </div>
+                    {sub.lastError && <div className="cal-sub-error">{sub.lastError}</div>}
+                  </div>
+                </div>
+                <div className="cal-sub-actions">
+                  {sub.kind === 'url' && (
+                    <IconButton
+                      label="Jetzt abgleichen"
+                      disabled={syncingId === sub.id}
+                      onClick={() => void handleSync(sub)}
+                    >
+                      <RefreshCw className={syncingId === sub.id ? 'spin' : ''} />
+                    </IconButton>
+                  )}
+                  <IconButton
+                    label="Entfernen"
+                    onClick={() => void handleUnsubscribe(sub)}
+                  >
+                    <Trash2 />
+                  </IconButton>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 export function CalendarView() {
   const db = useDb()
   const { showWeekends, defaultView } = db.settings.calendar
@@ -185,6 +313,9 @@ export function CalendarView() {
   const [anchor, setAnchor] = useState(today())
   const [selected, setSelected] = useState<Entry | null>(null)
   const [creating, setCreating] = useState<Partial<CalendarEvent> | null>(null)
+  const [dropping, setDropping] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [subsOpen, setSubsOpen] = useState(false)
 
   const weekStart = startOfWeek(anchor)
   const days = weekDays(weekStart, showWeekends ? 7 : 5)
@@ -213,8 +344,78 @@ export function CalendarView() {
     setCreating({ start: start.toISOString(), end: new Date(start.getTime() + 90 * 60_000).toISOString(), kind: 'other' })
   }
 
+  const handleImportFiles = async (files: File[]) => {
+    if (files.length === 0) return
+    setBusy(true)
+    let totalEvents = 0
+    let importedFiles = 0
+
+    try {
+      for (const file of files) {
+        if (!file.name.toLowerCase().endsWith('.ics') && file.type !== 'text/calendar') {
+          toast(`„${file.name}“ ist keine gültige iCal-Datei.`, { error: true })
+          continue
+        }
+        try {
+          const text = await file.text()
+          if (!text.trim()) {
+            toast(`„${file.name}“ ist leer.`, { error: true })
+            continue
+          }
+          const res = await api.calendar.importFile(file.name, text)
+          totalEvents += res.count
+          importedFiles++
+        } catch (err) {
+          toastError(err)
+        }
+      }
+
+      if (importedFiles > 0) {
+        await loadDb()
+        toast(`${totalEvents} ${totalEvents === 1 ? 'Termin' : 'Termine'} importiert`)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleUploadButton = async () => {
+    if (busy) return
+    const files = await pickFiles('.ics,text/calendar')
+    if (files && files.length > 0) {
+      await handleImportFiles(files)
+    }
+  }
+
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropping(true)
+  }
+
+  const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDropping(false)
+    }
+  }
+
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    setDropping(false)
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer.files.length > 0) {
+      void handleImportFiles([...e.dataTransfer.files])
+    }
+  }
+
   return (
-    <div className="calendar">
+    <div
+      className={`calendar ${dropping ? 'dropping' : ''}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="cal-toolbar">
         <Button size="sm" onClick={() => setAnchor(today())}>Heute</Button>
         {view !== 'agenda' && (
@@ -234,6 +435,25 @@ export function CalendarView() {
             { value: 'agenda', label: 'Liste', icon: <List /> },
           ]}
         />
+        <Button
+          size="sm"
+          icon={<FileUp />}
+          disabled={busy}
+          onClick={() => void handleUploadButton()}
+          title="iCal- / ICS-Datei importieren"
+        >
+          {busy ? 'Importiere …' : 'ICS importieren'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<CalendarSync size={15} />}
+          onClick={() => setSubsOpen(true)}
+          title="Kalender-Abonnements & Importe verwalten"
+        >
+          Abos
+          {db.subscriptions.length > 0 && <span className="cal-sub-count">{db.subscriptions.length}</span>}
+        </Button>
         <Button size="sm" variant="primary" icon={<Plus />} onClick={() => create(anchor)}>
           Termin
         </Button>
@@ -249,9 +469,19 @@ export function CalendarView() {
         </div>
       )}
 
+      {dropping && (
+        <div className="cal-drop-hint">
+          <div className="cal-drop-hint-box">
+            <Upload size={32} />
+            <span>ICS-Kalenderdatei hierher ziehen</span>
+          </div>
+        </div>
+      )}
+
       {selected?.source === 'event' && <EventDialog event={selected.event} onClose={() => setSelected(null)} />}
       {selected && selected.source !== 'event' && <EntryDialog entry={selected} onClose={() => setSelected(null)} />}
       {creating && <EventDialog event={creating} onClose={() => setCreating(null)} />}
+      {subsOpen && <SubscriptionsDialog onClose={() => setSubsOpen(false)} />}
     </div>
   )
 }

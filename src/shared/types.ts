@@ -118,7 +118,7 @@ export interface Item {
   updatedAt: string
 }
 
-export type EventKind = 'exam' | 'deadline' | 'lab' | 'lecture' | 'other'
+export type EventKind = 'exam' | 'deadline' | 'lab' | 'lecture' | 'exercise' | 'other'
 
 export interface CalendarEvent {
   id: ID
@@ -302,6 +302,7 @@ export interface AiRequest {
 export interface SyncResult {
   count: number
   error: string | null
+  newModules?: number
 }
 
 export interface MoodleCourse {

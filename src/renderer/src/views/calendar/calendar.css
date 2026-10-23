@@ -1,7 +1,39 @@
 .calendar {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+.calendar.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  background: var(--accent-soft);
+}
+
+.cal-drop-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 20;
+  backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.cal-drop-hint-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 32px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card, var(--bg-elevated));
+  border: 1.5px dashed var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: var(--shadow-lg, var(--shadow-pop));
 }
 
 .cal-toolbar {
@@ -300,3 +332,137 @@
   background: var(--c-red);
   flex: none;
 }
+
+/* Übungen und Tutorien */
+.cal-event.kind-exercise {
+  border-left-style: dashed;
+}
+
+.cal-chip.kind-exercise::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  border: 1px solid var(--dot);
+  flex: none;
+}
+
+/* Praktika und Labore (lab) */
+.cal-event.kind-lab {
+  border-left-style: dotted;
+}
+
+.cal-chip.kind-lab::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  border-radius: 1px;
+  background: var(--dot);
+  flex: none;
+}
+
+/* Fristen und Abgaben (deadline) */
+.cal-event.kind-deadline {
+  border-left-color: var(--c-orange);
+}
+
+.cal-chip.kind-deadline::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-orange);
+  flex: none;
+}
+
+/* Subscription Badge & Modal */
+.cal-sub-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+.cal-subs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.cal-sub-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, var(--radius));
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  gap: 12px;
+}
+
+.cal-sub-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cal-sub-icon {
+  color: var(--accent);
+  flex: none;
+}
+
+.cal-sub-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.cal-sub-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-sub-meta {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-sub-error {
+  font-size: var(--text-xs);
+  color: var(--danger);
+  margin-top: 2px;
+}
+
+.cal-sub-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.cal-subs-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+

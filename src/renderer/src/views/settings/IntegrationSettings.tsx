@@ -1,13 +1,23 @@
 // Moodle-Anbindung und Kalender-Abos (Moodle, my h_da/HISinOne, Stud.IP, ILIAS, OBS …).
 import { useEffect, useState } from 'react'
-import { FileUp, Link2, LogIn, RefreshCw, Trash2, Unplug } from 'lucide-react'
+import {
+  AlertCircle,
+  CalendarSync,
+  FileUp,
+  Link2,
+  LogIn,
+  RefreshCw,
+  Trash2,
+  Unplug,
+} from 'lucide-react'
 import { newModule } from '@shared/defaults'
-import type { MoodleCourse, MoodleSiteInfo } from '@shared/types'
+import type { MoodleCourse, MoodleSiteInfo, Subscription } from '@shared/types'
 import { api } from '@/lib/api'
 import { activeSemester, pickFiles, semesterModules } from '@/lib/actions'
 import { loadDb, putRecord, updateSettings, useDb } from '@/lib/db'
 import { formatDateTime } from '@/lib/format'
 import { Button, IconButton } from '@/ui/Button'
+import { confirm } from '@/ui/Dialogs'
 import { Input, Select, Switch } from '@/ui/Field'
 import { toast, toastError } from '@/ui/Toast'
 import { SettingGroup, SettingRow } from './SettingsView'
@@ -178,35 +188,125 @@ function MoodleSection() {
   )
 }
 
-function SubscriptionsSection() {
-  const db = useDb()
-  const [name, setName] = useState('')
-  const [url, setUrl] = useState('')
-  const [busy, setBusy] = useState(false)
+function isValidFeedUrl(rawUrl: string): boolean {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return false
+  if (!/^(webcals?|https?):\/\//i.test(trimmed)) return false
+  try {
+    const candidate = trimmed.replace(/^webcals?:\/\//i, 'https://')
+    new URL(candidate)
+    return true
+  } catch {
+    return false
+  }
+}
 
-  const add = async () => {
-    setBusy(true)
+function TucanCalendarSection() {
+  const db = useDb()
+  const [feedName, setFeedName] = useState('')
+  const [feedUrl, setFeedUrl] = useState('')
+  const [subBusy, setSubBusy] = useState(false)
+  const [tucanBusy, setTucanBusy] = useState(false)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+
+  const isFormValid = feedName.trim().length > 0 && isValidFeedUrl(feedUrl)
+
+  const handleStartTucanWizard = async () => {
+    setTucanBusy(true)
     try {
-      const sub = await api.calendar.subscribe(name, url)
+      if (!api.tucan?.startWizard) {
+        throw new Error('TUCaN-Assistent ist in dieser Version noch nicht verfügbar.')
+      }
+      const res = await api.tucan.startWizard()
       await loadDb()
-      setName('')
-      setUrl('')
-      if (sub.lastError) toastError(new Error(sub.lastError))
-      else toast(`„${sub.name}“ abonniert`)
-    } catch (error) {
-      toastError(error)
+      if (res.success) {
+        toast(
+          res.count !== undefined
+            ? `${res.count} ${res.count === 1 ? 'Termin' : 'Termine'} aus TUCaN importiert`
+            : 'TUCaN-Stundenplan erfolgreich importiert',
+        )
+      } else if (res.error && !res.error.toLowerCase().includes('abgebrochen')) {
+        toastError(new Error(res.error))
+      } else if (res.error && res.error.toLowerCase().includes('abgebrochen')) {
+        toast('TUCaN-Assistent abgebrochen')
+      }
+    } catch (err) {
+      toastError(err)
     } finally {
-      setBusy(false)
+      setTucanBusy(false)
     }
   }
 
-  const importFile = async () => {
+  const handleSubscribe = async () => {
+    const name = feedName.trim()
+    const url = feedUrl.trim()
+    if (!name) {
+      toastError(new Error('Bitte gib einen Namen für den Kalender ein.'))
+      return
+    }
+    if (!isValidFeedUrl(url)) {
+      toastError(new Error('Ungültige Kalender-URL. Erlaubte Protokolle sind webcal://, https:// oder http://.'))
+      return
+    }
+
+    setSubBusy(true)
+    try {
+      const sub = await api.calendar.subscribe(name, url)
+      await loadDb()
+      setFeedName('')
+      setFeedUrl('')
+      if (sub.lastError) {
+        toastError(new Error(`Abo angelegt, aber Synchronisation fehlgeschlagen: ${sub.lastError}`))
+      } else {
+        toast(`„${sub.name}“ erfolgreich abonniert`)
+      }
+    } catch (err) {
+      toastError(err)
+    } finally {
+      setSubBusy(false)
+    }
+  }
+
+  const handleSync = async (sub: Subscription) => {
+    setSyncingId(sub.id)
+    try {
+      const res = await api.calendar.sync(sub.id)
+      await loadDb()
+      toast(`${res.count} ${res.count === 1 ? 'Termin' : 'Termine'} aktualisiert`)
+    } catch (err) {
+      toastError(err)
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const handleRemove = async (sub: Subscription) => {
+    const ok = await confirm({
+      title: `„${sub.name}“ entfernen?`,
+      message: 'Alle zugehörigen Termine werden aus dem Kalender gelöscht.',
+      confirmLabel: 'Entfernen',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      const removeFn = api.calendar.removeSubscription ?? api.calendar.unsubscribe
+      if (removeFn) {
+        await removeFn(sub.id)
+      }
+      await loadDb()
+      toast(`„${sub.name}“ wurde entfernt`)
+    } catch (err) {
+      toastError(err)
+    }
+  }
+
+  const handleImportFile = async () => {
     const [file] = await pickFiles('.ics,text/calendar')
     if (!file) return
     try {
       const result = await api.calendar.importFile(file.name, await file.text())
       await loadDb()
-      toast(`${result.count} Termine aus „${file.name}“ importiert`)
+      toast(`${result.count} ${result.count === 1 ? 'Termin' : 'Termine'} aus „${file.name}“ importiert`)
     } catch (error) {
       toastError(error)
     }
@@ -214,71 +314,136 @@ function SubscriptionsSection() {
 
   return (
     <>
-      <SettingGroup title="Kalender-Abos (iCal)">
-        {db.subscriptions.map((s) => (
-          <SettingRow
-            key={s.id}
-            label={s.name}
-            description={
-              <>
-                <span className="mono-path">{s.url}</span>
-                <br />
-                {s.lastError ? (
-                  <span className="status-error">{s.lastError}</span>
-                ) : s.lastSync ? (
-                  <span className="status-ok">
-                    {s.kind === 'file' ? 'Importiert' : 'Abgeglichen'} {formatDateTime(s.lastSync)} · {db.events.filter((e) => e.subscriptionId === s.id).length} Termine
-                  </span>
-                ) : null}
-              </>
-            }
+      <SettingGroup title="TU Darmstadt (TUCaN) & Hochschul-Kalender">
+        <SettingRow
+          label="TUCaN Stundenplan-Assistent"
+          description="Öffnet ein geführtes Browser-Fenster für TUCaN (TU Darmstadt). Melde dich an und exportiere deinen Stundenplan – der Organizer fängt den Download automatisch ab und übernimmt alle Termine."
+        >
+          <Button
+            variant="primary"
+            icon={<CalendarSync className={tucanBusy ? 'spin' : ''} />}
+            disabled={tucanBusy}
+            onClick={() => void handleStartTucanWizard()}
           >
-            <div className="row">
-              {s.kind === 'url' && (
-                <IconButton label="Jetzt abgleichen" onClick={() => void api.calendar.sync(s.id).then(loadDb)}>
-                  <RefreshCw />
-                </IconButton>
-              )}
-              <IconButton label="Entfernen" onClick={() => void api.calendar.unsubscribe(s.id).then(loadDb)}>
-                <Trash2 />
-              </IconButton>
-            </div>
-          </SettingRow>
-        ))}
-        <SettingRow label="Kalender abonnieren" description="Die Adresse wird verschlüsselt gespeichert, da sie wie ein Passwort funktioniert." stacked>
+            {tucanBusy ? 'Assistent läuft …' : 'TUCaN-Assistent starten'}
+          </Button>
+        </SettingRow>
+
+        <SettingRow
+          label="Kalender abonnieren (WebCal / iCal)"
+          description="Abonniere dynamische Kalender-Feeds deiner Hochschule oder Lernplattform. Die Adresse wird verschlüsselt gespeichert."
+          stacked
+        >
           <div className="inline-form">
             <div className="row">
-              <Input value={name} placeholder="Name, z. B. Moodle" onChange={(e) => setName(e.target.value)} />
-              <Input value={url} placeholder="https://… oder webcal://…" onChange={(e) => setUrl(e.target.value)} />
-              <Button icon={<Link2 />} disabled={!url.trim() || busy} onClick={() => void add()}>
-                Abonnieren
+              <Input
+                value={feedName}
+                placeholder="Name des Stundenplans/Kurses"
+                onChange={(e) => setFeedName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()}
+              />
+              <Input
+                value={feedUrl}
+                placeholder="WebCal- / iCal-URL, z.B. webcal://... oder https://..."
+                onChange={(e) => setFeedUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()}
+              />
+              <Button
+                icon={<Link2 />}
+                disabled={!isFormValid || subBusy}
+                onClick={() => void handleSubscribe()}
+              >
+                {subBusy ? 'Abonniere …' : 'Abonnieren'}
               </Button>
             </div>
           </div>
         </SettingRow>
-        <SettingRow label="iCal-Datei importieren" description="Für Systeme ohne Abo, z. B. den Stundenplan aus my h_da (HISinOne) oder TUCaN. Erneuter Import derselben Datei ersetzt die Termine.">
-          <Button icon={<FileUp />} onClick={() => void importFile()}>
+
+        <SettingRow
+          label="iCal-Datei manuell importieren"
+          description="Für Systeme ohne Abo, z. B. den Stundenplan aus my h_da (HISinOne) oder manuelle TUCaN-Exporte. Erneuter Import derselben Datei aktualisiert die Termine ohne Duplikate."
+        >
+          <Button icon={<FileUp />} onClick={() => void handleImportFile()}>
             Datei wählen
           </Button>
         </SettingRow>
+
+        {db.subscriptions.map((s) => {
+          const eventCount = db.events.filter((e) => e.subscriptionId === s.id).length
+          return (
+            <SettingRow
+              key={s.id}
+              label={s.name}
+              description={
+                <>
+                  <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 2 }}>
+                    <span className="badge" style={{ fontSize: '11px' }}>
+                      {s.kind === 'file' ? 'Datei-Import' : 'WebCal-Feed'}
+                    </span>
+                    <span className="mono-path">{s.kind === 'file' ? (s.url || 'Lokale ICS-Datei') : s.url}</span>
+                  </div>
+                  {s.lastError ? (
+                    <div className="status-error" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                      <AlertCircle size={13} />
+                      <span>Synchronisationsfehler: {s.lastError}</span>
+                    </div>
+                  ) : s.lastSync ? (
+                    <span className="status-ok">
+                      {s.kind === 'file' ? 'Importiert' : 'Abgeglichen'} {formatDateTime(s.lastSync)} ·{' '}
+                      {eventCount} {eventCount === 1 ? 'Termin' : 'Termine'}
+                    </span>
+                  ) : (
+                    <span className="small muted">Noch nicht abgeglichen</span>
+                  )}
+                </>
+              }
+            >
+              <div className="row">
+                {s.kind === 'url' && (
+                  <IconButton
+                    label="Jetzt synchronisieren"
+                    disabled={syncingId === s.id}
+                    onClick={() => void handleSync(s)}
+                  >
+                    <RefreshCw className={syncingId === s.id ? 'spin' : ''} />
+                  </IconButton>
+                )}
+                <IconButton label="Entfernen" onClick={() => void handleRemove(s)}>
+                  <Trash2 />
+                </IconButton>
+              </div>
+            </SettingRow>
+          )
+        })}
       </SettingGroup>
 
-      <SettingGroup title="So findest du die Kalender-Adresse">
+      <SettingGroup title="So findest du deine Kalender-Adresse & Exporte">
         <div className="setting-row guide">
           <div>
-            <strong>Moodle</strong> (z. B. lernen.h-da.de)
+            <strong>TU Darmstadt (TUCaN)</strong>
+            <ol>
+              <li>Klicke oben auf <strong>„TUCaN-Assistent starten“</strong>.</li>
+              <li>Melde dich mit deiner TU-ID im Anmeldefenster an.</li>
+              <li>Navigiere zu <strong>Veranstaltungen → Stundenplan</strong> und klicke auf <strong>„Exportieren“</strong>.</li>
+              <li>Der Study Organizer übernimmt deinen Stundenplan automatisch und schließt das Fenster.</li>
+            </ol>
+            Alternativ kannst du die exportierte <code>.ics</code>-Datei direkt über „Datei wählen“ importieren oder per Drag & Drop in den Kalender ziehen.
+          </div>
+        </div>
+        <div className="setting-row guide">
+          <div>
+            <strong>Moodle</strong> (z. B. moodle.tu-darmstadt.de oder lernen.h-da.de)
             <ol>
               <li>Kalender öffnen → unten „Import und Export“ bzw. „Kalender exportieren“.</li>
-              <li>„Alle Termine“ und als Zeitraum „Eigener Bereich“ (sonst „Vergangene und nachfolgende 60 Tage“) wählen.</li>
-              <li>„Kalender-URL abfragen“ → URL kopieren und oben einfügen.</li>
+              <li>„Alle Termine“ und als Zeitraum „Eigener Bereich“ oder „Vergangene und nachfolgende 60 Tage“ wählen.</li>
+              <li>„Kalender-URL abfragen“ → URL kopieren und oben bei „Kalender abonnieren“ einfügen.</li>
             </ol>
             Tipp: Mit der Moodle-Anbindung oben kommen Abgaben zusätzlich als abhakbare Aufgaben.
           </div>
         </div>
         <div className="setting-row guide">
           <div>
-            <strong>my h_da / HISinOne</strong>: Studienservice → Stundenplan → „Daten für Kalender (ics) exportieren“ → Datei oben importieren. HISinOne bietet nur einen Export zum
-            Zeitpunkt des Herunterladens – nach Änderungen neu importieren.
+            <strong>my h_da / HISinOne</strong>: Studienservice → Stundenplan → „Daten für Kalender (ics) exportieren“ → Datei oben importieren. HISinOne bietet nur einen Export zum Zeitpunkt des Herunterladens – nach Änderungen neu importieren.
           </div>
         </div>
         <div className="setting-row guide">
@@ -289,8 +454,7 @@ function SubscriptionsSection() {
         </div>
         <div className="setting-row guide">
           <div>
-            <strong>Stud.IP</strong>: Planer → Terminkalender → „Kalender teilen“ → „Adresse generieren“. <strong>ILIAS</strong>: Kalender → „Abonnieren“ → „iCal-URL“.{' '}
-            <strong>TUCaN</strong>: Stundenplan → Export (pro Monat) → Datei importieren.
+            <strong>Stud.IP & ILIAS</strong>: Planer → Terminkalender → „Kalender teilen“ bzw. ILIAS Kalender → „Abonnieren“ → WebCal-URL kopieren und oben abonnieren.
           </div>
         </div>
       </SettingGroup>
@@ -302,7 +466,7 @@ export function IntegrationSettings() {
   return (
     <>
       <MoodleSection />
-      <SubscriptionsSection />
+      <TucanCalendarSection />
     </>
   )
 }

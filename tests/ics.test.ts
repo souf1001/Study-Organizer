@@ -1,6 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { classifyEvent, eventsFromIcs, normalizeCalendarUrl, parseIcs } from '../src/backend/ics'
-import { newModule } from '../src/shared/defaults'
+import ICAL from 'ical.js'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import {
+  autoCreateModule,
+  classifyEvent,
+  decodeIcsText,
+  eventsFromIcs,
+  extractCourseInfo,
+  matchModule,
+  normalizeCalendarUrl,
+  normalizeIcsFilename,
+  normalizeRomanNumerals,
+  normalizeTextForMatching,
+  parseIcs,
+  pickNextModuleColor,
+  stripModuleSuffix,
+} from '../src/backend/ics'
+import { createService, type Secrets } from '../src/backend/service'
+import { Store } from '../src/backend/store'
+import { MODULE_COLORS, newModule } from '../src/shared/defaults'
+import type { Module, ModuleColor } from '../src/shared/types'
 
 const ICS = `BEGIN:VCALENDAR
 VERSION:2.0
@@ -30,6 +51,22 @@ DTEND:20261019T094500Z
 END:VEVENT
 END:VCALENDAR`
 
+const SAMPLE_TUCAN_ICS = [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'PRODID:-//TU Darmstadt//TUCaN//DE',
+  'BEGIN:VEVENT',
+  'UID:tucan-101@tu-darmstadt.de',
+  'SUMMARY:20-00-0012-ue Höhere Mathematik I (Große Übung)',
+  'LOCATION:S2|02 Raum C120',
+  'DESCRIPTION:Dozent: Prof. Dr. Muster; Wöchentliche Übung; Prüfungsrelevant!',
+  'DTSTART:20261015T080000Z',
+  'DTEND:20261015T093000Z',
+  'CATEGORIES:20-00-0012-ue',
+  'END:VEVENT',
+  'END:VCALENDAR',
+].join('\r\n')
+
 describe('iCal-Import', () => {
   it('liest Einzeltermine, Serien und Ausnahmen', () => {
     const list = parseIcs(ICS, new Date('2026-09-01'), new Date('2027-03-01'))
@@ -49,7 +86,12 @@ describe('iCal-Import', () => {
 
   it('ordnet Termine Modulen zu', () => {
     const ana = newModule('s', { name: 'Analysis 1', code: 'ANA1' })
-    const events = eventsFromIcs(ICS, { id: 'sub', name: 'Moodle', kind: 'url', url: '', enabled: true, lastSync: null, lastError: null }, [ana], new Date('2026-10-01'))
+    const events = eventsFromIcs(
+      ICS,
+      { id: 'sub', name: 'Moodle', kind: 'url', url: '', enabled: true, lastSync: null, lastError: null },
+      [ana],
+      new Date('2026-10-01'),
+    )
     expect(events.every((e) => e.moduleId === ana.id)).toBe(true)
     expect(events.every((e) => e.subscriptionId === 'sub')).toBe(true)
   })
@@ -57,6 +99,413 @@ describe('iCal-Import', () => {
   it('akzeptiert webcal-Links und lehnt andere Protokolle ab', () => {
     expect(normalizeCalendarUrl('webcal://moodle.example.de/cal.ics')).toBe('https://moodle.example.de/cal.ics')
     expect(() => normalizeCalendarUrl('file:///etc/passwd')).toThrow()
+  })
+})
+
+describe('decodeIcsText & Encoding Detection', () => {
+  it('dekodiert Standard UTF-8 ohne BOM', () => {
+    const buf = Buffer.from(SAMPLE_TUCAN_ICS, 'utf-8')
+    const decoded = decodeIcsText(buf)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Höhere Mathematik I (Große Übung)')
+    expect(decoded).toContain('Prüfungsrelevant!')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('dekodiert UTF-8 mit BOM (0xEF, 0xBB, 0xBF) und entfernt BOM', () => {
+    const bom = Buffer.from([0xef, 0xbb, 0xbf])
+    const buf = Buffer.concat([bom, Buffer.from(SAMPLE_TUCAN_ICS, 'utf-8')])
+    const decoded = decodeIcsText(buf)
+    expect(decoded.charCodeAt(0)).not.toBe(0xfeff)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Große Übung')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('dekodiert UTF-16LE mit BOM (0xFF, 0xFE) - TUCaN / Windows Format', () => {
+    const bom = Buffer.from([0xff, 0xfe])
+    const content = Buffer.from(SAMPLE_TUCAN_ICS, 'utf16le')
+    const buf = Buffer.concat([bom, content])
+    const decoded = decodeIcsText(buf)
+    expect(decoded.charCodeAt(0)).not.toBe(0xfeff)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Höhere Mathematik I (Große Übung)')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+    const parsed = parseIcs(decoded, new Date('2026-01-01'), new Date('2027-01-01'))
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].title).toBe('20-00-0012-ue Höhere Mathematik I (Große Übung)')
+  })
+
+  it('dekodiert UTF-16BE mit BOM (0xFE, 0xFF)', () => {
+    const bom = Buffer.from([0xfe, 0xff])
+    const le = Buffer.from(SAMPLE_TUCAN_ICS, 'utf16le')
+    const be = Buffer.alloc(le.length)
+    for (let i = 0; i < le.length; i += 2) {
+      be[i] = le[i + 1]
+      be[i + 1] = le[i]
+    }
+    const buf = Buffer.concat([bom, be])
+    const decoded = decodeIcsText(buf)
+    expect(decoded.charCodeAt(0)).not.toBe(0xfeff)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Höhere Mathematik I (Große Übung)')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('erkennt BOM-loses UTF-16LE heuristisch über Nullbytes', () => {
+    const buf = Buffer.from(SAMPLE_TUCAN_ICS, 'utf16le')
+    const decoded = decodeIcsText(buf)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Große Übung')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('erkennt BOM-loses UTF-16BE heuristisch über Nullbytes', () => {
+    const le = Buffer.from(SAMPLE_TUCAN_ICS, 'utf16le')
+    const be = Buffer.alloc(le.length)
+    for (let i = 0; i < le.length; i += 2) {
+      be[i] = le[i + 1]
+      be[i + 1] = le[i]
+    }
+    const decoded = decodeIcsText(be)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Große Übung')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('entfernt führendes Unicode-BOM (\\uFEFF) aus Strings und verhindert Parser-Crash', () => {
+    const stringWithBom = '\uFEFF' + SAMPLE_TUCAN_ICS
+    // ICAL.parse würde auf unbereinigtem String fehlschlagen:
+    expect(() => ICAL.parse(stringWithBom)).toThrow()
+    const decoded = decodeIcsText(stringWithBom)
+    expect(decoded.charCodeAt(0)).toBe(0x42) // 'B'
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('dekodiert binär gelesene Strings (Latin-1 / Binary Representation)', () => {
+    const bom = Buffer.from([0xff, 0xfe])
+    const content = Buffer.from(SAMPLE_TUCAN_ICS, 'utf16le')
+    const binaryStr = Buffer.concat([bom, content]).toString('binary')
+    const decoded = decodeIcsText(binaryStr)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(decoded).toContain('Große Übung')
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('stellt beschädigte Strings mit Nullbytes (B\\0E\\0G\\0I\\0N...) im Notfall wieder her', () => {
+    const corrupted = 'B\0E\0G\0I\0N\0:\0V\0C\0A\0L\0E\0N\0D\0A\0R\0\r\0\n\0E\0N\0D\0:\0V\0C\0A\0L\0E\0N\0D\0A\0R\0'
+    const decoded = decodeIcsText(corrupted)
+    expect(decoded).toBe('BEGIN:VCALENDAR\r\nEND:VCALENDAR')
+    expect(decoded.includes('\0')).toBe(false)
+  })
+
+  it('behandelt leere und minimale Eingaben sauber', () => {
+    expect(decodeIcsText('')).toBe('')
+    expect(decodeIcsText(new Uint8Array(0))).toBe('')
+    expect(decodeIcsText(Buffer.from('A', 'utf-8'))).toBe('A')
+  })
+})
+
+describe('Erweiterte Terminarten-Klassifizierung & EventKind exercise', () => {
+  it('klassifiziert deutsche Übungs- und Tutoriumstermine präzise als exercise', () => {
+    expect(classifyEvent('Analysis 1 Übung')).toBe('exercise')
+    expect(classifyEvent('Mathematik Uebung')).toBe('exercise')
+    expect(classifyEvent('Tutorium Informatik')).toBe('exercise')
+    expect(classifyEvent('Kolloquium Rechnernetze')).toBe('exercise')
+    expect(classifyEvent('Hörsaalübung Höhere Mathematik')).toBe('exercise')
+    expect(classifyEvent('Gruppenübung Physik')).toBe('exercise')
+    expect(classifyEvent('Analysis 1 HÜ')).toBe('exercise')
+    expect(classifyEvent('Analysis 1 GÜ')).toBe('exercise')
+    expect(classifyEvent('Analysis (Ü)')).toBe('exercise')
+    expect(classifyEvent('Analysis 1 (UE)')).toBe('exercise')
+    expect(classifyEvent('20-00-0012-ue')).toBe('exercise')
+    expect(classifyEvent('20-00-0012-tut')).toBe('exercise')
+    expect(classifyEvent('Integrierte Veranstaltung Softwaretechnik')).toBe('exercise')
+    expect(classifyEvent('IV Rechnerarchitektur')).toBe('exercise')
+    expect(classifyEvent('Übung zur Vorlesung Analysis 1')).toBe('exercise')
+  })
+
+  it('klassifiziert Vorlesungen zuverlässig als lecture', () => {
+    expect(classifyEvent('Analysis 1 Vorlesung')).toBe('lecture')
+    expect(classifyEvent('Guest Lecture AI')).toBe('lecture')
+    expect(classifyEvent('Ringvorlesung KI')).toBe('lecture')
+    expect(classifyEvent('Seminar Web-Technologien')).toBe('lecture')
+    expect(classifyEvent('20-00-0012-vl')).toBe('lecture')
+    expect(classifyEvent('Analysis IV Vorlesung')).toBe('lecture')
+    expect(classifyEvent('Analysis IV (VL)')).toBe('lecture')
+  })
+
+  it('klassifiziert Prüfungen präzise als exam', () => {
+    expect(classifyEvent('Klausur Analysis')).toBe('exam')
+    expect(classifyEvent('Abschlussprüfung')).toBe('exam')
+    expect(classifyEvent('Pruefung Lineare Algebra')).toBe('exam')
+    expect(classifyEvent('Final Exam')).toBe('exam')
+    expect(classifyEvent('Nachschreibetermin Physik')).toBe('exam')
+    expect(classifyEvent('Midterm-Exam Software')).toBe('exam')
+  })
+
+  it('klassifiziert Fristen und Abgaben als deadline', () => {
+    expect(classifyEvent('Übungsblatt 3 ist fällig')).toBe('deadline')
+    expect(classifyEvent('Abgabe Projektbericht')).toBe('deadline')
+    expect(classifyEvent('Submission Deadline')).toBe('deadline')
+    expect(classifyEvent('Einreichung Exposé')).toBe('deadline')
+    expect(classifyEvent('Frist zur Einreichung')).toBe('deadline')
+  })
+
+  it('klassifiziert Praktika und Labore als lab', () => {
+    expect(classifyEvent('Praktikum Termin 2')).toBe('lab')
+    expect(classifyEvent('Robotik Labor')).toBe('lab')
+    expect(classifyEvent('Physiklabor')).toBe('lab')
+    expect(classifyEvent('Hardware Lab')).toBe('lab')
+    expect(classifyEvent('Testat 1')).toBe('lab')
+    expect(classifyEvent('20-00-0012-pr')).toBe('lab')
+  })
+
+  it('verhindert False Positives bei Wörtern mit Teilübereinstimmungen', () => {
+    expect(classifyEvent('Frühstückstreffen')).toBe('other')
+    expect(classifyEvent('Günstiges Angebot')).toBe('other')
+    expect(classifyEvent('Collaborative work')).toBe('other')
+    expect(classifyEvent('Example Problem')).toBe('other')
+  })
+
+  it('unterstützt mehrteilige Parameter (Titel, Beschreibung, Kategorien)', () => {
+    expect(classifyEvent('20-00-0012', undefined, ['Übung'])).toBe('exercise')
+    expect(classifyEvent('Analysis 1', 'Tutorium für Erstsemester')).toBe('exercise')
+    expect(classifyEvent('Übung Lineare Algebra', 'Klausur am 15.02.')).toBe('exercise')
+    expect(classifyEvent('Mathematik 1', 'Abgabe bis Freitag einreichen')).toBe('deadline')
+    expect(classifyEvent('20-00-0012', 'Labortermin D14', ['Praktikum'])).toBe('lab')
+  })
+})
+
+describe('Modulkürzel-Suffixe, Römische Zahlen & Dateinamen', () => {
+  it('entfernt universitäre Suffixe mit stripModuleSuffix', () => {
+    expect(stripModuleSuffix('20-00-0012-vl')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-ue')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-üe')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-tut')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-pr')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-se')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-iv')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-pl')).toBe('20-00-0012')
+    expect(stripModuleSuffix('20-00-0012-sl')).toBe('20-00-0012')
+    expect(stripModuleSuffix('CS-101-vl')).toBe('CS-101')
+    expect(stripModuleSuffix('20-00-0012')).toBe('20-00-0012')
+  })
+
+  it('normalisiert römische Zahlen ohne Akronyme zu beschädigen', () => {
+    expect(normalizeRomanNumerals('Analysis I')).toBe('Analysis 1')
+    expect(normalizeRomanNumerals('Lineare Algebra II')).toBe('Lineare Algebra 2')
+    expect(normalizeRomanNumerals('Informatik III')).toBe('Informatik 3')
+    expect(normalizeRomanNumerals('Physik IV')).toBe('Physik 4')
+    expect(normalizeRomanNumerals('Chemie V')).toBe('Chemie 5')
+    expect(normalizeRomanNumerals('Mathematik XX')).toBe('Mathematik 20')
+    // Akronyme bleiben geschützt
+    expect(normalizeRomanNumerals('GdI')).toBe('GdI')
+    expect(normalizeRomanNumerals('TI')).toBe('TI')
+    expect(normalizeRomanNumerals('KI')).toBe('KI')
+    expect(normalizeRomanNumerals('GdI I')).toBe('GdI 1')
+  })
+
+  it('normalisiert Text für robuste Vergleiche mit normalizeTextForMatching', () => {
+    expect(normalizeTextForMatching('Analysis I')).toBe('analysis 1')
+    expect(normalizeTextForMatching('Analysis 1')).toBe('analysis 1')
+    expect(normalizeTextForMatching('Höhere Mathematik II')).toBe('hoehere mathematik 2')
+    expect(normalizeTextForMatching('Höhere Mathematik 2')).toBe('hoehere mathematik 2')
+  })
+
+  it('normalisiert Dateinamen von Download-Duplikaten mit normalizeIcsFilename', () => {
+    expect(normalizeIcsFilename('stundenplan.ics')).toBe('stundenplan.ics')
+    expect(normalizeIcsFilename('stundenplan (1).ics')).toBe('stundenplan.ics')
+    expect(normalizeIcsFilename('stundenplan (2).ics')).toBe('stundenplan.ics')
+    expect(normalizeIcsFilename('stundenplan (1) (1).ics')).toBe('stundenplan.ics')
+    expect(normalizeIcsFilename('schedule (1).ICS')).toBe('schedule.ICS')
+    expect(normalizeIcsFilename('analysis (1) part 2.ics')).toBe('analysis (1) part 2.ics')
+  })
+})
+
+describe('Intelligente Modulzuordnung (matchModule)', () => {
+  it('gleicht Modulkürzel trotz abweichender Veranstaltungssuffixe ab (-vl vs Basis / -ue)', () => {
+    const mod = newModule('s1', { name: 'Software Engineering', code: '20-00-0012' })
+    const base = {
+      uid: 'x',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: '',
+      categories: [],
+    }
+
+    // Event hat Suffix -vl
+    expect(matchModule({ ...base, title: '20-00-0012-vl Software Engineering' }, [mod])).toBe(mod.id)
+    // Event hat Kategorie mit Suffix -ue
+    expect(matchModule({ ...base, title: 'Übung', categories: ['20-00-0012-ue'] }, [mod])).toBe(mod.id)
+  })
+
+  it('gleicht Module mit Suffix im Modulcode gegen Events mit anderem Suffix ab', () => {
+    const modWithVl = newModule('s1', { name: 'Einführung', code: '20-00-0012-vl' })
+    const base = {
+      uid: 'x',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: '',
+      categories: ['20-00-0012-ue'],
+    }
+    expect(matchModule({ ...base, title: 'Übung' }, [modWithVl])).toBe(modWithVl.id)
+  })
+
+  it('gleicht römische und arabische Ziffern im Modulnamen bidirektional ab', () => {
+    const modArabic = newModule('s1', { name: 'Analysis 1', code: 'ANA1' })
+    const modRoman = newModule('s1', { name: 'Lineare Algebra II', code: 'LA2' })
+    const base = {
+      uid: 'x',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: '',
+      categories: [],
+    }
+
+    expect(matchModule({ ...base, title: 'Analysis I Vorlesung' }, [modArabic])).toBe(modArabic.id)
+    expect(matchModule({ ...base, title: 'Lineare Algebra 2 Übung' }, [modRoman])).toBe(modRoman.id)
+  })
+
+  it('priorisiert Module des aktiven Semesters bei namensgleichen Modulen', () => {
+    const pastMod = newModule('sem-past', { name: 'Mathematik 1', code: 'MAT1' })
+    const activeMod = newModule('sem-active', { name: 'Mathematik 1', code: 'MAT1' })
+    const base = {
+      uid: 'x',
+      title: 'Mathematik 1 Vorlesung',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: '',
+      categories: [],
+    }
+
+    const matchedId = matchModule(base, [pastMod, activeMod], 'sem-active')
+    expect(matchedId).toBe(activeMod.id)
+  })
+
+  it('unterstützt die Mehrfachparameter-Signatur (summary, desc, cats, modules) und gibt Module-Objekt zurück', () => {
+    const mod = newModule('s1', { name: 'Rechnerarchitektur', code: 'CS-200' })
+    const result = matchModule('Rechnerarchitektur Vorlesung', '', [], [mod])
+    expect(result).toBeDefined()
+    expect(result?.id).toBe(mod.id)
+  })
+})
+
+describe('Modul-Auto-Creation & Farbvergabe', () => {
+  it('wählt deterministisch und gleichmäßig Modulfarben', () => {
+    const mods: Module[] = []
+    const colors: ModuleColor[] = []
+    for (let i = 0; i < MODULE_COLORS.length; i++) {
+      const color = pickNextModuleColor(mods)
+      colors.push(color)
+      mods.push(newModule('s1', { color }))
+    }
+    // Alle 9 Farben müssen genutzt worden sein
+    expect(new Set(colors).size).toBe(MODULE_COLORS.length)
+    // Bei Überschreitung wird die am seltensten vergebene Farbe gewählt
+    const tenthColor = pickNextModuleColor(mods)
+    expect(tenthColor).toBe(MODULE_COLORS[0])
+  })
+
+  it('extrahiert Kursinformationen und bereinigt Titel mit extractCourseInfo', () => {
+    const info1 = extractCourseInfo({
+      uid: '1',
+      title: '20-00-0012-vl Höhere Mathematik I',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: 'Dozent: Prof. Dr. Muster',
+      categories: [],
+    })
+    expect(info1).toEqual({
+      name: 'Höhere Mathematik I',
+      code: '20-00-0012',
+      lecturer: 'Prof. Dr. Muster',
+    })
+
+    const info2 = extractCourseInfo({
+      uid: '2',
+      title: 'Übung zu Algorithmen und Datenstrukturen',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: '',
+      categories: ['CS-101-ue'],
+    })
+    expect(info2?.name).toBe('Algorithmen und Datenstrukturen')
+    expect(info2?.code).toBe('CS-101')
+
+    const info3 = extractCourseInfo({
+      uid: '3',
+      title: 'Sommerfest',
+      start: new Date(),
+      end: new Date(),
+      allDay: false,
+      location: '',
+      description: '',
+      categories: [],
+    })
+    expect(info3).toBeDefined()
+    expect(info3?.name).toBe('Sommerfest')
+  })
+
+  it('erstellt neues Modul mit autoCreateModule', () => {
+    const mod = autoCreateModule({ name: 'Datenbanksysteme', code: 'CS-300', lecturer: 'Dr. Test' }, 'sem-1', [])
+    expect(mod.semesterId).toBe('sem-1')
+    expect(mod.name).toBe('Datenbanksysteme')
+    expect(mod.code).toBe('CS-300')
+    expect(mod.lecturer).toBe('Dr. Test')
+    expect(MODULE_COLORS).toContain(mod.color)
+  })
+
+  it('legt in eventsFromIcs bei autoCreateModules neue Module an und verknüpft nachfolgende Termine', () => {
+    const testIcs = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:hm1-vl',
+      'SUMMARY:20-00-0012-vl Höhere Mathematik I',
+      'DTSTART:20261012T080000Z',
+      'DTEND:20261012T093000Z',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:hm1-ue',
+      'SUMMARY:20-00-0012-ue Höhere Mathematik I (Übung)',
+      'DTSTART:20261014T100000Z',
+      'DTEND:20261014T113000Z',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n')
+
+    const sub = { id: 'sub-test', name: 'Plan', kind: 'file' as const, url: '', enabled: true, lastSync: null, lastError: null }
+    const created: Module[] = []
+
+    const events = eventsFromIcs(testIcs, sub, [], {
+      activeSemesterId: 'sem-active',
+      autoCreateModules: true,
+      onModuleCreated: (m) => created.push(m),
+      now: new Date('2026-10-01'),
+    })
+
+    expect(created).toHaveLength(1)
+    expect(created[0].name).toBe('Höhere Mathematik I')
+    expect(created[0].code).toBe('20-00-0012')
+    expect(events).toHaveLength(2)
+    // Beide Termine (VL und UE) müssen demselben neu erstellten Modul zugeordnet sein
+    expect(events[0].moduleId).toBe(created[0].id)
+    expect(events[1].moduleId).toBe(created[0].id)
+    expect(events[0].kind).toBe('lecture')
+    expect(events[1].kind).toBe('exercise')
   })
 })
 
@@ -82,13 +531,79 @@ describe('Abo-Abgleich', () => {
 
 describe('Modulzuordnung', () => {
   it('trifft Kürzel nur als ganzes Wort', async () => {
-    const { matchModule } = await import('../src/backend/ics')
+    const { matchModule: match } = await import('../src/backend/ics')
     const se = newModule('s', { name: 'Software Engineering', code: 'SE' })
     const ma = newModule('s', { name: 'Mathematik', code: 'MA' })
     const base = { uid: 'x', start: new Date(), end: new Date(), allDay: false, location: '', description: '', categories: [] as string[] }
-    expect(matchModule({ ...base, title: 'Seminar Datenbanken' }, [se, ma])).toBeNull()
-    expect(matchModule({ ...base, title: 'Klausur SE', description: 'Material mitbringen' }, [se, ma])).toBe(se.id)
-    expect(matchModule({ ...base, title: 'Abgabe', categories: ['MA'] }, [se, ma])).toBe(ma.id)
+    expect(match({ ...base, title: 'Seminar Datenbanken' }, [se, ma])).toBeNull()
+    expect(match({ ...base, title: 'Klausur SE', description: 'Material mitbringen' }, [se, ma])).toBe(se.id)
+    expect(match({ ...base, title: 'Abgabe', categories: ['MA'] }, [se, ma])).toBe(ma.id)
+  })
+})
+
+describe('calendarImportFile Service End-to-End', () => {
+  const memorySecrets = (): Secrets => {
+    const data = new Map<string, string>()
+    return {
+      get: async (name: string) => data.get(name) ?? null,
+      set: async (name: string, value: string) => void data.set(name, value),
+      remove: async (name: string) => void data.delete(name),
+    }
+  }
+
+  it('importiert UTF-16LE Uint8Array mit BOM und normalisiert Download-Dateinamen', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'cal-service-test-'))
+    try {
+      const store = await Store.open(dir)
+      const service = createService(store, memorySecrets())
+
+      // Ein aktives Semester anlegen
+      store.put('semesters', {
+        id: 'sem-active',
+        name: 'WiSe 2026/27',
+        kind: 'winter',
+        year: 2026,
+        start: '2026-10-01',
+        end: '2027-03-31',
+        lectureStart: '2026-10-12',
+        lectureEnd: '2027-02-12',
+        breaks: [],
+        createdAt: new Date().toISOString(),
+      })
+      store.update({ activeSemesterId: 'sem-active' })
+
+      // Erster Import: UTF-16LE mit BOM
+      const bom = Buffer.from([0xff, 0xfe])
+      const content = Buffer.from(SAMPLE_TUCAN_ICS, 'utf16le')
+      const bytes = new Uint8Array(Buffer.concat([bom, content]))
+
+      const res1 = await service.calendarImportFile('tucan_plan.ics', bytes)
+      expect(res1.count).toBe(1)
+      expect(res1.error).toBeNull()
+      expect(res1.newModules).toBe(1)
+
+      const db1 = store.get()
+      expect(db1.subscriptions.filter((s) => s.kind === 'file')).toHaveLength(1)
+      expect(db1.subscriptions[0].name).toBe('tucan_plan.ics')
+      expect(db1.modules).toHaveLength(1)
+      expect(db1.modules[0].name).toBe('Höhere Mathematik I')
+      expect(db1.events).toHaveLength(1)
+      expect(db1.events[0].kind).toBe('exercise')
+      expect(db1.events[0].moduleId).toBe(db1.modules[0].id)
+
+      // Zweiter Import: Neuer Download mit Browser-Zähler "(1)"
+      const res2 = await service.calendarImportFile('tucan_plan (1).ics', bytes)
+      expect(res2.count).toBe(1)
+      expect(res2.error).toBeNull()
+
+      const db2 = store.get()
+      // Keine doppelten Subscriptions oder Events!
+      expect(db2.subscriptions.filter((s) => s.kind === 'file')).toHaveLength(1)
+      expect(db2.events).toHaveLength(1)
+      expect(db2.modules).toHaveLength(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    }
   })
 })
 
@@ -119,5 +634,69 @@ describe('Schutz vor übergroßen Kalendern', () => {
     const { readLimited } = await import('../src/backend/http')
     await expect(readLimited(new Response(new Uint8Array(2048)), 1024, 'Der Kalender')).rejects.toThrow('zu groß')
     expect((await readLimited(new Response(new Uint8Array(10)), 1024, 'Der Kalender')).length).toBe(10)
+  })
+})
+
+describe('decodeIcsText multiple BOM handling', () => {
+  it('strips multiple consecutive BOM characters from string', () => {
+    const raw = '\uFEFF\uFEFFBEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR'
+    const decoded = decodeIcsText(raw)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('strips triple UTF-8 BOM from byte buffer', () => {
+    const tripleBom = Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR', 'utf-8'),
+    ])
+    const decoded = decodeIcsText(tripleBom)
+    expect(decoded.startsWith('BEGIN:VCALENDAR')).toBe(true)
+    expect(() => ICAL.parse(decoded)).not.toThrow()
+  })
+
+  it('preserves zero-width non-breaking spaces within text body', () => {
+    const textWithZwnbsp = 'SUMMARY:ZWNBSP \uFEFF Test'
+    expect(decodeIcsText(textWithZwnbsp)).toBe(textWithZwnbsp)
+  })
+})
+
+describe('classifyEvent: Roman numeral IV and Integrierte Veranstaltung', () => {
+  it('does NOT classify Roman numeral IV course titles as exercise', () => {
+    expect(classifyEvent('Analysis IV')).toBe('other')
+    expect(classifyEvent('Analysis IV - Raum S2|02')).toBe('other')
+    expect(classifyEvent('Informatik IV')).toBe('other')
+    expect(classifyEvent('Mathematik IV')).toBe('other')
+    expect(classifyEvent('Physik IV')).toBe('other')
+  })
+
+  it('still classifies Integrierte Veranstaltung as exercise', () => {
+    expect(classifyEvent('IV Rechnerarchitektur')).toBe('exercise')
+    expect(classifyEvent('IV: Rechnerarchitektur')).toBe('exercise')
+    expect(classifyEvent('Softwaretechnik (IV)')).toBe('exercise')
+    expect(classifyEvent('Integrierte Veranstaltung Softwaretechnik')).toBe('exercise')
+    expect(classifyEvent('20-00-0012-iv')).toBe('exercise')
+  })
+
+  it('classifies Analysis IV Vorlesung as lecture', () => {
+    expect(classifyEvent('Analysis IV Vorlesung')).toBe('lecture')
+    expect(classifyEvent('Analysis IV (VL)')).toBe('lecture')
+  })
+})
+
+describe('classifyEvent: Deadline keywords boundaries and inflections', () => {
+  it('rejects substring false positives like steinreich, kurzschließt, discloses', () => {
+    expect(classifyEvent('Vortrag: Steinreiche Dynastien im Mittelalter')).not.toBe('deadline')
+    expect(classifyEvent('Elektrotechnik: Was passiert, wenn die Schaltung kurzschließt?')).not.toBe('deadline')
+    expect(classifyEvent('Guest Talk: How the algorithm discloses patterns')).not.toBe('deadline')
+  })
+
+  it('recognizes inflected German submission deadline einzureichen and compounds', () => {
+    expect(classifyEvent('Übungszettel bis Freitag einzureichen')).toBe('deadline')
+    expect(classifyEvent('Hausarbeit bitte pünktlich einreichen')).toBe('deadline')
+    expect(classifyEvent('Bewerbungsfrist')).toBe('deadline')
+    expect(classifyEvent('Portal schließt um 23:59 Uhr')).toBe('deadline')
   })
 })

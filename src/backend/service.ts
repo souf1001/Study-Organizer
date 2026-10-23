@@ -7,6 +7,7 @@ import type {
   DbPatch,
   FileInput,
   FileTarget,
+  Module,
   MoodleConnectInput,
   MoodleCourse,
   MoodleSyncResult,
@@ -17,7 +18,15 @@ import type {
 } from '../shared/types'
 import { checkKey, listModels, streamChat } from './ai'
 import { newId } from '../shared/defaults'
-import { eventsFromIcs, fetchCalendar, maskCalendarUrl, mergeSubscriptionEvents, normalizeCalendarUrl } from './ics'
+import {
+  decodeIcsText,
+  eventsFromIcs,
+  fetchCalendar,
+  maskCalendarUrl,
+  mergeSubscriptionEvents,
+  normalizeCalendarUrl,
+  normalizeIcsFilename,
+} from './ics'
 import { MoodleClient, connectMoodle, moodleSiteInfo, syncMoodle } from './moodle'
 import type { Store } from './store'
 
@@ -166,16 +175,50 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       }
     },
     /** .ics-Datei einmalig importieren; derselbe Dateiname ersetzt den vorherigen Import */
-    calendarImportFile: async (name: string, text: string): Promise<SyncResult> => {
+    calendarImportFile: async (name: string, content: string | Uint8Array | Buffer): Promise<SyncResult> => {
+      const text = decodeIcsText(content)
       if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Das ist keine iCal-Datei (.ics).')
-      const existing = store.get().subscriptions.find((s) => s.kind === 'file' && s.name === name)
-      const subscription: Subscription = existing ?? { id: newId(), name, kind: 'file', url: 'Datei-Import', enabled: false, lastSync: null, lastError: null }
-      const events = eventsFromIcs(text, subscription, store.get().modules)
+
+      const cleanName = normalizeIcsFilename(name)
+      const cleanLower = cleanName.toLowerCase()
+      const rawLower = name.trim().toLowerCase()
+      const existing = store.get().subscriptions.find(
+        (s) =>
+          s.kind === 'file' &&
+          (s.name.toLowerCase() === cleanLower ||
+            s.name.toLowerCase() === rawLower ||
+            normalizeIcsFilename(s.name).toLowerCase() === cleanLower),
+      )
+      const subscription: Subscription = existing
+        ? { ...existing, name: cleanName }
+        : {
+            id: newId(),
+            name: cleanName,
+            kind: 'file',
+            url: 'Datei-Import',
+            enabled: false,
+            lastSync: null,
+            lastError: null,
+          }
+
+      const db = store.get()
+      const activeSemesterId = db.activeSemesterId ?? db.semesters[0]?.id ?? null
+      const createdModules: Module[] = []
+
+      const events = eventsFromIcs(text, subscription, db.modules, {
+        activeSemesterId,
+        autoCreateModules: true,
+        onModuleCreated: (mod) => {
+          createdModules.push(mod)
+          store.put('modules', mod)
+        },
+      })
+
       const release = await reserveSpace(jsonSize(events))
-      store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString() })
+      store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString(), lastError: null })
       store.replaceMany('events', (e) => e.subscriptionId === subscription.id, events)
       release()
-      return { count: events.length, error: null }
+      return { count: events.length, error: null, newModules: createdModules.length }
     },
 
     // ---- Moodle ----

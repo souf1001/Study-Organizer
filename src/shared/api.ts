@@ -52,14 +52,8 @@ export interface Api {
     stream(request: AiRequest, onText: (chunk: string) => void): AiStream
   }
 
-  calendar: {
-    /** Kalender-Abo anlegen (iCal-Adresse von Moodle, Stud.IP, ILIAS, OBS …) und sofort abgleichen */
-    subscribe(name: string, url: string): Promise<Subscription>
-    unsubscribe(id: ID): Promise<void>
-    sync(id: ID): Promise<SyncResult>
-    /** Einmaliger Import einer .ics-Datei (z. B. Stundenplan aus my h_da / HISinOne) */
-    importFile(name: string, text: string): Promise<SyncResult>
-  }
+  calendar: CalendarApi
+  tucan: TucanApi
 
   moodle: {
     siteInfo(url: string): Promise<MoodleSiteInfo>
@@ -84,4 +78,24 @@ export interface Api {
 export interface AiStream {
   done: Promise<string>
   cancel(): void
+}
+
+export interface CalendarApi {
+  /** Kalender-Abo anlegen (iCal-Adresse von Moodle, Stud.IP, ILIAS, OBS …) und sofort abgleichen */
+  subscribe(name: string, url: string): Promise<Subscription>
+  unsubscribe(id: ID): Promise<void>
+  removeSubscription(id: ID): Promise<void>
+  sync(id: ID): Promise<SyncResult>
+  /** Einmaliger Import einer .ics-Datei (z. B. Stundenplan aus my h_da / HISinOne) */
+  importFile(name: string, text: string): Promise<SyncResult>
+}
+
+export interface TucanWizardResult {
+  success: boolean
+  count?: number
+  error?: string
+}
+
+export interface TucanApi {
+  startWizard(): Promise<TucanWizardResult>
 }

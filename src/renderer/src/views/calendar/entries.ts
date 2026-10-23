@@ -14,10 +14,18 @@ export const EVENT_KINDS: Record<EventKind, string> = {
   deadline: 'Frist / Abgabe',
   lab: 'Praktikum',
   lecture: 'Vorlesung',
+  exercise: 'Übung',
   other: 'Termin',
 }
 
-const KIND_COLOR: Record<EventKind, ModuleColor> = { exam: 'red', deadline: 'orange', lab: 'green', lecture: 'blue', other: 'gray' }
+const KIND_COLOR: Record<EventKind, ModuleColor> = {
+  exam: 'red',
+  deadline: 'orange',
+  lab: 'green',
+  lecture: 'blue',
+  exercise: 'purple',
+  other: 'gray',
+}
 
 export function entriesBetween(db: Db, from: ISODate, to: ISODate): Entry[] {
   const moduleColor = (id: string | null): ModuleColor | undefined => db.modules.find((m) => m.id === id)?.color

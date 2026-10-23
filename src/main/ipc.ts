@@ -8,6 +8,7 @@ import { isSafeToOpen } from '../backend/files'
 import type { Service } from '../backend/service'
 import type { Store } from '../backend/store'
 import { moodleSsoLogin } from './moodle-sso'
+import { startTucanWizard } from './tucan-session'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (...args: any[]) => unknown
@@ -70,8 +71,10 @@ export function registerIpc(service: Service, store: Store): void {
     'ai:listModels': service.aiListModels,
     'calendar:subscribe': service.calendarSubscribe,
     'calendar:unsubscribe': service.calendarUnsubscribe,
+    'calendar:removeSubscription': service.calendarUnsubscribe,
     'calendar:sync': service.calendarSync,
     'calendar:importFile': service.calendarImportFile,
+    'tucan:startWizard': () => startTucanWizard(service, BrowserWindow.getFocusedWindow()),
     'moodle:siteInfo': service.moodleSiteInfo,
     'moodle:connect': service.moodleConnect,
     'moodle:connectSso': async (url: string) => {
