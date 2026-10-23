@@ -1,6 +1,6 @@
-# Baut die Installationspakete auf echten Windows-, macOS- und Linux-Maschinen.
-# - Bei jedem Push liegen die Dateien unter „Actions → Lauf → Artifacts“ zum Download bereit.
-# - Bei einem Tag wie v0.1.0 wird zusätzlich ein GitHub-Release mit allen Dateien erstellt.
+﻿# Baut die Installationspakete auf echten Windows-, macOS- und Linux-Maschinen.
+# - Bei jedem Push liegen die Dateien unter â€žActions â†’ Lauf â†’ Artifactsâ€œ zum Download bereit.
+# - Bei einem Tag wie v0.1.0 wird zusÃ¤tzlich ein GitHub-Release mit allen Dateien erstellt.
 name: Installationspakete
 
 on:
@@ -39,7 +39,7 @@ jobs:
       - name: Paket bauen
         run: npx electron-builder ${{ matrix.target }} --publish never
         env:
-          # Ohne eigenes Zertifikat wird nicht nach einer Signatur-Identität gesucht
+          # Ohne eigenes Zertifikat wird nicht nach einer Signatur-IdentitÃ¤t gesucht
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
@@ -60,3 +60,5 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
