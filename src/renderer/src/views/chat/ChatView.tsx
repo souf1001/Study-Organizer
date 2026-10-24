@@ -1,10 +1,10 @@
-// KI-Chat mit Unterlagen als Kontext (offene Bereiche, Modul, Ordner oder Auswahl).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import 'katex/dist/katex.min.css'
-import { ArrowUp, Copy, FilePlus, MessageCircle, RotateCcw, Settings, Square } from 'lucide-react'
+import { ArrowUp, Bot, Copy, FilePlus, MessageCircle, RotateCcw, Settings, Sparkles, Square } from 'lucide-react'
 import type { AiMessage, Db, ID, Item } from '@shared/types'
 import { api } from '@/lib/api'
 import { activeSemester, semesterModules } from '@/lib/actions'
+import { agentSystemPrompt, executeAgentAction, extractAgentActions } from '@/lib/agent'
 import { buildContext, collectDocs, createNoteFromMarkdown, markdownToHtml, renderMath, systemPrompt } from '@/lib/ai'
 import { useDb } from '@/lib/db'
 import { openView, useWorkspace, type View } from '@/lib/workspace'
@@ -105,6 +105,18 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, streaming?.text])
 
+  const suggestions = useMemo(() => {
+    if (db.settings.ai.agentEnabled) {
+      return [
+        'Streiche den nächsten Vorlesungstermin.',
+        'Erstelle eine Zusammenfassung als Notiz im Modul.',
+        'Erstelle eine Aufgabe: Übungsblatt abgeben bis Freitag.',
+        'Fasse die wichtigsten Punkte zusammen.',
+      ]
+    }
+    return SUGGESTIONS
+  }, [db.settings.ai.agentEnabled])
+
   if (!db.settings.ai.enabled) {
     return (
       <Empty
@@ -142,16 +154,36 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     setMessages(next)
     setInput('')
     setStreaming({ text: '', cancel: () => undefined })
+    const isAgent = Boolean(db.settings.ai.agentEnabled)
+
     try {
       const ctx = await loadContext()
+      const sysPrompt = isAgent
+        ? `${systemPrompt(ctx.text)}\n\n${agentSystemPrompt(db)}`
+        : systemPrompt(ctx.text)
+
       let answer = ''
-      const stream = api.ai.stream({ system: systemPrompt(ctx.text), messages: next }, (chunk) => {
+      const stream = api.ai.stream({ system: sysPrompt, messages: next, maxTokens: 16_384 }, (chunk) => {
         answer += chunk
         setStreaming((s) => (s ? { ...s, text: answer } : s))
       })
       setStreaming({ text: '', cancel: stream.cancel })
       const final = await stream.done
-      setMessages([...next, { role: 'assistant', content: final || answer }])
+      const fullResponse = final || answer
+
+      if (isAgent) {
+        const { cleanText, actions } = extractAgentActions(fullResponse)
+        let actionNotes = ''
+        for (const action of actions) {
+          const res = await executeAgentAction(action)
+          toast(res.message)
+          actionNotes += `\n\n> 🤖 **Agenten-Aktion:** ${res.message}`
+        }
+        const assistantText = (cleanText + actionNotes).trim() || fullResponse
+        setMessages([...next, { role: 'assistant', content: assistantText }])
+      } else {
+        setMessages([...next, { role: 'assistant', content: fullResponse }])
+      }
     } catch (error) {
       toastError(error)
     } finally {
@@ -192,6 +224,11 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
           }}
         />
         <span className="small faint">{items.length} Unterlagen</span>
+        {db.settings.ai.agentEnabled && (
+          <span className="badge color-purple row" style={{ gap: 4 }}>
+            <Bot size={13} /> Autonomer Agent aktiv
+          </span>
+        )}
         <span className="spacer" />
         {messages.length > 0 && (
           <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => setMessages([])}>
@@ -211,7 +248,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
                   : 'Die KI antwortet auf Basis der gewählten Unterlagen.'}
               </p>
               <div className="chat-suggestions">
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <button key={s} type="button" className="chat-suggestion" onClick={() => void send(s)}>
                     {s}
                   </button>
@@ -231,6 +268,18 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
                   <span className="spinner" /> Unterlagen werden gelesen …
                 </span>
               )}
+            </div>
+          )}
+          {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && !streaming && (
+            <div className="row" style={{ justifyContent: 'center', margin: '8px 0' }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Sparkles size={13} />}
+                onClick={() => void send('Bitte fahre genau an der vorherigen Stelle fort und schreibe den Text nahtlos weiter.')}
+              >
+                Antwort fortsetzen / weiter schreiben
+              </Button>
             </div>
           )}
           <div ref={endRef} />

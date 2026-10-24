@@ -13,6 +13,27 @@
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   font-size: var(--text-md);
+  position: relative;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  bottom: 0;
+  cursor: col-resize;
+  z-index: 20;
+  transition: background 0.15s ease;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar.resizing .sidebar-resize-handle {
+  background: var(--accent);
+}
+
+.sidebar.resizing {
+  user-select: none;
 }
 
 .sidebar-top {

@@ -210,6 +210,7 @@ export interface Settings {
     baseUrl: string
     language: 'de' | 'en'
     maxContextChars: number
+    agentEnabled?: boolean
   }
   moodle: {
     url: string
@@ -225,6 +226,7 @@ export interface Settings {
 export interface MoodleDiscussion {
   id: number
   discussionId: number
+  firstPostId?: number
   forumId: number
   courseId: number
   moduleId: string | null

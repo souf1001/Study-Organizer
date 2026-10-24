@@ -15,6 +15,7 @@ export type View =
   | { type: 'folder'; id: ID }
   | { type: 'item'; id: ID }
   | { type: 'settings'; section?: string }
+  | { type: 'launcher' }
 
 export interface Pane {
   id: string

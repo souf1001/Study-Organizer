@@ -132,6 +132,155 @@ describe('Moodle Foren & Ankündigungen', () => {
     expect(reply.postid).toBe(99)
   })
 
+  it('trennt discussionId und firstPostId korrekt bei mod_forum_get_forum_discussions_paginated', async () => {
+    const fetchImpl = fakeFetch((fn) => {
+      if (fn === 'mod_forum_get_forum_discussions_paginated') {
+        return {
+          discussions: [
+            {
+              id: 9991, // Post ID in paginated API
+              discussion: 4442, // Discussion ID
+              forumid: 1,
+              course: 101,
+              name: 'Thema',
+              subject: 'Thema',
+              message: '<p>Inhalt</p>',
+              userfullname: 'Dozent',
+              created: 1_700_000_000,
+              numreplies: 0,
+              pinned: false,
+              firstpost: 9991,
+            },
+          ],
+        }
+      }
+      if (fn === 'mod_assign_get_assignments') return { courses: [] }
+      if (fn === 'core_calendar_get_calendar_events') return { events: [] }
+      if (fn === 'mod_forum_get_forums_by_courses') {
+        return [{ id: 1, course: 101, type: 'general', name: 'Forum' }]
+      }
+      return {}
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const rawDiscussions = await client.discussions(1)
+    expect(rawDiscussions).toHaveLength(1)
+    expect(rawDiscussions[0].discussion).toBe(4442)
+    expect(rawDiscussions[0].id).toBe(9991)
+    expect(rawDiscussions[0].firstpost).toBe(9991)
+
+    // Teste syncMoodle mapping
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-disc-map-'))
+    const store = await Store.open(dir)
+    try {
+      const module = newModule('sem1', { name: 'Test' })
+      store.put('modules', module)
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            courseMap: { '101': module.id },
+          },
+        },
+      })
+      await syncMoodle(store, client)
+      const mapped = store.get().moodleDiscussions
+      expect(mapped).toHaveLength(1)
+      expect(mapped[0].discussionId).toBe(4442)
+      expect(mapped[0].firstPostId).toBe(9991)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fängt cannotfindrecord in discussionPosts ab und liefert leeres Array', async () => {
+    const fetchImpl = fakeFetch((fn) => {
+      if (fn === 'mod_forum_get_discussion_posts') {
+        return {
+          exception: 'dml_missing_record_exception',
+          errorcode: 'cannotfindrecord',
+          message: 'Datensatz nicht gefunden',
+        }
+      }
+      if (fn === 'mod_forum_get_forum_discussion_posts') {
+        return {
+          exception: 'dml_missing_record_exception',
+          errorcode: 'cannotfindrecord',
+          message: 'Datensatz nicht gefunden',
+        }
+      }
+      throw new Error(`Unerwarteter Aufruf: ${fn}`)
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const posts = await client.discussionPosts(99999)
+    expect(posts).toEqual([])
+  })
+
+  it('löst postid zu discussionid auf wenn cannotfindrecord auftritt', async () => {
+    const fetchImpl = fakeFetch((fn, body) => {
+      if (fn === 'mod_forum_get_discussion_posts') {
+        const discId = body.get('discussionid')
+        if (discId === '9991') {
+          return {
+            exception: 'dml_missing_record_exception',
+            errorcode: 'cannotfindrecord',
+            message: 'Datensatz nicht gefunden',
+          }
+        }
+        if (discId === '4442') {
+          return {
+            posts: [
+              {
+                id: 9991,
+                discussion: 4442,
+                parent: 0,
+                subject: 'Thema',
+                message: '<p>Erster Post</p>',
+                userfullname: 'Dozent',
+                created: 1_700_000_000,
+              },
+              {
+                id: 9992,
+                discussion: 4442,
+                parent: 9991,
+                subject: 'Re: Thema',
+                message: '<p>Antwort</p>',
+                userfullname: 'Student',
+                created: 1_700_001_000,
+              },
+            ],
+          }
+        }
+      }
+      if (fn === 'mod_forum_get_forum_discussion_posts') {
+        return {
+          exception: 'dml_missing_record_exception',
+          errorcode: 'cannotfindrecord',
+          message: 'Datensatz nicht gefunden',
+        }
+      }
+      if (fn === 'mod_forum_get_discussion_post') {
+        expect(body.get('postid')).toBe('9991')
+        return {
+          post: {
+            id: 9991,
+            discussion: 4442,
+            subject: 'Thema',
+          },
+        }
+      }
+      throw new Error(`Unerwarteter Aufruf: ${fn}`)
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const posts = await client.discussionPosts(9991)
+    expect(posts).toHaveLength(2)
+    expect(posts[0].discussionId).toBe(4442)
+    expect(posts[1].userFullName).toBe('Student')
+  })
+
   it('synchronisiert Foren und Ankündigungen in die Modul-Datenbank', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-forum-'))
     const store = await Store.open(dir)

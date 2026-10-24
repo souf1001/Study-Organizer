@@ -6,6 +6,7 @@ import { marked } from 'marked'
 import { create } from 'zustand'
 import { newNoteItem } from '@shared/defaults'
 import { shortDate } from '@shared/dates'
+import { repairMarkdown } from '@shared/markdown'
 import type { AiMessage, Db, Folder, ID, Item } from '@shared/types'
 import { toastError } from '@/ui/Toast'
 import { buildExtensions } from '@/views/note/extensions'
@@ -117,10 +118,17 @@ export function isAiReady(): boolean {
   return getDb().settings.ai.enabled
 }
 
+export { repairMarkdown }
+
 /** Streamt eine Antwort und zeigt dabei den Fortschritt an */
-export async function runAi(title: string, system: string, messages: AiMessage[]): Promise<string | null> {
+export async function runAi(
+  title: string,
+  system: string,
+  messages: AiMessage[],
+  maxTokens = 8_192,
+): Promise<string | null> {
   let text = ''
-  const stream = api.ai.stream({ system, messages }, (chunk) => {
+  const stream = api.ai.stream({ system, messages, maxTokens }, (chunk) => {
     text += chunk
     useAiTask.setState((s) => (s.task ? { task: { ...s.task, text } } : s))
   })
@@ -148,8 +156,24 @@ export async function runAi(title: string, system: string, messages: AiMessage[]
 /** Legt eine Notiz aus Markdown an und öffnet sie */
 export async function createNoteFromMarkdown(title: string, markdown: string, moduleId: ID, folderId: ID | null): Promise<Item> {
   const db = getDb()
-  const html = markdownToHtml(markdown)
-  const content = generateJSON(html, buildExtensions({ insertImage: () => undefined, editMath: () => undefined }))
+  const repaired = repairMarkdown(markdown)
+  const html = markdownToHtml(repaired)
+  let content
+  try {
+    content = generateJSON(html, buildExtensions({ insertImage: () => undefined, editMath: () => undefined }))
+  } catch {
+    content = {
+      type: 'doc',
+      content: repaired
+        .split('\n\n')
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((para) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: para }],
+        })),
+    }
+  }
   const item = { ...newNoteItem(moduleId, folderId, title), source: 'ai' as const }
   putRecord('items', item)
   await api.writeNote(item.id, {
@@ -159,7 +183,7 @@ export async function createNoteFromMarkdown(title: string, markdown: string, mo
     paperColor: db.settings.editor.paperColor,
     font: db.settings.editor.font,
     height: 1100,
-    text: markdown,
+    text: repaired,
   })
   openView({ type: 'item', id: item.id }, { metaKey: true, ctrlKey: false })
   return item
@@ -192,10 +216,14 @@ async function summarize(title: string, prompt: string, items: Item[], moduleId:
   const docs = await collectDocs(items)
   if (docs.length === 0) return toastError(new Error('Keine lesbaren Inhalte gefunden (Notizen, PDFs oder Textdateien).'))
   const { text, truncated } = buildContext(docs, getDb().settings.ai.maxContextChars)
-  const answer = await runAi(title, systemPrompt(text), [{ role: 'user', content: prompt }])
-  if (!answer) return
-  const note = truncated ? `${answer}\n\n---\n*Hinweis: Die Unterlagen waren sehr lang und wurden für die KI gekürzt.*` : answer
-  await createNoteFromMarkdown(title, note, moduleId, folderId)
+  try {
+    const answer = await runAi(title, systemPrompt(text), [{ role: 'user', content: prompt }])
+    if (!answer) return
+    const note = truncated ? `${answer}\n\n---\n*Hinweis: Die Unterlagen waren sehr lang und wurden für die KI gekürzt.*` : answer
+    await createNoteFromMarkdown(title, note, moduleId, folderId)
+  } catch (err) {
+    toastError(err)
+  }
 }
 
 const summarizable = (items: Item[]) => items.filter((i) => !i.attachedTo && i.source !== 'ai')

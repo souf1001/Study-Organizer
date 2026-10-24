@@ -161,6 +161,19 @@ export function AiSettings() {
         </SettingRow>
       </SettingGroup>
 
+      <SettingGroup title="Experimentelle Funktionen">
+        <SettingRow
+          label="Autonomer KI-Agent (Beta)"
+          description="Ermöglicht dem KI-Chat, Aktionen im Study-Organizer autonom auszuführen (z. B. Termine streichen/absagen, Zusammenfassungen direkt als Notiz im Modulverzeichnis anlegen, Aufgaben erstellen oder abhaken)."
+        >
+          <Switch
+            checked={Boolean(ai.agentEnabled)}
+            onChange={(agentEnabled) => updateSettings('ai', { agentEnabled })}
+            label="Agenten-Aktionen aktivieren"
+          />
+        </SettingRow>
+      </SettingGroup>
+
       <p className="small muted" style={{ marginTop: 16 }}>
         Datenschutz: Bei einer Zusammenfassung oder Chat-Frage werden die gewählten Notizen und Folientexte an den eingestellten Anbieter gesendet. Lokale Anbieter
         (Ollama, LM Studio) verlassen deinen Rechner nicht.

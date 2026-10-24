@@ -1,0 +1,96 @@
+.launcher-page {
+  animation: fadeIn 0.15s ease;
+}
+
+.launcher-header {
+  margin-bottom: 24px;
+}
+
+.launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.launcher-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--text);
+  gap: 8px;
+}
+
+.launcher-tile:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.launcher-tile-icon {
+  color: var(--accent);
+}
+
+.launcher-tile-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.launcher-tile-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.launcher-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.launcher-module-card {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--text);
+}
+
+.launcher-module-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.launcher-module-name {
+  font-weight: 600;
+  font-size: var(--text-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-module-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  margin-top: 3px;
+}
+
+.launcher-module-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}

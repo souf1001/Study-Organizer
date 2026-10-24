@@ -17,6 +17,8 @@ import { TasksView } from '@/views/tasks/TasksView'
 import { CalendarView } from '@/views/calendar/CalendarView'
 import { SettingsView } from '@/views/settings/SettingsView'
 
+import { LauncherView } from '@/views/launcher/LauncherView'
+
 const ItemView = lazy(() => import('@/views/item/ItemView'))
 const ChatView = lazy(() => import('@/views/chat/ChatView'))
 
@@ -42,6 +44,8 @@ function crumbsFor(db: Db, view: View): Crumb[] {
       return [{ label: 'KI-Chat', view }]
     case 'settings':
       return [{ label: 'Einstellungen', view }]
+    case 'launcher':
+      return [{ label: 'Neuer Bereich', view }]
     case 'module':
       return moduleCrumb(view.id)
     case 'folder': {
@@ -79,6 +83,8 @@ function ViewContent({ view, paneId }: { view: View; paneId: string }) {
       return <SettingsView section={view.section} paneId={paneId} />
     case 'chat':
       return <ChatView view={view} paneId={paneId} />
+    case 'launcher':
+      return <LauncherView paneId={paneId} />
     case 'module': {
       const module = db.modules.find((m) => m.id === view.id)
       return module ? <ModuleView key={module.id} module={module} tab={view.tab ?? 'overview'} paneId={paneId} /> : missing
@@ -125,9 +131,9 @@ function PaneHeader({ pane, count }: { pane: Pane; count: number }) {
         ))}
       </nav>
       <IconButton
-        label={`Nebeneinander öffnen (${modKey} Klick)`}
+        label="Neuen Bereich daneben öffnen"
         disabled={count >= MAX_PANES}
-        onClick={() => open(pane.view, { newPane: true })}
+        onClick={() => open({ type: 'launcher' }, { newPane: true })}
       >
         <Columns2 />
       </IconButton>

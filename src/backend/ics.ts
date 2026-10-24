@@ -83,16 +83,28 @@ function decodeIcsBytes(bytes: Uint8Array): string {
  */
 export function combineIcs(icsList: (string | Buffer | Uint8Array)[]): string {
   const events: string[] = []
-  const seenUids = new Set<string>()
+  const seenEventKeys = new Set<string>()
 
   for (const item of icsList) {
     const text = decodeIcsText(item)
     const matches = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gi) ?? []
     for (const block of matches) {
-      const uidMatch = block.match(/UID:(.+?)[\r\n]/i)
-      const uid = uidMatch ? uidMatch[1].trim() : block.trim()
-      if (!seenUids.has(uid)) {
-        seenUids.add(uid)
+      const uidMatch = block.match(/^UID:(.+?)$/mi)
+      const dtstartMatch = block.match(/^DTSTART(?:;.+?)?:(.+?)$/mi)
+      const recurrenceIdMatch = block.match(/^RECURRENCE-ID(?:;.+?)?:(.+?)$/mi)
+      const rruleMatch = block.match(/^RRULE:(.+?)$/mi)
+
+      const uid = uidMatch ? uidMatch[1].trim() : ''
+      const dtstart = dtstartMatch ? dtstartMatch[1].trim() : ''
+      const recurrenceId = recurrenceIdMatch ? recurrenceIdMatch[1].trim() : ''
+      const rrule = rruleMatch ? rruleMatch[1].trim() : ''
+
+      const dedupKey = uid
+        ? `${uid}#${dtstart}#${recurrenceId}#${rrule}`
+        : block.trim()
+
+      if (!seenEventKeys.has(dedupKey)) {
+        seenEventKeys.add(dedupKey)
         events.push(block.trim())
       }
     }
@@ -232,7 +244,7 @@ export function classifyEvent(
 }
 
 export function stripModuleSuffix(code: string): string {
-  return code.trim().replace(/-(?:vl|ue|üe|pr|se|tut|iv|pl|sl|ko|ex|vo|ku|pj)$/i, '')
+  return code.trim().replace(/-(?:vl|ue|ueb|üe|pr|se|tut|iv|pl|sl|ko|ex|vo|ku|pj|lab)$/i, '')
 }
 
 const ROMAN_NUMERALS: [RegExp, string][] = [

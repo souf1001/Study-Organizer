@@ -1,5 +1,5 @@
 // Modulseite: Übersicht, Termine (mit Ordner pro Termin), Praktikum, Dateien, Aufgaben.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   BookOpen,
   CalendarDays,
@@ -227,6 +227,7 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
   const [posts, setPosts] = useState<MoodlePost[] | null>(null)
   const [loadingPosts, setLoadingPosts] = useState(false)
   const [showReplyBox, setShowReplyBox] = useState(false)
+  const [replyTargetPostId, setReplyTargetPostId] = useState<number | null>(null)
   const [replySubject, setReplySubject] = useState(`Re: ${discussion.subject}`)
   const [replyMessage, setReplyMessage] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
@@ -254,14 +255,16 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
     if (!replyMessage.trim()) return
     setSendingReply(true)
     try {
+      const targetId = replyTargetPostId ?? discussion.firstPostId ?? discussion.discussionId
       await api.moodle.reply(
-        discussion.discussionId,
+        targetId,
         replySubject.trim() || `Re: ${discussion.subject}`,
         replyMessage.trim(),
       )
       toast('Antwort erfolgreich gesendet!')
       setReplyMessage('')
       setShowReplyBox(false)
+      setReplyTargetPostId(null)
       // Reload posts
       const updated = await api.moodle.posts(discussion.discussionId)
       setPosts(updated)
@@ -316,7 +319,11 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
           size="sm"
           variant="default"
           icon={<CornerDownRight />}
-          onClick={() => setShowReplyBox((v) => !v)}
+          onClick={() => {
+            setReplyTargetPostId(discussion.firstPostId ?? discussion.discussionId)
+            setReplySubject(`Re: ${discussion.subject}`)
+            setShowReplyBox((v) => !v)
+          }}
         >
           Antworten
         </Button>
@@ -335,19 +342,26 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
             rows={3}
             onChange={(e) => setReplyMessage(e.target.value)}
           />
-          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-            <Button size="sm" variant="ghost" onClick={() => setShowReplyBox(false)}>
-              Abbrechen
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<Send />}
-              disabled={!replyMessage.trim() || sendingReply}
-              onClick={() => void handleSendReply()}
-            >
-              {sendingReply ? 'Sendet…' : 'Abschicken'}
-            </Button>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="small muted">
+              {replyTargetPostId && replyTargetPostId !== (discussion.firstPostId ?? discussion.discussionId)
+                ? 'Antwort auf spezifischen Beitrag'
+                : 'Antwort auf Thema'}
+            </span>
+            <div className="row" style={{ gap: 8 }}>
+              <Button size="sm" variant="ghost" onClick={() => setShowReplyBox(false)}>
+                Abbrechen
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Send />}
+                disabled={!replyMessage.trim() || sendingReply}
+                onClick={() => void handleSendReply()}
+              >
+                {sendingReply ? 'Sendet…' : 'Abschicken'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -360,12 +374,26 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
           )}
           {posts &&
             posts
-              .filter((p) => p.id !== discussion.id && p.parentId !== 0)
+              .filter((p) => p.id !== discussion.id && p.id !== discussion.firstPostId && p.parentId !== 0)
               .map((post) => (
                 <div key={post.id} className="post-reply">
-                  <div className="post-header">
-                    <span className="post-author">{post.userFullName}</span>
-                    <span className="meta small">{formatDateTime(post.timeCreated)}</span>
+                  <div className="post-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="row" style={{ gap: 8 }}>
+                      <span className="post-author">{post.userFullName}</span>
+                      <span className="meta small">{formatDateTime(post.timeCreated)}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<CornerDownRight />}
+                      onClick={() => {
+                        setReplyTargetPostId(post.id)
+                        setReplySubject(post.subject.startsWith('Re:') ? post.subject : `Re: ${post.subject}`)
+                        setShowReplyBox(true)
+                      }}
+                    >
+                      Antworten
+                    </Button>
                   </div>
                   <div
                     className="post-body"
@@ -382,7 +410,34 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
 function ModuleAnnouncements({ module }: { module: Module }) {
   const db = useDb()
   const [syncing, setSyncing] = useState(false)
+  const [forumFilter, setForumFilter] = useState<'all' | 'announcements' | number>('all')
   const discussions = db.moodleDiscussions.filter((d) => d.moduleId === module.id)
+
+  const forums = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; count: number }>()
+    for (const d of discussions) {
+      if (d.forumId && d.forumName && !d.isAnnouncement) {
+        const existing = map.get(d.forumId)
+        if (existing) {
+          existing.count++
+        } else {
+          map.set(d.forumId, { id: d.forumId, name: d.forumName, count: 1 })
+        }
+      }
+    }
+    return Array.from(map.values())
+  }, [discussions])
+
+  const announcementsCount = useMemo(
+    () => discussions.filter((d) => d.isAnnouncement).length,
+    [discussions],
+  )
+
+  const filteredDiscussions = useMemo(() => {
+    if (forumFilter === 'all') return discussions
+    if (forumFilter === 'announcements') return discussions.filter((d) => d.isAnnouncement)
+    return discussions.filter((d) => d.forumId === forumFilter)
+  }, [discussions, forumFilter])
 
   const handleSync = async () => {
     setSyncing(true)
@@ -417,6 +472,37 @@ function ModuleAnnouncements({ module }: { module: Module }) {
         </Button>
       </div>
 
+      {discussions.length > 0 && (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Button
+            size="sm"
+            variant={forumFilter === 'all' ? 'primary' : 'ghost'}
+            onClick={() => setForumFilter('all')}
+          >
+            Alle ({discussions.length})
+          </Button>
+          {announcementsCount > 0 && (
+            <Button
+              size="sm"
+              variant={forumFilter === 'announcements' ? 'primary' : 'ghost'}
+              onClick={() => setForumFilter('announcements')}
+            >
+              📢 Nur Ankündigungen ({announcementsCount})
+            </Button>
+          )}
+          {forums.map((f) => (
+            <Button
+              key={f.id}
+              size="sm"
+              variant={forumFilter === f.id ? 'primary' : 'ghost'}
+              onClick={() => setForumFilter(f.id)}
+            >
+              Forum: {f.name} ({f.count})
+            </Button>
+          ))}
+        </div>
+      )}
+
       {discussions.length === 0 ? (
         <Empty
           icon={<MessageSquare />}
@@ -429,9 +515,13 @@ function ModuleAnnouncements({ module }: { module: Module }) {
         >
           Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge synchronisiert.
         </Empty>
+      ) : filteredDiscussions.length === 0 ? (
+        <Empty icon={<MessageSquare />} title="Keine Beiträge in dieser Ansicht">
+          In diesem Filter wurden keine Forenbeiträge gefunden.
+        </Empty>
       ) : (
         <div className="stack" style={{ gap: 14 }}>
-          {discussions.map((d) => (
+          {filteredDiscussions.map((d) => (
             <DiscussionCard key={d.id} discussion={d} />
           ))}
         </div>

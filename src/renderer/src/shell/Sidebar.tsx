@@ -61,6 +61,16 @@ const useExpanded = create<{ ids: string[]; toggle: (id: string) => void; open: 
   ),
 )
 
+export const useSidebarWidth = create<{ width: number; setWidth: (w: number) => void }>()(
+  persist(
+    (set) => ({
+      width: 252,
+      setWidth: (width) => set({ width: Math.max(180, Math.min(600, Math.round(width))) }),
+    }),
+    { name: 'study-organizer-sidebar-width' },
+  ),
+)
+
 function useActiveView(): View | undefined {
   return useWorkspace((s) => s.panes.find((p) => p.id === s.activeId)?.view)
 }
@@ -267,6 +277,26 @@ export function Sidebar() {
   const [moduleDialog, setModuleDialog] = useState<{ module?: Module } | null>(null)
   const [semesterDialog, setSemesterDialog] = useState(false)
 
+  const { width, setWidth } = useSidebarWidth()
+  const [resizing, setResizing] = useState(false)
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setResizing(true)
+    const startX = e.clientX
+    const startWidth = width
+    const onMouseMove = (moveEvent: globalThis.MouseEvent) => {
+      setWidth(startWidth + (moveEvent.clientX - startX))
+    }
+    const onMouseUp = () => {
+      setResizing(false)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
   const openTasks = db.tasks.filter((t) => !t.done && t.due && isoDateOf(t.due) <= today()).length
   const initials = (db.profile.name || 'S').trim().slice(0, 1).toUpperCase()
 
@@ -286,7 +316,7 @@ export function Sidebar() {
     ])
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${resizing ? 'resizing' : ''}`} style={{ width: `${width}px` }}>
       <div className="sidebar-top drag">
         <button type="button" className="semester-switch" onClick={semesterMenu}>
           <span className="avatar">{initials}</span>
@@ -337,6 +367,13 @@ export function Sidebar() {
       <div className="sidebar-bottom">
         <NavItem icon={<Settings />} label="Einstellungen" view={{ type: 'settings' }} />
       </div>
+
+      <div
+        className="sidebar-resize-handle"
+        title="Breite anpassen (Doppelklick für Standardbreite)"
+        onMouseDown={startResize}
+        onDoubleClick={() => setWidth(252)}
+      />
 
       {moduleDialog && semester && (
         <ModuleDialog semester={semester} module={moduleDialog.module} onClose={() => setModuleDialog(null)} />

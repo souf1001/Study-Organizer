@@ -243,11 +243,54 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     },
     moodleSync: async (): Promise<MoodleSyncResult> => syncMoodle(store, await moodleClient(), reserveSpace),
     moodlePosts: async (discussionId: number): Promise<MoodlePost[]> => {
-      return (await moodleClient()).discussionPosts(discussionId)
+      const client = await moodleClient()
+      const disc = store
+        .get()
+        .moodleDiscussions.find((d) => d.id === discussionId || d.discussionId === discussionId || d.firstPostId === discussionId)
+      try {
+        const posts = await client.discussionPosts(discussionId)
+        if (posts.length > 0) return posts
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!msg.includes('cannotfindrecord') && !msg.includes('Datensatz')) throw err
+      }
+      if (disc) {
+        const candidates = [disc.discussionId, disc.id, disc.firstPostId].filter(
+          (cand): cand is number => typeof cand === 'number' && cand !== discussionId,
+        )
+        for (const candidate of candidates) {
+          try {
+            const posts = await client.discussionPosts(candidate)
+            if (posts.length > 0) return posts
+          } catch {
+            // Weiter mit nächstem Kandidaten
+          }
+        }
+      }
+      return []
     },
-    moodleReply: async (postId: number, subject: string, message: string): Promise<{ postId: number }> => {
-      const res = await (await moodleClient()).replyPost(postId, subject, message)
-      return { postId: res.postid }
+    moodleReply: async (postIdOrDiscussionId: number, subject: string, message: string): Promise<{ postId: number }> => {
+      const client = await moodleClient()
+      const disc = store.get().moodleDiscussions.find((d) => d.id === postIdOrDiscussionId || d.discussionId === postIdOrDiscussionId)
+      const targetPostId = disc?.firstPostId ?? postIdOrDiscussionId
+      try {
+        const res = await client.replyPost(targetPostId, subject, message)
+        return { postId: res.postid }
+      } catch (err) {
+        if (disc && targetPostId === postIdOrDiscussionId) {
+          try {
+            const posts = await client.discussionPosts(disc.discussionId)
+            const rootPost = posts.find((p) => p.parentId === 0) || posts[0]
+            if (rootPost && rootPost.id !== targetPostId) {
+              const retryRes = await client.replyPost(rootPost.id, subject, message)
+              return { postId: retryRes.postid }
+            }
+          } catch {
+            // Re-throw
+          }
+        }
+        throw err
+      }
     },
     moodleDisconnect: async () => {
       await secrets.remove('moodle')

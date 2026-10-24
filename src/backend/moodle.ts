@@ -210,6 +210,8 @@ export class MoodleClient {
 
   async discussions(forumid: number): Promise<{
     id: number
+    discussion?: number
+    firstpost?: number
     name: string
     forumid?: number
     course?: number
@@ -227,6 +229,8 @@ export class MoodleClient {
       const res = await this.call<{
         discussions?: {
           id: number
+          discussion?: number
+          firstpost?: number
           name: string
           forumid?: number
           course?: number
@@ -253,6 +257,8 @@ export class MoodleClient {
     const fallback = await this.call<{
       discussions?: {
         id: number
+        discussion?: number
+        firstpost?: number
         name: string
         forumid?: number
         course?: number
@@ -270,32 +276,104 @@ export class MoodleClient {
     return fallback?.discussions ?? []
   }
 
+  async getDiscussionPost(postid: number): Promise<{ id: number; discussion: number } | null> {
+    try {
+      const res = await this.call<{
+        post?: { id: number; discussion: number }
+      }>('mod_forum_get_discussion_post', { postid })
+      if (res?.post?.discussion) {
+        return { id: res.post.id, discussion: res.post.discussion }
+      }
+    } catch {
+      // Ignoriere, falls nicht unterstützt
+    }
+    return null
+  }
+
   async discussionPosts(discussionid: number): Promise<MoodlePost[]> {
-    const res = await this.call<{
-      posts?: {
-        id: number
-        discussionid: number
-        parentid: number
-        subject: string
-        message: string
-        userfullname: string
-        userpictureurl?: string
-        timecreated: number
-        timemodified?: number
-        canreply?: boolean
-      }[]
-    }>('mod_forum_get_forum_discussion_posts', { discussionid })
-    return (res?.posts ?? []).map((p) => ({
-      id: p.id,
-      discussionId: p.discussionid,
-      parentId: p.parentid,
-      subject: p.subject,
-      message: p.message,
-      userFullName: p.userfullname,
-      userPictureUrl: p.userpictureurl,
-      timeCreated: toIso(p.timecreated),
-      canReply: p.canreply,
-    }))
+    try {
+      const res = await this.call<{
+        posts?: {
+          id: number
+          discussion?: number
+          discussionid?: number
+          parent?: number
+          parentid?: number
+          subject?: string
+          message?: string
+          author?: { fullname?: string; urls?: { profileimage?: string } }
+          userfullname?: string
+          userpictureurl?: string
+          created?: number
+          timecreated?: number
+          capabilities?: { reply?: boolean }
+          canreply?: boolean
+        }[]
+      }>('mod_forum_get_discussion_posts', { discussionid })
+      if (res && Array.isArray(res.posts)) {
+        return res.posts.map((p) => ({
+          id: p.id,
+          discussionId: p.discussion ?? p.discussionid ?? discussionid,
+          parentId: p.parent ?? p.parentid ?? 0,
+          subject: p.subject || '',
+          message: p.message || '',
+          userFullName: p.author?.fullname ?? p.userfullname ?? 'Moodle-Nutzer',
+          userPictureUrl: p.author?.urls?.profileimage ?? p.userpictureurl,
+          timeCreated: toIso(p.created ?? p.timecreated ?? Math.floor(Date.now() / 1000)),
+          canReply: p.capabilities?.reply ?? p.canreply,
+        }))
+      }
+    } catch {
+      // Fallback zu mod_forum_get_forum_discussion_posts
+    }
+
+    try {
+      const legacyRes = await this.call<{
+        posts?: {
+          id: number
+          discussionid?: number
+          discussion?: number
+          parentid?: number
+          parent?: number
+          subject?: string
+          message?: string
+          userfullname?: string
+          userpictureurl?: string
+          timecreated?: number
+          created?: number
+          canreply?: boolean
+        }[]
+      }>('mod_forum_get_forum_discussion_posts', { discussionid })
+      if (legacyRes && Array.isArray(legacyRes.posts)) {
+        return legacyRes.posts.map((p) => ({
+          id: p.id,
+          discussionId: p.discussionid ?? p.discussion ?? discussionid,
+          parentId: p.parentid ?? p.parent ?? 0,
+          subject: p.subject || '',
+          message: p.message || '',
+          userFullName: p.userfullname || 'Moodle-Nutzer',
+          userPictureUrl: p.userpictureurl,
+          timeCreated: toIso(p.timecreated ?? p.created ?? Math.floor(Date.now() / 1000)),
+          canReply: p.canreply,
+        }))
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('cannotfindrecord') || msg.includes('Datensatz')) {
+        // Möglicherweise wurde versehentlich eine Post-ID übergeben: Auflösen versuchen
+        const resolved = await this.getDiscussionPost(discussionid)
+        if (resolved && resolved.discussion && resolved.discussion !== discussionid) {
+          try {
+            return await this.discussionPosts(resolved.discussion)
+          } catch {
+            return []
+          }
+        }
+        return []
+      }
+      throw err
+    }
+    return []
   }
 
   async replyPost(postid: number, subject: string, message: string): Promise<{ postid: number }> {
@@ -436,9 +514,12 @@ export async function syncMoodle(
         const discussions = Array.isArray(discussionsRaw) ? discussionsRaw : []
         const isNews = forum.type === 'news' || /ankündigung|nachricht|news|announcement/i.test(forum.name)
         for (const d of discussions) {
+          const discId = d.discussion ?? d.id
+          const rootPostId = d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId)
           allDiscussions.push({
-            id: d.id,
-            discussionId: d.id,
+            id: discId,
+            discussionId: discId,
+            firstPostId: rootPostId,
             forumId: forum.id,
             courseId: forum.course,
             moduleId: moduleFor(forum.course),

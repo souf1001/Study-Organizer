@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
     sessionFolderName: '{kind} {n} · {date}',
   },
   calendar: { startHour: 8, endHour: 20, showWeekends: false, defaultView: 'week', syncIntervalHours: 6 },
-  ai: { enabled: false, provider: 'groq', model: '', baseUrl: '', language: 'de', maxContextChars: 60_000 },
+  ai: { enabled: false, provider: 'groq', model: '', baseUrl: '', language: 'de', maxContextChars: 60_000, agentEnabled: false },
   moodle: { url: '', siteName: '', userId: null, courseMap: {}, syncFiles: false, syncIntervalMinutes: 10, lastSync: null },
 }
 
