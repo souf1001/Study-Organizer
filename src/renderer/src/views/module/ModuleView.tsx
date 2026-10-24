@@ -116,7 +116,28 @@ function SessionList({
         const count = folder ? db.items.filter((it) => it.folderId === folder.id && !it.attachedTo).length : 0
         const state = occ.date < day ? 'past' : occ.date === day ? 'today' : ''
         return (
-          <div key={occ.slotId + occ.date} className={`session-row ${state}`} onClick={(e) => openSession(occ, e)}>
+          <div
+            key={occ.slotId + occ.date}
+            className={`session-row ${state}`}
+            onClick={(e) => openSession(occ, e)}
+            onContextMenu={(e) => {
+              if (occ.event && onEditEvent) {
+                e.preventDefault()
+                showMenu(e, [
+                  {
+                    label: 'Termin bearbeiten / Modulzuweisung',
+                    icon: <Pencil size={14} />,
+                    onClick: () => onEditEvent(occ.event!),
+                  },
+                  {
+                    label: folder ? 'Ordner öffnen' : 'Ordner anlegen',
+                    icon: <FolderOpen size={14} />,
+                    onClick: () => openSession(occ),
+                  },
+                ])
+              }
+            }}
+          >
             <span className="num">{occ.index || '–'}</span>
             <span className="tabular">
               {formatDay(occ.date)}
@@ -172,7 +193,13 @@ function SessionList({
   )
 }
 
-function Overview({ module, occurrences }: { module: Module; occurrences: Occurrence[] }) {
+function Overview({
+  module,
+  occurrences,
+}: {
+  module: Module
+  occurrences: (Occurrence & { event?: CalendarEvent; title?: string })[]
+}) {
   const db = useDb()
   const day = today()
   const next = occurrences.find((o) => o.date >= day)
@@ -206,26 +233,47 @@ function Overview({ module, occurrences }: { module: Module; occurrences: Occurr
       )}
 
       <div>
-        <div className="section-title">Wöchentliche Termine</div>
-        {module.schedule.length === 0 && <p className="small muted">Noch keine Termine eingetragen.</p>}
-        <div className="list">
-          {module.schedule.map((s) => (
-            <div key={s.id} className="list-row slot-summary">
-              <span>{SESSION_LABELS[s.kind]}</span>
-              <span className="small muted">
-                {WEEKDAYS[s.weekday - 1]}, {s.start}–{s.end}
-                {s.everyTwoWeeks && ' · alle 2 Wochen'}
-              </span>
-              <span className="small muted row">
-                {s.room && (
-                  <>
-                    <MapPin size={13} /> {s.room}
-                  </>
-                )}
-              </span>
-            </div>
-          ))}
+        <div className="section-title">
+          {module.schedule.length > 0 ? 'Wöchentliche Termine' : `Nächste Termine (${occurrences.length} gesamt)`}
         </div>
+        {module.schedule.length === 0 && occurrences.length === 0 && (
+          <p className="small muted">Noch keine Termine eingetragen oder importiert.</p>
+        )}
+        {module.schedule.length > 0 ? (
+          <div className="list">
+            {module.schedule.map((s) => (
+              <div key={s.id} className="list-row slot-summary">
+                <span>{SESSION_LABELS[s.kind]}</span>
+                <span className="small muted">
+                  {WEEKDAYS[s.weekday - 1]}, {s.start}–{s.end}
+                  {s.everyTwoWeeks && ' · alle 2 Wochen'}
+                </span>
+                <span className="small muted row">
+                  {s.room && (
+                    <>
+                      <MapPin size={13} /> {s.room}
+                    </>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : occurrences.length > 0 ? (
+          <div className="list">
+            {occurrences.filter((o) => o.date >= day).slice(0, 4).map((occ) => (
+              <div key={occ.slotId + occ.date} className="list-row clickable" onClick={(e) => openSession(occ, e)}>
+                <span className="tabular small muted" style={{ minWidth: 80 }}>{formatDay(occ.date)}</span>
+                <span className="small muted tabular hide-narrow">{occ.start ? `${occ.start}–${occ.end}` : ''}</span>
+                <span className="truncate">{occ.title && occ.title !== module.name ? occ.title : SESSION_LABELS[occ.kind]}</span>
+                {occ.room && (
+                  <span className="small muted row">
+                    <MapPin size={13} /> {occ.room}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {(exams.length > 0 || openTasks.length > 0) && (
@@ -599,7 +647,21 @@ function ModuleAnnouncements({ module }: { module: Module }) {
   const [syncing, setSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [forumFilter, setForumFilter] = useState<'all' | 'announcements' | number>('all')
-  const discussions = db.moodleDiscussions.filter((d) => d.moduleId === module.id)
+  const courseMap = db.settings.moodle?.courseMap ?? {}
+  const mappedCourseIds = useMemo(
+    () =>
+      Object.entries(courseMap)
+        .filter(([_, modId]) => modId === module.id)
+        .map(([cId]) => Number(cId)),
+    [courseMap, module.id],
+  )
+  const discussions = useMemo(
+    () =>
+      db.moodleDiscussions.filter(
+        (d) => d.moduleId === module.id || (d.courseId && mappedCourseIds.includes(d.courseId)),
+      ),
+    [db.moodleDiscussions, module.id, mappedCourseIds],
+  )
 
   const forums = useMemo(() => {
     const map = new Map<number, { id: number; name: string; count: number }>()
@@ -735,12 +797,21 @@ function ModuleAnnouncements({ module }: { module: Module }) {
           icon={<MessageSquare />}
           title="Keine Forenbeiträge"
           action={
-            <Button icon={<RefreshCw size={14} />} disabled={syncing} onClick={() => void handleSync()}>
-              Mit Moodle abgleichen
-            </Button>
+            <div className="row" style={{ gap: 8 }}>
+              <Button icon={<RefreshCw size={14} />} disabled={syncing} onClick={() => void handleSync()}>
+                Mit Moodle abgleichen
+              </Button>
+              {mappedCourseIds.length === 0 && (
+                <Button variant="ghost" onClick={(ev) => openView({ type: 'settings', section: 'integrations' }, ev)}>
+                  Zu den Moodle-Einstellungen
+                </Button>
+              )}
+            </div>
           }
         >
-          Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge synchronisiert.
+          {mappedCourseIds.length === 0
+            ? 'Diesem Modul ist noch kein Moodle-Kurs zugeordnet. Du kannst in den Einstellungen unter „Moodle“ einen Kurs zuordnen.'
+            : 'Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge synchronisiert.'}
         </Empty>
       ) : filteredDiscussions.length === 0 ? (
         <Empty icon={<MessageSquare />} title="Keine Beiträge gefunden">
@@ -846,7 +917,13 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
   const rootItems = visibleItems(db, null, module.id)
   const moduleTasks = db.tasks.filter((t) => t.moduleId === module.id)
   const labTasks = moduleTasks.filter((t) => t.kind === 'lab')
-  const moduleDiscussions = db.moodleDiscussions.filter((d) => d.moduleId === module.id)
+  const courseMap = db.settings.moodle?.courseMap ?? {}
+  const mappedCourseIds = Object.entries(courseMap)
+    .filter(([_, modId]) => modId === module.id)
+    .map(([cId]) => Number(cId))
+  const moduleDiscussions = db.moodleDiscussions.filter(
+    (d) => d.moduleId === module.id || (d.courseId && mappedCourseIds.includes(d.courseId)),
+  )
 
   const tabs: { id: ModuleTab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Übersicht' },

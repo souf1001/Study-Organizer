@@ -749,8 +749,8 @@ export function eventsFromIcs(
       end: e.end.toISOString(),
       allDay: e.allDay,
       moduleId: matchedId,
-      location: e.location.slice(0, 300),
-      notes: e.description.slice(0, 2000),
+      location: e.location.slice(0, 300) || (exact?.location ?? ''),
+      notes: exact?.notes !== undefined ? exact.notes : e.description.slice(0, 2000),
       subscriptionId: subscription.id,
       externalId: e.uid,
     }

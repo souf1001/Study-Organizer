@@ -199,7 +199,7 @@ export class MoodleClient {
     return this.call('core_course_get_contents', { courseid })
   }
 
-  forums(courseids: number[]): Promise<{
+  forums(courseids?: number[]): Promise<{
     id: number
     course: number
     type: string
@@ -207,7 +207,7 @@ export class MoodleClient {
     intro?: string
     numdiscussions?: number
   }[]> {
-    return this.call('mod_forum_get_forums_by_courses', { courseids })
+    return this.call('mod_forum_get_forums_by_courses', courseids && courseids.length > 0 ? { courseids } : {})
   }
 
   async discussions(forumid: number): Promise<{
@@ -220,8 +220,10 @@ export class MoodleClient {
     subject?: string
     message?: string
     userfullname?: string
+    firstpostfullname?: string
     firstuserfullname?: string
     userpictureurl?: string
+    firstpostuserimageurl?: string
     firstuserimageurl?: string
     created: number
     timecreated?: number
@@ -230,11 +232,20 @@ export class MoodleClient {
     numreplies?: number
     pinned?: boolean
   }[]> {
-    // 1. Versuche die moderne Standard-Funktion mod_forum_get_forum_discussions
+    // 1. Versuche mod_forum_get_forum_discussions mit Array { forumids: [forumid] }
     try {
       const res = await this.call<any>('mod_forum_get_forum_discussions', { forumids: [forumid] })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length >= 0) return list
+      if (list && list.length > 0) return list
+    } catch {
+      // Weiter mit nächstem Versuch
+    }
+
+    // 1b. Versuche mod_forum_get_forum_discussions mit { forumid } (einige Moodle-Builds)
+    try {
+      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid })
+      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
+      if (list && list.length > 0) return list
     } catch {
       // Weiter mit paginated
     }
@@ -249,11 +260,12 @@ export class MoodleClient {
         sortdirection: 'DESC',
       })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length >= 0) return list
+      if (list && list.length > 0) return list
     } catch {
       // Weiter mit paginated ohne Sortierparameter
     }
 
+    // 3. Versuche mod_forum_get_forum_discussions_paginated ohne Sortierung
     try {
       const res = await this.call<any>('mod_forum_get_forum_discussions_paginated', {
         forumid,
@@ -261,7 +273,7 @@ export class MoodleClient {
         perpage: 50,
       })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length >= 0) return list
+      if (list && list.length > 0) return list
     } catch {
       // Keine Beiträge oder nicht unterstützt
     }
@@ -511,29 +523,54 @@ export async function syncMoodle(
   try {
     interface DiscoveredForum {
       id: number
+      cmid?: number
       course: number
       type: string
       name: string
     }
     const forums: DiscoveredForum[] = []
 
+    const addForum = (id: unknown, course: unknown, type?: string, name?: string, cmid?: unknown) => {
+      const numId = Number(id)
+      const numCourse = Number(course)
+      const numCmid = cmid !== undefined && cmid !== null ? Number(cmid) : undefined
+      if (!numId || isNaN(numId)) return
+      if (!forums.some((ex) => ex.id === numId)) {
+        forums.push({
+          id: numId,
+          cmid: numCmid && !isNaN(numCmid) ? numCmid : undefined,
+          course: numCourse && !isNaN(numCourse) ? numCourse : 0,
+          type: type || 'general',
+          name: name || 'Forum',
+        })
+      }
+    }
+
     // 1. Versuch: mod_forum_get_forums_by_courses für alle Kurse im Sammelaufruf
     try {
       const raw = await client.forums(courseIds)
-      if (Array.isArray(raw)) {
-        for (const f of raw) {
-          if (f && typeof f.id === 'number') {
-            forums.push({
-              id: f.id,
-              course: f.course,
-              type: f.type || 'general',
-              name: f.name || 'Forum',
-            })
-          }
-        }
+      const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.forums) ? (raw as any).forums : []
+      for (const f of list) {
+        addForum(f?.id, f?.course, f?.type, f?.name, (f as any)?.cmid)
       }
     } catch {
-      // Sammelaufruf fehlgeschlagen – versuche kursspezifisch
+      // Sammelaufruf mit Kursliste fehlgeschlagen
+    }
+
+    // 1b. Versuch: Falls noch keine Foren gefunden wurden, versuche Sammelaufruf ohne Kursfilter
+    if (forums.length === 0) {
+      try {
+        const rawAll = await client.forums()
+        const list = Array.isArray(rawAll) ? rawAll : Array.isArray((rawAll as any)?.forums) ? (rawAll as any).forums : []
+        for (const f of list) {
+          const cid = Number(f?.course)
+          if (courseIds.includes(cid)) {
+            addForum(f?.id, f?.course, f?.type, f?.name, (f as any)?.cmid)
+          }
+        }
+      } catch {
+        // Sammelaufruf ohne Filter fehlgeschlagen
+      }
     }
 
     // 2. Versuch: Für nicht abgedeckte Kurse einzeln aufrufen
@@ -542,16 +579,10 @@ export async function syncMoodle(
       if (!coveredCourses.has(courseId)) {
         try {
           const raw = await client.forums([courseId])
-          if (Array.isArray(raw) && raw.length > 0) {
-            for (const f of raw) {
-              if (f && typeof f.id === 'number' && !forums.some((ex) => ex.id === f.id)) {
-                forums.push({
-                  id: f.id,
-                  course: f.course ?? courseId,
-                  type: f.type || 'general',
-                  name: f.name || 'Forum',
-                })
-              }
+          const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.forums) ? (raw as any).forums : []
+          if (list.length > 0) {
+            for (const f of list) {
+              addForum(f?.id, f?.course ?? courseId, f?.type, f?.name, (f as any)?.cmid)
             }
             coveredCourses.add(courseId)
           }
@@ -561,26 +592,24 @@ export async function syncMoodle(
       }
 
       // 3. Fallback: core_course_get_contents für diesen Kurs auslesen (Standard in Moodle)
-      try {
-        const sections = await client.contents(courseId)
-        for (const section of sections ?? []) {
-          for (const mod of section.modules ?? []) {
-            if (mod.modname === 'forum') {
-              const forumId = mod.instance ?? mod.id
-              if (forumId && !forums.some((f) => f.id === forumId)) {
-                const isNews = /ankündigung|nachricht|news|announcement/i.test(mod.name)
-                forums.push({
-                  id: forumId,
-                  course: courseId,
-                  type: isNews ? 'news' : 'general',
-                  name: mod.name || 'Forum',
-                })
+      if (!coveredCourses.has(courseId)) {
+        try {
+          const sections = await client.contents(courseId)
+          for (const section of sections ?? []) {
+            for (const mod of section.modules ?? []) {
+              if (mod.modname === 'forum') {
+                const forumId = mod.instance ?? mod.id
+                if (forumId) {
+                  const isNews = /ankündigung|nachricht|news|announcement/i.test(mod.name)
+                  addForum(forumId, courseId, isNews ? 'news' : 'general', mod.name, mod.id)
+                  coveredCourses.add(courseId)
+                }
               }
             }
           }
+        } catch {
+          // Ignoriere Fehler beim Laden der Kursinhalte
         }
-      } catch {
-        // Ignoriere Fehler beim Laden der Kursinhalte
       }
     }
 
@@ -589,8 +618,14 @@ export async function syncMoodle(
 
     for (const forum of forums) {
       try {
-        const discussionsRaw = await client.discussions(forum.id).catch(() => [])
-        const discussions = Array.isArray(discussionsRaw) ? discussionsRaw : []
+        let discussionsRaw = await client.discussions(forum.id).catch(() => [])
+        let discussions = Array.isArray(discussionsRaw) ? discussionsRaw : []
+        if (discussions.length === 0 && forum.cmid && forum.cmid !== forum.id) {
+          const fallbackRaw = await client.discussions(forum.cmid).catch(() => [])
+          if (Array.isArray(fallbackRaw) && fallbackRaw.length > 0) {
+            discussions = fallbackRaw
+          }
+        }
         const isNews = forum.type === 'news' || /ankündigung|nachricht|news|announcement/i.test(forum.name)
 
         for (const d of discussions) {
@@ -602,18 +637,21 @@ export async function syncMoodle(
 
           const author =
             d.userfullname ||
+            (d as any).firstpostfullname ||
             (d as any).firstuserfullname ||
             (d as any).author ||
             existingDisc?.userFullName ||
             'Moodle'
           const picture =
             d.userpictureurl ||
+            (d as any).firstpostuserimageurl ||
             (d as any).firstuserimageurl ||
             existingDisc?.userPictureUrl
 
           const createdUnix = Number(
             d.created ||
               (d as any).timecreated ||
+              (d as any).timestart ||
               d.timemodified ||
               (d as any).modified ||
               Math.floor(Date.now() / 1000),
@@ -650,15 +688,31 @@ export async function syncMoodle(
       }
     }
 
-    allDiscussions.sort(
+    // Bis zu 5 neueste Ankündigungen ohne Text direkt mit Erstbeitrag anreichern
+    const announcementsNeedingBody = allDiscussions.filter((d) => !d.message && d.isAnnouncement).slice(0, 5)
+    for (const ann of announcementsNeedingBody) {
+      try {
+        const posts = await client.discussionPosts(ann.discussionId)
+        const root = posts.find((p) => p.parentId === 0 || p.id === ann.firstPostId) ?? posts[0]
+        if (root?.message) {
+          ann.message = root.message
+          if (root.id) ann.firstPostId = root.id
+        }
+      } catch {
+        // Kein Fehler, wird bei Bedarf in der UI nachgeladen
+      }
+    }
+
+    const otherDiscussions = existingDiscussions.filter((d) => !courseIds.includes(d.courseId))
+    const mergedDiscussions = [...otherDiscussions, ...allDiscussions].sort(
       (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
     )
-    store.update({ moodleDiscussions: allDiscussions })
-    if (allDiscussions.length > 0) {
-      result.discussions = allDiscussions.length
+    store.update({ moodleDiscussions: mergedDiscussions })
+    if (mergedDiscussions.length > 0) {
+      result.discussions = mergedDiscussions.length
     }
-  } catch {
-    // Falls das Hochschul-Moodle Foren-Webservices nicht freigeschaltet hat
+  } catch (err) {
+    result.errors.push(`Foren: ${(err as Error).message}`)
   }
 
   store.update({

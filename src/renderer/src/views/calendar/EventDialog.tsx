@@ -5,7 +5,7 @@ import { newEvent } from '@shared/defaults'
 import { toISODate } from '@shared/dates'
 import { findSeriesEvents, SESSION_LABELS } from '@shared/schedule'
 import type { CalendarEvent, EventKind } from '@shared/types'
-import { activeSemester, findSessionFolder, openSession, semesterModules } from '@/lib/actions'
+import { activeSemester, findSessionFolder, openSession } from '@/lib/actions'
 import { putRecord, removeRecord, useDb } from '@/lib/db'
 import { formatLongDay, formatTime } from '@/lib/format'
 import { openView } from '@/lib/workspace'
@@ -31,7 +31,14 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
   const [start, setStart] = useState(timeOf(draft.start))
   const [end, setEnd] = useState(timeOf(draft.end))
   const isSynced = Boolean(draft.subscriptionId || draft.externalId?.startsWith('moodle:'))
-  const modules = semesterModules(db, activeSemester(db)?.id)
+  const currentSemesterId = activeSemester(db)?.id
+  const modules = [...db.modules].sort((a, b) => {
+    const aCurrent = a.semesterId === currentSemesterId
+    const bCurrent = b.semesterId === currentSemesterId
+    if (aCurrent && !bCurrent) return -1
+    if (!aCurrent && bCurrent) return 1
+    return a.name.localeCompare(b.name)
+  })
   const set = (values: Partial<CalendarEvent>) => setDraft((d) => ({ ...d, ...values }))
 
   const seriesEvents = existing && draft.id ? findSeriesEvents(db.events, draft) : []
@@ -98,7 +105,14 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
           <Field label="Modul">
             <Select
               value={draft.moduleId ?? ''}
-              options={[{ value: '', label: 'Kein Modul' }, ...modules.map((m) => ({ value: m.id, label: m.name }))]}
+              options={[
+                { value: '', label: 'Kein Modul' },
+                ...modules.map((m) => {
+                  const sem = db.semesters.find((s) => s.id === m.semesterId)
+                  const label = sem && db.semesters.length > 1 ? `${m.name} (${sem.name})` : m.name
+                  return { value: m.id, label }
+                }),
+              ]}
               onChange={(id) => set({ moduleId: id || null })}
             />
           </Field>

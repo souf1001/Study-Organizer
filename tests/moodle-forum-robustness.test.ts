@@ -221,4 +221,137 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('probiert paginated weiter wenn mod_forum_get_forum_discussions leer zurückkehrt', async () => {
+    const fetchImpl = fakeFetch((fn) => {
+      if (fn === 'mod_forum_get_forums_by_courses') {
+        return [{ id: 42, course: 404, type: 'general', name: 'Übungsforum' }]
+      }
+      if (fn === 'mod_forum_get_forum_discussions') {
+        // Simuliere: Leeres discussions Array in moderner API
+        return { discussions: [] }
+      }
+      if (fn === 'mod_forum_get_forum_discussions_paginated') {
+        // Die paginated API liefert die Diskussionen mit firstpostfullname
+        return {
+          discussions: [
+            {
+              id: 999,
+              discussion: 999,
+              name: 'Diskussion aus paginated Fallback',
+              firstpost: 8888,
+              firstpostfullname: 'Prof. Ada Lovelace',
+              firstpostuserimageurl: 'https://moodle.de/ada.jpg',
+              timemodified: 1_700_000_000,
+              numreplies: 3,
+            },
+          ],
+        }
+      }
+      if (fn === 'mod_assign_get_assignments') return { courses: [] }
+      if (fn === 'core_calendar_get_calendar_events') return { events: [] }
+      return {}
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-empty-discussions-fallback-'))
+    const store = await Store.open(dir)
+    try {
+      const mod = newModule('sem1', { name: 'Theoretische Informatik' })
+      store.put('modules', mod)
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            courseMap: { '404': mod.id },
+          },
+        },
+      })
+
+      const res = await syncMoodle(store, client)
+      expect(res.discussions).toBe(1)
+      const discussions = store.get().moodleDiscussions
+      expect(discussions).toHaveLength(1)
+      expect(discussions[0].id).toBe(999)
+      expect(discussions[0].subject).toBe('Diskussion aus paginated Fallback')
+      expect(discussions[0].userFullName).toBe('Prof. Ada Lovelace')
+      expect(discussions[0].userPictureUrl).toBe('https://moodle.de/ada.jpg')
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('behält Diskussionen anderer Kurse bei erneutem Abgleich bei', async () => {
+    const fetchImpl = fakeFetch((fn) => {
+      if (fn === 'mod_forum_get_forums_by_courses') {
+        return [{ id: 50, course: 505, type: 'general', name: 'Neuer Kurs Forum' }]
+      }
+      if (fn === 'mod_forum_get_forum_discussions') {
+        return {
+          discussions: [
+            {
+              id: 1234,
+              name: 'Neues Thema',
+              firstpost: 5001,
+              userfullname: 'Dozent Neu',
+              timemodified: 1_700_000_000,
+            },
+          ],
+        }
+      }
+      if (fn === 'mod_assign_get_assignments') return { courses: [] }
+      if (fn === 'core_calendar_get_calendar_events') return { events: [] }
+      return {}
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-merge-courses-'))
+    const store = await Store.open(dir)
+    try {
+      const mod1 = newModule('sem1', { id: 'm1', name: 'Bereits vorhandenes Modul' })
+      const mod2 = newModule('sem1', { id: 'm2', name: 'Neues Modul' })
+      store.put('modules', mod1)
+      store.put('modules', mod2)
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            courseMap: { '505': mod2.id }, // Nur Kurs 505 wird in diesem Durchlauf abgeglichen
+          },
+        },
+        moodleDiscussions: [
+          {
+            id: 1111,
+            discussionId: 1111,
+            firstPostId: 111,
+            forumId: 10,
+            courseId: 999, // Anderer Kurs
+            moduleId: mod1.id,
+            forumName: 'Altes Forum',
+            subject: 'Altes Thema bleibt erhalten',
+            message: '<p>Alt</p>',
+            userFullName: 'Alter Dozent',
+            timeCreated: new Date().toISOString(),
+            timeModified: new Date().toISOString(),
+            numReplies: 0,
+            pinned: false,
+            isAnnouncement: false,
+          },
+        ],
+      })
+
+      const res = await syncMoodle(store, client)
+      expect(res.discussions).toBe(2)
+      const discussions = store.get().moodleDiscussions
+      expect(discussions).toHaveLength(2)
+      expect(discussions.some((d) => d.id === 1111)).toBe(true)
+      expect(discussions.some((d) => d.id === 1234)).toBe(true)
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

@@ -81,6 +81,24 @@ export function findSeriesEvents(allEvents: CalendarEvent[], target: CalendarEve
     ) {
       return true
     }
+    if (
+      target.externalId?.startsWith('moodle:') &&
+      e.externalId?.startsWith('moodle:') &&
+      e.title.trim().toLowerCase() === targetTitleNorm
+    ) {
+      return true
+    }
+    if (
+      !target.subscriptionId &&
+      !target.externalId &&
+      !e.subscriptionId &&
+      !e.externalId &&
+      targetTitleNorm.length >= 3 &&
+      e.title.trim().toLowerCase() === targetTitleNorm &&
+      e.kind === target.kind
+    ) {
+      return true
+    }
     return false
   })
 }

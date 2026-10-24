@@ -101,4 +101,89 @@ END:VCALENDAR`
     // Zweiter Termin der gleichen Serie übernimmt ebenfalls modB:
     expect(parsed[1].moduleId).toBe(modB.id)
   })
+
+  it('eventsFromIcs bewahrt benutzerdefinierte Notizen bei Re-Sync', () => {
+    const sub: Subscription = {
+      id: 'sub-2',
+      name: 'Stundenplan',
+      kind: 'file',
+      url: 'Datei',
+      enabled: true,
+      lastSync: null,
+      lastError: null,
+    }
+
+    const mod = newModule('sem1', { id: 'mod-1', name: 'Software Engineering' })
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:se-event-1
+SUMMARY:Software Engineering
+DESCRIPTION:Originale Beschreibung aus Kalender
+DTSTART:20261102T100000Z
+DTEND:20261102T113000Z
+END:VEVENT
+END:VCALENDAR`
+
+    const existingEvents: CalendarEvent[] = [
+      newEvent({
+        id: 'ev-1',
+        title: 'Software Engineering',
+        moduleId: mod.id,
+        externalId: 'se-event-1',
+        subscriptionId: sub.id,
+        notes: 'Meine persönlichen Notizen zur Vorlesung',
+      }),
+    ]
+
+    const parsed = eventsFromIcs(icsContent, sub, [mod], {
+      existingEvents,
+      activeSemesterId: 'sem1',
+      now: new Date('2026-10-24'),
+    })
+
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].notes).toBe('Meine persönlichen Notizen zur Vorlesung')
+  })
+
+  it('findSeriesEvents erkennt Moodle-Terminserien und manuelle Serien', () => {
+    const events: CalendarEvent[] = [
+      newEvent({
+        id: 'm1',
+        title: 'Moodle Test 1',
+        start: '2026-11-01T10:00:00Z',
+        end: '2026-11-01T11:00:00Z',
+        externalId: 'moodle:event:101',
+      }),
+      newEvent({
+        id: 'm2',
+        title: 'Moodle Test 1',
+        start: '2026-11-08T10:00:00Z',
+        end: '2026-11-08T11:00:00Z',
+        externalId: 'moodle:event:102',
+      }),
+      newEvent({
+        id: 'man1',
+        title: 'Lerngruppe Mathe',
+        kind: 'other',
+        start: '2026-11-02T16:00:00Z',
+        end: '2026-11-02T18:00:00Z',
+      }),
+      newEvent({
+        id: 'man2',
+        title: 'Lerngruppe Mathe',
+        kind: 'other',
+        start: '2026-11-09T16:00:00Z',
+        end: '2026-11-09T18:00:00Z',
+      }),
+    ]
+
+    const moodleSeries = findSeriesEvents(events, events[0])
+    expect(moodleSeries).toHaveLength(2)
+    expect(moodleSeries.map((e) => e.id)).toEqual(['m1', 'm2'])
+
+    const manualSeries = findSeriesEvents(events, events[2])
+    expect(manualSeries).toHaveLength(2)
+    expect(manualSeries.map((e) => e.id)).toEqual(['man1', 'man2'])
+  })
 })

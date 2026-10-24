@@ -133,10 +133,14 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     const courseMap = db.settings.moodle?.courseMap ?? {}
     let updatedCount = 0
     const updated = db.moodleDiscussions.map((d) => {
-      const expectedModuleId = d.courseId ? courseMap[d.courseId] ?? null : null
+      const expectedModuleId = d.courseId ? courseMap[d.courseId] ?? courseMap[String(d.courseId)] ?? null : null
       if (expectedModuleId && d.moduleId !== expectedModuleId && db.modules.some((m) => m.id === expectedModuleId)) {
         updatedCount++
         return { ...d, moduleId: expectedModuleId }
+      }
+      if (d.moduleId && !db.modules.some((m) => m.id === d.moduleId)) {
+        updatedCount++
+        return { ...d, moduleId: null }
       }
       return d
     })
@@ -460,8 +464,9 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     },
   }
 
-  // Bereits vorhandene Termine ohne Modulzuordnung beim Start automatisch zuordnen
+  // Bereits vorhandene Termine und Diskussionen ohne Modulzuordnung beim Start automatisch zuordnen
   rematchEvents()
+  rematchMoodleDiscussions()
 
   return service
 }
