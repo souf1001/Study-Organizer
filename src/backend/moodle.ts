@@ -140,9 +140,13 @@ export class MoodleClient {
       signal: AbortSignal.timeout(30_000),
     })
     if (!response.ok) throw new Error(`Moodle antwortet mit HTTP ${response.status}.`)
-    const data = (await response.json()) as T & { exception?: string; message?: string }
-    if (data && typeof data === 'object' && 'exception' in data && data.exception) {
-      throw new Error(`Moodle: ${data.message ?? data.exception}`)
+    const data = (await response.json()) as T & { exception?: string; message?: string; errorcode?: string; error?: string }
+    if (data && typeof data === 'object') {
+      const errObj = data as Record<string, unknown>
+      if (errObj.exception || errObj.errorcode || errObj.error) {
+        const msg = String(errObj.message || errObj.error || errObj.exception || errObj.errorcode)
+        throw new Error(`Moodle: ${msg}`)
+      }
     }
     return data
   }
@@ -232,43 +236,31 @@ export class MoodleClient {
     numreplies?: number
     pinned?: boolean
   }[]> {
-    // 1. Versuche mod_forum_get_forum_discussions mit { forumid, forumids: [forumid] }
+    const fId = Math.trunc(Number(forumid))
+    if (!fId || isNaN(fId) || fId <= 0) return []
+
+    // 1. Versuche mod_forum_get_forum_discussions mit forumids-Array (offizielle Moodle API-Spezifikation)
     try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid, forumids: [forumid] })
+      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumids: [fId] })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
       if (list && list.length > 0) return list
     } catch {
       // Weiter mit nächstem Versuch
     }
 
-    // 1b. Versuche mod_forum_get_forum_discussions mit nur { forumid }
+    // 1b. Versuche mod_forum_get_forum_discussions mit nur { forumid } für bestimmte Moodle-Varianten
     try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid })
+      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid: fId })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
       if (list && list.length > 0) return list
     } catch {
       // Weiter mit paginated
     }
 
-    // 2. Versuche mod_forum_get_forum_discussions_paginated mit Sortierung
+    // 2. Versuche mod_forum_get_forum_discussions_paginated ohne unerlaubte Sortier-Strings
     try {
       const res = await this.call<any>('mod_forum_get_forum_discussions_paginated', {
-        forumid,
-        page: 0,
-        perpage: 50,
-        sortby: 'timemodified',
-        sortdirection: 'DESC',
-      })
-      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length > 0) return list
-    } catch {
-      // Weiter mit paginated ohne Sortierparameter
-    }
-
-    // 3. Versuche mod_forum_get_forum_discussions_paginated ohne Sortierung
-    try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions_paginated', {
-        forumid,
+        forumid: fId,
         page: 0,
         perpage: 50,
       })
@@ -297,6 +289,7 @@ export class MoodleClient {
 
   async discussionPosts(discussionid: number): Promise<MoodlePost[]> {
     const discIdNum = Math.trunc(Number(discussionid))
+    if (!discIdNum || isNaN(discIdNum) || discIdNum <= 0) return []
     try {
       const res = await this.call<{
         posts?: {
@@ -348,6 +341,7 @@ export class MoodleClient {
           parent?: number
           subject?: string
           message?: string
+          author?: { fullname?: string; urls?: { profileimage?: string } }
           userfullname?: string
           userpictureurl?: string
           timecreated?: number
@@ -364,8 +358,8 @@ export class MoodleClient {
           parentId: p.parentid ?? p.parent ?? 0,
           subject: p.subject || '',
           message: p.message || '',
-          userFullName: p.userfullname || 'Moodle-Nutzer',
-          userPictureUrl: p.userpictureurl,
+          userFullName: p.author?.fullname ?? p.userfullname ?? 'Moodle-Nutzer',
+          userPictureUrl: p.author?.urls?.profileimage ?? p.userpictureurl,
           timeCreated: toIso(p.timecreated ?? p.created ?? Math.floor(Date.now() / 1000)),
           canReply: p.canreply,
         }))
@@ -813,15 +807,15 @@ export async function syncMoodle(
       }
     }
 
-    // Bis zu 5 neueste Ankündigungen ohne Text direkt mit Erstbeitrag anreichern
-    const announcementsNeedingBody = allDiscussions.filter((d) => !d.message && d.isAnnouncement).slice(0, 5)
-    for (const ann of announcementsNeedingBody) {
+    // Bis zu 10 neueste Diskussionen ohne Text direkt mit Erstbeitrag anreichern (sowohl Ankündigungen als auch Foren)
+    const discussionsNeedingBody = allDiscussions.filter((d) => !d.message).slice(0, 10)
+    for (const item of discussionsNeedingBody) {
       try {
-        const posts = await client.discussionPosts(ann.discussionId)
-        const root = posts.find((p) => p.parentId === 0 || p.id === ann.firstPostId) ?? posts[0]
+        const posts = await client.discussionPosts(item.discussionId)
+        const root = posts.find((p) => p.parentId === 0 || p.id === item.firstPostId) ?? posts[0]
         if (root?.message) {
-          ann.message = root.message
-          if (root.id) ann.firstPostId = root.id
+          item.message = root.message
+          if (root.id) item.firstPostId = root.id
         }
       } catch {
         // Kein Fehler, wird bei Bedarf in der UI nachgeladen

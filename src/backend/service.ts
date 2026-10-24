@@ -334,19 +334,23 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     moodleSync: async (): Promise<MoodleSyncResult> => syncMoodle(store, await moodleClient(), reserveSpace),
     moodlePosts: async (discussionId: number): Promise<MoodlePost[]> => {
       const client = await moodleClient()
+      const discIdNum = Math.trunc(Number(discussionId))
+      if (!discIdNum || isNaN(discIdNum) || discIdNum <= 0) {
+        return []
+      }
       const disc = store
         .get()
-        .moodleDiscussions.find((d) => d.id === discussionId || d.discussionId === discussionId || d.firstPostId === discussionId)
+        .moodleDiscussions.find((d) => d.id === discIdNum || d.discussionId === discIdNum || d.firstPostId === discIdNum)
       let posts: MoodlePost[] = []
       try {
-        posts = await client.discussionPosts(discussionId)
+        posts = await client.discussionPosts(discIdNum)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!msg.includes('cannotfindrecord') && !msg.includes('Datensatz')) throw err
       }
       if (posts.length === 0 && disc) {
         const candidates = [disc.discussionId, disc.id, disc.firstPostId].filter(
-          (cand): cand is number => typeof cand === 'number' && cand !== discussionId,
+          (cand): cand is number => typeof cand === 'number' && cand > 0 && cand !== discIdNum,
         )
         for (const candidate of candidates) {
           try {
@@ -375,46 +379,94 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
             ),
           })
         }
+      } else if (posts.length === 0 && disc) {
+        // Fallback: Falls Moodle-Server keine Posts liefert (z. B. eingeschränkte Web-Service-Rolle oder Offline),
+        // synthetisiere mindestens den bekannten Eröffnungsbeitrag, damit die Ansicht nicht leer bleibt!
+        const rootPostId =
+          (disc.firstPostId && disc.firstPostId !== disc.discussionId && disc.firstPostId !== disc.id
+            ? disc.firstPostId
+            : null) ?? (disc.id || disc.discussionId)
+        if (disc.message || disc.subject) {
+          posts = [
+            {
+              id: rootPostId,
+              discussionId: disc.discussionId || disc.id,
+              parentId: 0,
+              subject: disc.subject,
+              message: disc.message || '<p>Kein weiterer Textinhalt vorhanden.</p>',
+              userFullName: disc.userFullName || 'Moodle',
+              userPictureUrl: disc.userPictureUrl,
+              timeCreated: disc.timeCreated,
+              canReply: !disc.isAnnouncement,
+            },
+          ]
+        }
       }
       return posts
     },
     moodleReply: async (postIdOrDiscussionId: number, subject: string, message: string): Promise<{ postId: number }> => {
       const client = await moodleClient()
       const db = store.get()
+      const targetNum = Math.trunc(Number(postIdOrDiscussionId))
+      if (!targetNum || isNaN(targetNum) || targetNum <= 0) {
+        throw new Error('Ungültige Beitrags- oder Diskussions-ID.')
+      }
+
       const disc = db.moodleDiscussions.find(
         (d) =>
-          d.id === postIdOrDiscussionId ||
-          d.discussionId === postIdOrDiscussionId ||
-          d.firstPostId === postIdOrDiscussionId,
+          d.id === targetNum ||
+          d.discussionId === targetNum ||
+          d.firstPostId === targetNum,
       )
-      let targetPostId = postIdOrDiscussionId
+      let targetPostId = targetNum
 
       // Wenn eine Diskussion referenziert wird, versuchen wir vorab die echte Root-Post-ID zu ermitteln
       if (disc) {
+        // Fall 1: Wir kennen bereits eine separate firstPostId, die sich von der Diskussions-ID unterscheidet
         if (
           disc.firstPostId &&
           disc.firstPostId !== disc.discussionId &&
-          postIdOrDiscussionId !== disc.discussionId &&
-          postIdOrDiscussionId !== disc.id
+          disc.firstPostId !== disc.id
         ) {
           targetPostId = disc.firstPostId
         } else {
+          // Fall 2: firstPostId auflösen via discussionPosts
           try {
-            const posts = await client.discussionPosts(disc.discussionId)
+            const posts = await client.discussionPosts(disc.discussionId || disc.id)
             const root = posts.find((p) => p.parentId === 0) || posts[0]
-            if (root) {
+            if (root && root.id) {
               targetPostId = root.id
-              if (disc.firstPostId !== root.id || !disc.message) {
+              store.update({
+                moodleDiscussions: store.get().moodleDiscussions.map((d) =>
+                  d.id === disc.id ? { ...d, firstPostId: root.id, message: d.message || root.message } : d,
+                ),
+              })
+            }
+          } catch {
+            // Ignoriere Netzwerk-/API-Fehler hier
+          }
+
+          // Fall 3: Wenn discussionPosts nichts geliefert hat, versuche über mod_forum_get_forum_discussions
+          if ((targetPostId === (disc.discussionId || disc.id) || !targetPostId) && disc.forumId) {
+            try {
+              const forumDiscs = await client.discussions(disc.forumId)
+              const matched = forumDiscs.find(
+                (fd) =>
+                  fd.id === (disc.discussionId || disc.id) ||
+                  (fd.discussion && fd.discussion === (disc.discussionId || disc.id)),
+              )
+              if (matched?.firstpost && matched.firstpost !== (disc.discussionId || disc.id)) {
+                targetPostId = matched.firstpost
                 store.update({
                   moodleDiscussions: store.get().moodleDiscussions.map((d) =>
-                    d.id === disc.id ? { ...d, firstPostId: root.id, message: d.message || root.message } : d,
+                    d.id === disc.id
+                      ? { ...d, firstPostId: matched.firstpost, message: d.message || matched.message || '' }
+                      : d,
                   ),
                 })
               }
-            }
-          } catch {
-            if (disc.firstPostId && disc.firstPostId !== disc.discussionId) {
-              targetPostId = disc.firstPostId
+            } catch {
+              // Ignoriere
             }
           }
         }
@@ -424,12 +476,12 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
         const res = await client.replyPost(targetPostId, subject, message)
         return { postId: res.postid }
       } catch (err) {
-        // Falls Moodle den Parameterwert zurückgewiesen hat: Post-ID über discussionPosts auflösen und erneut versuchen
+        // Falls Moodle den Parameterwert zurückgewiesen hat: Post-ID über discussionPosts oder Forenliste auflösen und erneut versuchen
         if (disc) {
           try {
-            const posts = await client.discussionPosts(disc.discussionId)
+            const posts = await client.discussionPosts(disc.discussionId || disc.id)
             const root = posts.find((p) => p.parentId === 0) || posts[0]
-            if (root && root.id !== targetPostId) {
+            if (root && root.id && root.id !== targetPostId) {
               const retryRes = await client.replyPost(root.id, subject, message)
               store.update({
                 moodleDiscussions: store.get().moodleDiscussions.map((d) =>
@@ -439,15 +491,37 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
               return { postId: retryRes.postid }
             }
           } catch {
-            // Re-throw original error
+            // Fallback fehlgeschlagen
+          }
+
+          if (disc.forumId) {
+            try {
+              const forumDiscs = await client.discussions(disc.forumId)
+              const matched = forumDiscs.find(
+                (fd) =>
+                  fd.id === (disc.discussionId || disc.id) ||
+                  (fd.discussion && fd.discussion === (disc.discussionId || disc.id)),
+              )
+              if (matched?.firstpost && matched.firstpost !== targetPostId) {
+                const retryRes = await client.replyPost(matched.firstpost, subject, message)
+                store.update({
+                  moodleDiscussions: store.get().moodleDiscussions.map((d) =>
+                    d.id === disc.id ? { ...d, firstPostId: matched.firstpost } : d,
+                  ),
+                })
+                return { postId: retryRes.postid }
+              }
+            } catch {
+              // Fallback fehlgeschlagen
+            }
           }
         } else {
           try {
-            const resolved = await client.getDiscussionPost(postIdOrDiscussionId)
+            const resolved = await client.getDiscussionPost(targetPostId)
             if (resolved?.discussion) {
               const posts = await client.discussionPosts(resolved.discussion)
               const root = posts.find((p) => p.parentId === 0) || posts[0]
-              if (root && root.id !== postIdOrDiscussionId) {
+              if (root && root.id && root.id !== targetPostId) {
                 const retryRes = await client.replyPost(root.id, subject, message)
                 return { postId: retryRes.postid }
               }

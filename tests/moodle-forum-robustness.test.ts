@@ -506,4 +506,210 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('service.moodleReply verwendet vorhandene firstPostId direkt, wenn User mit Diskussions-ID antwortet', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-firstpost-direct-'))
+    const store = await Store.open(dir)
+    try {
+      const secretsData = new Map<string, string>()
+      const secrets = {
+        get: async (n: string) => secretsData.get(n) ?? null,
+        set: async (n: string, v: string) => void secretsData.set(n, v),
+        remove: async (n: string) => void secretsData.delete(n),
+      }
+      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            url: 'https://moodle.hochschule.de',
+            userId: 55,
+          },
+        },
+        moodleDiscussions: [
+          {
+            id: 300,
+            discussionId: 300,
+            firstPostId: 6543, // Bereits bekannt und unterschiedlich von 300
+            forumId: 20,
+            courseId: 101,
+            moduleId: null,
+            forumName: 'Diskussionen',
+            subject: 'Frage zu Projekt',
+            message: '<p>Projekttext</p>',
+            userFullName: 'Student X',
+            timeCreated: new Date().toISOString(),
+            timeModified: new Date().toISOString(),
+            numReplies: 2,
+            pinned: false,
+            isAnnouncement: false,
+          },
+        ],
+      })
+
+      let postedToPostId = ''
+      const fetchImpl = fakeFetch((fn, body) => {
+        if (fn === 'mod_forum_add_discussion_post') {
+          postedToPostId = body.get('postid') ?? ''
+          return { postid: 7777 }
+        }
+        throw new Error(`Unerwarteter Aufruf: ${fn}`)
+      })
+
+      const service = createService(store, secrets, { fetchImpl })
+      // User ruft moodleReply mit der Diskussions-ID (300) auf:
+      const res = await service.moodleReply(300, 'Re: Frage zu Projekt', 'Meine Antwort')
+      expect(res.postId).toBe(7777)
+      // Muss direkt an die bekannte firstPostId (6543) gesendet worden sein!
+      expect(postedToPostId).toBe('6543')
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('service.moodleReply fällt auf Forenliste zurück wenn discussionPosts fehlschlägt', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-fallback-forum-'))
+    const store = await Store.open(dir)
+    try {
+      const secretsData = new Map<string, string>()
+      const secrets = {
+        get: async (n: string) => secretsData.get(n) ?? null,
+        set: async (n: string, v: string) => void secretsData.set(n, v),
+        remove: async (n: string) => void secretsData.delete(n),
+      }
+      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            url: 'https://moodle.hochschule.de',
+            userId: 55,
+          },
+        },
+        moodleDiscussions: [
+          {
+            id: 400,
+            discussionId: 400,
+            firstPostId: 400, // Noch fälschlicherweise gleich Diskussions-ID
+            forumId: 25,
+            courseId: 101,
+            moduleId: null,
+            forumName: 'Forum 25',
+            subject: 'Thema',
+            message: '',
+            userFullName: 'Dozent',
+            timeCreated: new Date().toISOString(),
+            timeModified: new Date().toISOString(),
+            numReplies: 0,
+            pinned: false,
+            isAnnouncement: false,
+          },
+        ],
+      })
+
+      let postedToPostId = ''
+      const fetchImpl = fakeFetch((fn, body) => {
+        if (fn === 'mod_forum_get_discussion_posts') {
+          // Simuliere: Post-Abruf via discussionPosts wird blockiert / liefert leer
+          return { posts: [] }
+        }
+        if (fn === 'mod_forum_get_forum_discussions') {
+          // Forenabruf liefert jedoch die korrekte firstpost ID
+          return {
+            discussions: [
+              {
+                id: 400,
+                firstpost: 9876,
+                name: 'Thema',
+                message: '<p>Eröffnung</p>',
+              },
+            ],
+          }
+        }
+        if (fn === 'mod_forum_add_discussion_post') {
+          postedToPostId = body.get('postid') ?? ''
+          return { postid: 8888 }
+        }
+        throw new Error(`Unerwarteter Aufruf: ${fn}`)
+      })
+
+      const service = createService(store, secrets, { fetchImpl })
+      const res = await service.moodleReply(400, 'Re: Thema', 'Antwort über Forum-Auflösung')
+      expect(res.postId).toBe(8888)
+      expect(postedToPostId).toBe('9876')
+      expect(store.get().moodleDiscussions.find((d) => d.id === 400)?.firstPostId).toBe(9876)
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('service.moodlePosts synthetisiert Eröffnungsbeitrag wenn Moodle-Server keine Posts liefert', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-posts-synthesize-'))
+    const store = await Store.open(dir)
+    try {
+      const secretsData = new Map<string, string>()
+      const secrets = {
+        get: async (n: string) => secretsData.get(n) ?? null,
+        set: async (n: string, v: string) => void secretsData.set(n, v),
+        remove: async (n: string) => void secretsData.delete(n),
+      }
+      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            url: 'https://moodle.hochschule.de',
+            userId: 55,
+          },
+        },
+        moodleDiscussions: [
+          {
+            id: 500,
+            discussionId: 500,
+            firstPostId: 12345,
+            forumId: 30,
+            courseId: 101,
+            moduleId: null,
+            forumName: 'Ankündigungen',
+            subject: 'Wichtige Ankündigung',
+            message: '<p>Bitte beachten Sie die Frist.</p>',
+            userFullName: 'Prof. Wichtig',
+            timeCreated: new Date().toISOString(),
+            timeModified: new Date().toISOString(),
+            numReplies: 0,
+            pinned: true,
+            isAnnouncement: true,
+          },
+        ],
+      })
+
+      const fetchImpl = fakeFetch((fn) => {
+        if (fn === 'mod_forum_get_discussion_posts') {
+          // Simuliere: Server blockiert API (z. B. unzureichende Web-Service-Rolle)
+          return { exception: 'webservice_access_exception', message: 'Access control exception' }
+        }
+        if (fn === 'mod_forum_get_forum_discussion_posts') {
+          return { exception: 'webservice_access_exception', message: 'Access control exception' }
+        }
+        return {}
+      })
+
+      const service = createService(store, secrets, { fetchImpl })
+      const posts = await service.moodlePosts(500)
+      // Darf NIEMALS leer sein, wenn die Diskussion Text im Store hat!
+      expect(posts).toHaveLength(1)
+      expect(posts[0].id).toBe(12345)
+      expect(posts[0].subject).toBe('Wichtige Ankündigung')
+      expect(posts[0].message).toBe('<p>Bitte beachten Sie die Frist.</p>')
+      expect(posts[0].userFullName).toBe('Prof. Wichtig')
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

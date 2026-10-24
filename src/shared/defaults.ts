@@ -97,7 +97,24 @@ export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
     events: raw.events ?? [],
     tasks: raw.tasks ?? [],
     subscriptions: (raw.subscriptions ?? []).map((sub) => ({ ...sub, kind: sub.kind ?? 'url' })),
-    moodleDiscussions: raw.moodleDiscussions ?? [],
+    moodleDiscussions: (raw.moodleDiscussions ?? []).map((d) => ({
+      ...d,
+      id: Number(d.id || (d as any).discussionId || 0),
+      discussionId: Number((d as any).discussionId || d.id || 0),
+      firstPostId: typeof (d as any).firstPostId === 'number' && !isNaN((d as any).firstPostId) ? (d as any).firstPostId : undefined,
+      forumId: Number(d.forumId || 0),
+      courseId: Number(d.courseId || 0),
+      moduleId: d.moduleId ?? null,
+      forumName: d.forumName || 'Forum',
+      subject: d.subject || '(Ohne Betreff)',
+      message: d.message || '',
+      userFullName: d.userFullName || 'Moodle',
+      timeCreated: d.timeCreated || new Date().toISOString(),
+      timeModified: d.timeModified || d.timeCreated || new Date().toISOString(),
+      numReplies: Number(d.numReplies ?? 0),
+      pinned: Boolean(d.pinned),
+      isAnnouncement: Boolean(d.isAnnouncement),
+    })),
   }
 }
 

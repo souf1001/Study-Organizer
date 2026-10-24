@@ -315,11 +315,13 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
   const [replyMessage, setReplyMessage] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
 
+  const discId = Number(discussion.discussionId || discussion.id || 0)
+
   const fetchPosts = async () => {
     setLoadingPosts(true)
     setErrorLoadingPosts(null)
     try {
-      const fetched = await api.moodle.posts(discussion.discussionId)
+      const fetched = await api.moodle.posts(discId)
       setPosts(fetched)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -343,17 +345,19 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
 
   const rootPost = useMemo(() => {
     if (!posts || posts.length === 0) return null
-    return posts.find((p) => p.parentId === 0 || p.id === discussion.firstPostId) ?? posts[0]
+    const firstId = Number(discussion.firstPostId)
+    return posts.find((p) => p.parentId === 0 || (firstId && p.id === firstId)) ?? posts[0]
   }, [posts, discussion.firstPostId])
 
   const rawBody = discussion.message || rootPost?.message || ''
   const sanitizedBody = useMemo(() => DOMPurify.sanitize(rawBody), [rawBody])
 
   const replies = useMemo(() => {
-    if (!posts) return []
-    const rootId = rootPost?.id ?? discussion.firstPostId
+    if (!posts || posts.length === 0) return []
+    const rootId = rootPost?.id ?? (discussion.firstPostId && discussion.firstPostId !== discId ? discussion.firstPostId : null)
+    if (!rootId) return posts.slice(1)
     return posts.filter((p) => p.id !== rootId)
-  }, [posts, rootPost, discussion.firstPostId])
+  }, [posts, rootPost, discussion.firstPostId, discId])
 
   const canReplyToDiscussion = !discussion.isAnnouncement && (!rootPost || rootPost.canReply !== false)
 
@@ -361,8 +365,8 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
     e?.stopPropagation()
     const targetId =
       rootPost?.id ??
-      (discussion.firstPostId && discussion.firstPostId !== discussion.discussionId ? discussion.firstPostId : null) ??
-      discussion.discussionId
+      (discussion.firstPostId && discussion.firstPostId !== discId ? discussion.firstPostId : null) ??
+      discId
     setReplyTargetPostId(targetId)
     setReplyTargetAuthor(discussion.userFullName)
     setReplySubject(discussion.subject.startsWith('Re:') ? discussion.subject : `Re: ${discussion.subject}`)
@@ -384,7 +388,14 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
     if (!replyMessage.trim()) return
     setSendingReply(true)
     try {
-      const targetId = replyTargetPostId ?? rootPost?.id ?? discussion.firstPostId ?? discussion.discussionId
+      const fallbackTarget =
+        rootPost?.id ??
+        (discussion.firstPostId && discussion.firstPostId !== discId ? discussion.firstPostId : null) ??
+        discId
+      const targetId = replyTargetPostId ?? fallbackTarget
+      if (!targetId || isNaN(targetId) || targetId <= 0) {
+        throw new Error('Ungültige Ziel-Post-ID. Bitte synchronisiere Moodle oder lade die Beiträge neu.')
+      }
       await api.moodle.reply(
         targetId,
         replySubject.trim() || `Re: ${discussion.subject}`,
@@ -581,9 +592,11 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
           {!loadingPosts && !errorLoadingPosts && replies.length === 0 && (
             <div className="forum-empty-replies">
               {discussion.numReplies > 0 ? (
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                  <span>Antworten konnten noch nicht geladen werden oder sind offline.</span>
-                  <Button size="sm" variant="ghost" onClick={() => void fetchPosts()}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 12 }}>
+                  <span className="small muted">
+                    Laut Moodle {discussion.numReplies === 1 ? 'liegt 1 Antwort vor' : `liegen ${discussion.numReplies} Antworten vor`}. Falls diese noch nicht geladen sind, prüfe die VPN-Verbindung oder versuche es erneut.
+                  </span>
+                  <Button size="sm" variant="default" onClick={() => void fetchPosts()}>
                     Erneut laden
                   </Button>
                 </div>
@@ -919,7 +932,7 @@ function ModuleAnnouncements({ module }: { module: Module }) {
       ) : (
         <div className="stack" style={{ gap: 14 }}>
           {filteredDiscussions.map((d) => (
-            <DiscussionCard key={d.id} discussion={d} />
+            <DiscussionCard key={d.id || d.discussionId} discussion={d} />
           ))}
         </div>
       )}
