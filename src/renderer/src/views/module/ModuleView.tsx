@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   ScrollText,
+  Search,
   Send,
   Trash2,
   Upload,
@@ -226,11 +227,28 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
   const [expanded, setExpanded] = useState(false)
   const [posts, setPosts] = useState<MoodlePost[] | null>(null)
   const [loadingPosts, setLoadingPosts] = useState(false)
+  const [errorLoadingPosts, setErrorLoadingPosts] = useState<string | null>(null)
   const [showReplyBox, setShowReplyBox] = useState(false)
   const [replyTargetPostId, setReplyTargetPostId] = useState<number | null>(null)
+  const [replyTargetAuthor, setReplyTargetAuthor] = useState<string | null>(null)
   const [replySubject, setReplySubject] = useState(`Re: ${discussion.subject}`)
   const [replyMessage, setReplyMessage] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
+
+  const fetchPosts = async () => {
+    setLoadingPosts(true)
+    setErrorLoadingPosts(null)
+    try {
+      const fetched = await api.moodle.posts(discussion.discussionId)
+      setPosts(fetched)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setErrorLoadingPosts(msg)
+      toastError(err)
+    } finally {
+      setLoadingPosts(false)
+    }
+  }
 
   const toggleReplies = async () => {
     if (expanded) {
@@ -238,24 +256,50 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
       return
     }
     setExpanded(true)
-    if (!posts) {
-      setLoadingPosts(true)
-      try {
-        const fetched = await api.moodle.posts(discussion.discussionId)
-        setPosts(fetched)
-      } catch (err) {
-        toastError(err)
-      } finally {
-        setLoadingPosts(false)
-      }
+    if (!posts && !loadingPosts) {
+      await fetchPosts()
     }
+  }
+
+  const rootPost = useMemo(() => {
+    if (!posts || posts.length === 0) return null
+    return posts.find((p) => p.parentId === 0 || p.id === discussion.firstPostId) ?? posts[0]
+  }, [posts, discussion.firstPostId])
+
+  const rawBody = discussion.message || rootPost?.message || ''
+  const sanitizedBody = useMemo(() => DOMPurify.sanitize(rawBody), [rawBody])
+
+  const replies = useMemo(() => {
+    if (!posts) return []
+    const rootId = rootPost?.id ?? discussion.firstPostId
+    return posts.filter((p) => p.id !== rootId && p.parentId !== 0)
+  }, [posts, rootPost, discussion.firstPostId])
+
+  const canReplyToDiscussion = !discussion.isAnnouncement && (!rootPost || rootPost.canReply !== false)
+
+  const handleOpenDiscussionReply = () => {
+    const targetId =
+      rootPost?.id ??
+      (discussion.firstPostId && discussion.firstPostId !== discussion.discussionId ? discussion.firstPostId : null) ??
+      discussion.discussionId
+    setReplyTargetPostId(targetId)
+    setReplyTargetAuthor(discussion.userFullName)
+    setReplySubject(discussion.subject.startsWith('Re:') ? discussion.subject : `Re: ${discussion.subject}`)
+    setShowReplyBox((v) => !v)
+  }
+
+  const handleOpenPostReply = (post: MoodlePost) => {
+    setReplyTargetPostId(post.id)
+    setReplyTargetAuthor(post.userFullName)
+    setReplySubject(post.subject.startsWith('Re:') ? post.subject : `Re: ${post.subject}`)
+    setShowReplyBox(true)
   }
 
   const handleSendReply = async () => {
     if (!replyMessage.trim()) return
     setSendingReply(true)
     try {
-      const targetId = replyTargetPostId ?? discussion.firstPostId ?? discussion.discussionId
+      const targetId = replyTargetPostId ?? rootPost?.id ?? discussion.firstPostId ?? discussion.discussionId
       await api.moodle.reply(
         targetId,
         replySubject.trim() || `Re: ${discussion.subject}`,
@@ -265,9 +309,9 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
       setReplyMessage('')
       setShowReplyBox(false)
       setReplyTargetPostId(null)
-      // Reload posts
-      const updated = await api.moodle.posts(discussion.discussionId)
-      setPosts(updated)
+      setReplyTargetAuthor(null)
+      await fetchPosts()
+      await loadDb()
       setExpanded(true)
     } catch (err) {
       toastError(err)
@@ -276,15 +320,35 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
     }
   }
 
-  const sanitizedBody = DOMPurify.sanitize(discussion.message || '')
+  const authorInitials = (discussion.userFullName || 'M')
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
 
   return (
     <div className={`discussion-card ${discussion.pinned ? 'pinned' : ''}`}>
       <div className="discussion-header">
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="discussion-user-meta">
+          <div className="forum-avatar" title={discussion.userFullName}>
+            {discussion.userPictureUrl ? (
+              <img src={discussion.userPictureUrl} alt={discussion.userFullName} />
+            ) : (
+              <span>{authorInitials}</span>
+            )}
+          </div>
+          <div className="forum-user-info">
+            <span className="forum-author-name">{discussion.userFullName}</span>
+            <span className="forum-date-meta">{formatDateTime(discussion.timeCreated)}</span>
+          </div>
+        </div>
+
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
           {discussion.pinned && (
             <span className="badge color-orange row" style={{ gap: 4 }}>
-              <Pin size={12} /> Angepinnt
+              <Pin size={11} /> Angepinnt
             </span>
           )}
           {discussion.isAnnouncement ? (
@@ -292,45 +356,53 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
           ) : (
             <span className="badge color-blue">Forum: {discussion.forumName}</span>
           )}
-          <span className="row muted small">
-            <User size={13} /> {discussion.userFullName}
-          </span>
-          <span className="meta small">· {formatDateTime(discussion.timeCreated)}</span>
         </div>
       </div>
 
       <h3 className="discussion-title">{discussion.subject}</h3>
 
-      <div
-        className="discussion-body"
-        dangerouslySetInnerHTML={{ __html: sanitizedBody }}
-      />
+      {sanitizedBody ? (
+        <div className="discussion-body" dangerouslySetInnerHTML={{ __html: sanitizedBody }} />
+      ) : (
+        <div className="discussion-body muted small" style={{ fontStyle: 'italic' }}>
+          Keine Textvorschau verfügbar. Klicke auf Antworten zum Laden.
+        </div>
+      )}
 
       <div className="discussion-actions">
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<MessageSquare />}
-          onClick={() => void toggleReplies()}
-        >
-          {discussion.numReplies} {discussion.numReplies === 1 ? 'Antwort' : 'Antworten'}
-        </Button>
-        <Button
-          size="sm"
-          variant="default"
-          icon={<CornerDownRight />}
-          onClick={() => {
-            setReplyTargetPostId(discussion.firstPostId ?? discussion.discussionId)
-            setReplySubject(`Re: ${discussion.subject}`)
-            setShowReplyBox((v) => !v)
-          }}
-        >
-          Antworten
-        </Button>
+        <div className="discussion-actions-left">
+          <Button
+            size="sm"
+            variant={expanded ? 'default' : 'ghost'}
+            icon={<MessageSquare size={14} />}
+            onClick={() => void toggleReplies()}
+          >
+            {discussion.numReplies} {discussion.numReplies === 1 ? 'Antwort' : 'Antworten'}
+          </Button>
+          {discussion.isAnnouncement && (
+            <span className="forum-announcement-hint muted small">📢 Nur Lesen</span>
+          )}
+        </div>
+
+        {canReplyToDiscussion && (
+          <Button
+            size="sm"
+            variant="default"
+            icon={<CornerDownRight size={14} />}
+            onClick={handleOpenDiscussionReply}
+          >
+            Antworten
+          </Button>
+        )}
       </div>
 
       {showReplyBox && (
         <div className="discussion-reply-box">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="small muted font-semibold">
+              {replyTargetAuthor ? `Antwort an ${replyTargetAuthor}` : 'Antwort verfassen'}
+            </span>
+          </div>
           <Input
             value={replySubject}
             placeholder="Betreff"
@@ -339,68 +411,93 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
           <Textarea
             value={replyMessage}
             placeholder="Deine Antwort verfassen…"
-            rows={3}
+            rows={4}
             onChange={(e) => setReplyMessage(e.target.value)}
           />
-          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="small muted">
-              {replyTargetPostId && replyTargetPostId !== (discussion.firstPostId ?? discussion.discussionId)
-                ? 'Antwort auf spezifischen Beitrag'
-                : 'Antwort auf Thema'}
-            </span>
-            <div className="row" style={{ gap: 8 }}>
-              <Button size="sm" variant="ghost" onClick={() => setShowReplyBox(false)}>
-                Abbrechen
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                icon={<Send />}
-                disabled={!replyMessage.trim() || sendingReply}
-                onClick={() => void handleSendReply()}
-              >
-                {sendingReply ? 'Sendet…' : 'Abschicken'}
-              </Button>
-            </div>
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+            <Button size="sm" variant="ghost" onClick={() => setShowReplyBox(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<Send size={13} />}
+              disabled={!replyMessage.trim() || sendingReply}
+              onClick={() => void handleSendReply()}
+            >
+              {sendingReply ? 'Sendet…' : 'Abschicken'}
+            </Button>
           </div>
         </div>
       )}
 
       {expanded && (
         <div className="discussion-thread">
-          {loadingPosts && <div className="small muted">Lade Antworten…</div>}
-          {posts && posts.length <= 1 && (
-            <div className="small muted">Keine weiteren Antworten in diesem Strang.</div>
+          {loadingPosts && (
+            <div className="forum-state-box muted small row" style={{ gap: 8 }}>
+              <span className="spinner" /> Antworten werden geladen…
+            </div>
           )}
-          {posts &&
-            posts
-              .filter((p) => p.id !== discussion.id && p.id !== discussion.firstPostId && p.parentId !== 0)
-              .map((post) => (
+
+          {errorLoadingPosts && (
+            <div className="forum-state-box forum-error row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Fehler beim Laden: {errorLoadingPosts}</span>
+              <Button size="sm" onClick={() => void fetchPosts()}>
+                Erneut versuchen
+              </Button>
+            </div>
+          )}
+
+          {!loadingPosts && !errorLoadingPosts && replies.length === 0 && (
+            <div className="forum-empty-replies">
+              {discussion.isAnnouncement
+                ? 'In Ankündigungen gibt es keine weiteren Antworten.'
+                : 'Noch keine Antworten in diesem Strang. Sei der Erste, der antwortet!'}
+            </div>
+          )}
+
+          {!loadingPosts &&
+            replies.map((post) => {
+              const replyInitials = (post.userFullName || 'M')
+                .split(' ')
+                .filter(Boolean)
+                .map((n) => n[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase()
+              const canReplyToPost = !discussion.isAnnouncement && post.canReply !== false
+              return (
                 <div key={post.id} className="post-reply">
-                  <div className="post-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="row" style={{ gap: 8 }}>
+                  <div className="post-header">
+                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <div className="forum-avatar" style={{ width: 26, height: 26, fontSize: 10 }}>
+                        {post.userPictureUrl ? (
+                          <img src={post.userPictureUrl} alt={post.userFullName} />
+                        ) : (
+                          <span>{replyInitials}</span>
+                        )}
+                      </div>
                       <span className="post-author">{post.userFullName}</span>
-                      <span className="meta small">{formatDateTime(post.timeCreated)}</span>
+                      <span className="forum-date-meta">· {formatDateTime(post.timeCreated)}</span>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={<CornerDownRight />}
-                      onClick={() => {
-                        setReplyTargetPostId(post.id)
-                        setReplySubject(post.subject.startsWith('Re:') ? post.subject : `Re: ${post.subject}`)
-                        setShowReplyBox(true)
-                      }}
-                    >
-                      Antworten
-                    </Button>
+                    {canReplyToPost && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<CornerDownRight size={13} />}
+                        onClick={() => handleOpenPostReply(post)}
+                      >
+                        Antworten
+                      </Button>
+                    )}
                   </div>
                   <div
                     className="post-body"
                     dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.message || '') }}
                   />
                 </div>
-              ))}
+              )
+            })}
         </div>
       )}
     </div>
@@ -410,6 +507,7 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
 function ModuleAnnouncements({ module }: { module: Module }) {
   const db = useDb()
   const [syncing, setSyncing] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [forumFilter, setForumFilter] = useState<'all' | 'announcements' | number>('all')
   const discussions = db.moodleDiscussions.filter((d) => d.moduleId === module.id)
 
@@ -434,10 +532,25 @@ function ModuleAnnouncements({ module }: { module: Module }) {
   )
 
   const filteredDiscussions = useMemo(() => {
-    if (forumFilter === 'all') return discussions
-    if (forumFilter === 'announcements') return discussions.filter((d) => d.isAnnouncement)
-    return discussions.filter((d) => d.forumId === forumFilter)
-  }, [discussions, forumFilter])
+    let result = discussions
+    if (forumFilter === 'announcements') {
+      result = result.filter((d) => d.isAnnouncement)
+    } else if (typeof forumFilter === 'number') {
+      result = result.filter((d) => d.forumId === forumFilter)
+    }
+
+    const q = searchQuery.trim().toLowerCase()
+    if (q) {
+      result = result.filter(
+        (d) =>
+          d.subject.toLowerCase().includes(q) ||
+          d.message.toLowerCase().includes(q) ||
+          d.userFullName.toLowerCase().includes(q) ||
+          d.forumName.toLowerCase().includes(q),
+      )
+    }
+    return result
+  }, [discussions, forumFilter, searchQuery])
 
   const handleSync = async () => {
     setSyncing(true)
@@ -473,33 +586,44 @@ function ModuleAnnouncements({ module }: { module: Module }) {
       </div>
 
       {discussions.length > 0 && (
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <Button
-            size="sm"
-            variant={forumFilter === 'all' ? 'primary' : 'ghost'}
-            onClick={() => setForumFilter('all')}
-          >
-            Alle ({discussions.length})
-          </Button>
-          {announcementsCount > 0 && (
+        <div className="stack" style={{ gap: 12 }}>
+          <div className="forum-search-row">
+            <Search size={16} className="muted" />
+            <Input
+              value={searchQuery}
+              placeholder="Beitrag, Thema oder Autor suchen…"
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="forum-filters-bar">
             <Button
               size="sm"
-              variant={forumFilter === 'announcements' ? 'primary' : 'ghost'}
-              onClick={() => setForumFilter('announcements')}
+              variant={forumFilter === 'all' ? 'primary' : 'ghost'}
+              onClick={() => setForumFilter('all')}
             >
-              📢 Nur Ankündigungen ({announcementsCount})
+              Alle ({discussions.length})
             </Button>
-          )}
-          {forums.map((f) => (
-            <Button
-              key={f.id}
-              size="sm"
-              variant={forumFilter === f.id ? 'primary' : 'ghost'}
-              onClick={() => setForumFilter(f.id)}
-            >
-              Forum: {f.name} ({f.count})
-            </Button>
-          ))}
+            {announcementsCount > 0 && (
+              <Button
+                size="sm"
+                variant={forumFilter === 'announcements' ? 'primary' : 'ghost'}
+                onClick={() => setForumFilter('announcements')}
+              >
+                📢 Ankündigungen ({announcementsCount})
+              </Button>
+            )}
+            {forums.map((f) => (
+              <Button
+                key={f.id}
+                size="sm"
+                variant={forumFilter === f.id ? 'primary' : 'ghost'}
+                onClick={() => setForumFilter(f.id)}
+              >
+                💬 {f.name} ({f.count})
+              </Button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -516,8 +640,10 @@ function ModuleAnnouncements({ module }: { module: Module }) {
           Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge synchronisiert.
         </Empty>
       ) : filteredDiscussions.length === 0 ? (
-        <Empty icon={<MessageSquare />} title="Keine Beiträge in dieser Ansicht">
-          In diesem Filter wurden keine Forenbeiträge gefunden.
+        <Empty icon={<MessageSquare />} title="Keine Beiträge gefunden">
+          {searchQuery
+            ? `Keine Suchergebnisse für „${searchQuery}“.`
+            : 'In diesem Filter wurden keine Forenbeiträge gefunden.'}
         </Empty>
       ) : (
         <div className="stack" style={{ gap: 14 }}>

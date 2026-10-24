@@ -207,16 +207,39 @@
   cursor: default;
 }
 
-/* ---- Foren & Ankündigungen ---- */
+/* ---- Foren & Ankündigungen Redesign ---- */
+.forum-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.forum-search-row .input {
+  flex: 1;
+  max-width: 480px;
+}
+
+.forum-filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .discussion-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 16px 18px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: border-color 0.15s ease;
+  gap: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+
+.discussion-card:hover {
+  border-color: var(--border-default, #d0d7de);
 }
 
 .discussion-card.pinned {
@@ -228,6 +251,50 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.discussion-user-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.forum-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-subtle-bg, var(--bg-subtle));
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+  overflow: hidden;
+}
+
+.forum-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.forum-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.forum-author-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.forum-date-meta {
+  font-size: var(--text-xs);
+  color: var(--text-3);
 }
 
 .discussion-title {
@@ -235,17 +302,26 @@
   font-size: var(--text-base);
   font-weight: 650;
   color: var(--text-1);
+  line-height: 1.35;
 }
 
 .discussion-body {
   font-size: var(--text-sm);
   color: var(--text-2);
-  line-height: 1.55;
+  line-height: 1.6;
   word-break: break-word;
 }
 
 .discussion-body p {
-  margin: 4px 0;
+  margin: 6px 0;
+}
+
+.discussion-body p:first-child {
+  margin-top: 0;
+}
+
+.discussion-body p:last-child {
+  margin-bottom: 0;
 }
 
 .discussion-body a {
@@ -256,40 +332,81 @@
 .discussion-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.discussion-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forum-announcement-hint {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  font-style: italic;
 }
 
 .discussion-reply-box {
-  margin-top: 10px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 14px;
   border-radius: var(--radius);
   background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .discussion-thread {
   margin-top: 12px;
-  padding-left: 14px;
+  padding-left: 18px;
   border-left: 2px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.post-reply {
-  padding: 10px 12px;
+.forum-state-box {
+  padding: 12px 14px;
   border-radius: var(--radius);
   background: var(--bg-subtle);
+  font-size: var(--text-sm);
+}
+
+.forum-error {
+  background: var(--color-red-subtle, rgba(239, 68, 68, 0.1));
+  color: var(--color-red, #dc2626);
+  border: 1px solid var(--color-red-subtle, rgba(239, 68, 68, 0.2));
+}
+
+.forum-empty-replies {
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.post-reply {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .post-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
 }
 
 .post-author {
@@ -301,5 +418,6 @@
 .post-body {
   font-size: var(--text-sm);
   color: var(--text-2);
-  line-height: 1.45;
+  line-height: 1.5;
+  word-break: break-word;
 }

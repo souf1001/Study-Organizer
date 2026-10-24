@@ -24,6 +24,7 @@ import {
   eventsFromIcs,
   fetchCalendar,
   maskCalendarUrl,
+  matchModule,
   mergeSubscriptionEvents,
   normalizeCalendarUrl,
   normalizeIcsFilename,
@@ -101,6 +102,32 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     return checkKey(settings, await readBound(secrets, aiSecret(settings.provider), aiTarget(settings)))
   }
 
+  function rematchEvents(): number {
+    const db = store.get()
+    const modules = db.modules
+    const activeSemesterId = db.activeSemesterId ?? db.semesters[0]?.id ?? null
+    let updatedCount = 0
+    const updatedEvents = db.events.map((event) => {
+      if (event.moduleId) return event
+      const matched = matchModule(
+        event.title,
+        event.notes || '',
+        [],
+        modules,
+        activeSemesterId,
+      )
+      if (matched) {
+        updatedCount++
+        return { ...event, moduleId: matched.id }
+      }
+      return event
+    })
+    if (updatedCount > 0) {
+      store.replaceMany('events', () => true, updatedEvents)
+    }
+    return updatedCount
+  }
+
   const service = {
     loadDb: () => store.get(),
     put: <C extends CollectionName>(collection: C, record: RecordOf<C>) => store.put(collection, record),
@@ -166,6 +193,7 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
         const release = await reserveSpace(jsonSize(merged))
         store.replaceMany('events', (e) => e.subscriptionId === id, merged)
         release()
+        rematchEvents()
         store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString(), lastError: null })
         return { count: incoming.length, error: null }
       } catch (error) {
@@ -219,8 +247,10 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       store.put('subscriptions', { ...subscription, lastSync: new Date().toISOString(), lastError: null })
       store.replaceMany('events', (e) => e.subscriptionId === subscription.id, events)
       release()
+      rematchEvents()
       return { count: events.length, error: null, newModules: createdModules.length }
     },
+    calendarRematchEvents: rematchEvents,
 
     // ---- Moodle ----
     moodleSiteInfo: (url: string) => moodleSiteInfo(url, fetchImpl),
@@ -247,42 +277,86 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       const disc = store
         .get()
         .moodleDiscussions.find((d) => d.id === discussionId || d.discussionId === discussionId || d.firstPostId === discussionId)
+      let posts: MoodlePost[] = []
       try {
-        const posts = await client.discussionPosts(discussionId)
-        if (posts.length > 0) return posts
+        posts = await client.discussionPosts(discussionId)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (!msg.includes('cannotfindrecord') && !msg.includes('Datensatz')) throw err
       }
-      if (disc) {
+      if (posts.length === 0 && disc) {
         const candidates = [disc.discussionId, disc.id, disc.firstPostId].filter(
           (cand): cand is number => typeof cand === 'number' && cand !== discussionId,
         )
         for (const candidate of candidates) {
           try {
-            const posts = await client.discussionPosts(candidate)
-            if (posts.length > 0) return posts
+            const candidatePosts = await client.discussionPosts(candidate)
+            if (candidatePosts.length > 0) {
+              posts = candidatePosts
+              break
+            }
           } catch {
             // Weiter mit nächstem Kandidaten
           }
         }
       }
-      return []
+      if (posts.length > 0 && disc) {
+        const root = posts.find((p) => p.parentId === 0) || posts[0]
+        if (root && (!disc.message || !disc.firstPostId || disc.firstPostId === disc.discussionId)) {
+          store.update({
+            moodleDiscussions: store.get().moodleDiscussions.map((d) =>
+              d.id === disc.id
+                ? {
+                    ...d,
+                    message: d.message || root.message,
+                    firstPostId: root.id,
+                  }
+                : d,
+            ),
+          })
+        }
+      }
+      return posts
     },
     moodleReply: async (postIdOrDiscussionId: number, subject: string, message: string): Promise<{ postId: number }> => {
       const client = await moodleClient()
-      const disc = store.get().moodleDiscussions.find((d) => d.id === postIdOrDiscussionId || d.discussionId === postIdOrDiscussionId)
-      const targetPostId = disc?.firstPostId ?? postIdOrDiscussionId
+      const disc = store
+        .get()
+        .moodleDiscussions.find(
+          (d) => d.id === postIdOrDiscussionId || d.discussionId === postIdOrDiscussionId || d.firstPostId === postIdOrDiscussionId,
+        )
+      let targetPostId = postIdOrDiscussionId
+      if (disc && (postIdOrDiscussionId === disc.discussionId || postIdOrDiscussionId === disc.id)) {
+        if (disc.firstPostId && disc.firstPostId !== disc.discussionId) {
+          targetPostId = disc.firstPostId
+        } else {
+          try {
+            const posts = await client.discussionPosts(disc.discussionId)
+            const root = posts.find((p) => p.parentId === 0) || posts[0]
+            if (root) {
+              targetPostId = root.id
+              store.update({
+                moodleDiscussions: store.get().moodleDiscussions.map((d) =>
+                  d.id === disc.id ? { ...d, firstPostId: root.id } : d,
+                ),
+              })
+            }
+          } catch {
+            // Fallback
+          }
+        }
+      }
+
       try {
         const res = await client.replyPost(targetPostId, subject, message)
         return { postId: res.postid }
       } catch (err) {
-        if (disc && targetPostId === postIdOrDiscussionId) {
+        if (disc && targetPostId !== disc.firstPostId) {
           try {
             const posts = await client.discussionPosts(disc.discussionId)
-            const rootPost = posts.find((p) => p.parentId === 0) || posts[0]
-            if (rootPost && rootPost.id !== targetPostId) {
-              const retryRes = await client.replyPost(rootPost.id, subject, message)
+            const root = posts.find((p) => p.parentId === 0) || posts[0]
+            if (root && root.id !== targetPostId) {
+              const retryRes = await client.replyPost(root.id, subject, message)
               return { postId: retryRes.postid }
             }
           } catch {
@@ -313,5 +387,9 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       }
     },
   }
+
+  // Bereits vorhandene Termine ohne Modulzuordnung beim Start automatisch zuordnen
+  rematchEvents()
+
   return service
 }

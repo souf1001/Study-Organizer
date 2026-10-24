@@ -67,6 +67,7 @@ const api: Api = {
     removeSubscription: (id) => invoke('calendar:unsubscribe', id),
     sync: (id) => invoke('calendar:sync', id),
     importFile: (name, text) => invoke('calendar:importFile', name, text),
+    rematchEvents: () => invoke('calendar:rematchEvents'),
   },
 
   tucan: {

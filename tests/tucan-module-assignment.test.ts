@@ -12,7 +12,7 @@ import type { Module, Subscription } from '../src/shared/types'
 import { newModule } from '../src/shared/defaults'
 import { buildSemester } from '../src/shared/semester'
 import { Store } from '../src/backend/store'
-import { createService } from '../src/backend/service'
+import { createService, type Secrets } from '../src/backend/service'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -372,5 +372,139 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
     const combined = combineIcs([octIcs, novIcs])
     const occurrences = (combined.match(/UID:tucan-course-20-00-0015/g) || []).length
     expect(occurrences).toBe(2)
+  })
+
+  it('9. Matches events when user copy-pasted full TUCaN course numbers into module name', () => {
+    const semId = 'sem-wise-2024'
+    const realUserModules: Module[] = [
+      newModule(semId, {
+        id: 'mod-digi',
+        name: '20-00-0900 Digitaltechnik',
+        code: 'DIGI',
+        color: 'blue',
+      }),
+      newModule(semId, {
+        id: 'mod-iug',
+        name: '20-00-1153 Informatik und Gesellschaft',
+        code: 'IuG',
+        color: 'purple',
+      }),
+      newModule(semId, {
+        id: 'mod-moses',
+        name: '20-00-0013 Modellierung, Spezifikation und Semantik',
+        code: 'MOSES',
+        color: 'green',
+      }),
+      newModule(semId, {
+        id: 'mod-pp',
+        name: '20-00-1152 Parallele Programmierung',
+        code: 'PP',
+        color: 'orange',
+      }),
+    ]
+
+    // Event mit reinem Titel wie vom TUCaN-Export erzeugt:
+    const digiEvent = {
+      uid: 'tucan-digi-1',
+      title: 'Digitaltechnik',
+      start: new Date('2026-10-21T08:00:00Z'),
+      end: new Date('2026-10-21T09:40:00Z'),
+      allDay: false,
+      location: 'S202/001',
+      description: 'Vorlesung',
+      categories: [],
+    }
+    expect(matchModule(digiEvent, realUserModules, semId)).toBe('mod-digi')
+
+    const iugEvent = {
+      uid: 'tucan-iug-1',
+      title: 'Informatik und Gesellschaft',
+      start: new Date('2026-10-22T13:30:00Z'),
+      end: new Date('2026-10-22T15:10:00Z'),
+      allDay: false,
+      location: 'S101/A1',
+      description: '',
+      categories: [],
+    }
+    expect(matchModule(iugEvent, realUserModules, semId)).toBe('mod-iug')
+
+    const mosesEvent = {
+      uid: 'tucan-moses-1',
+      title: 'Modellierung, Spezifikation und Semantik',
+      start: new Date('2026-10-23T11:40:00Z'),
+      end: new Date('2026-10-23T13:20:00Z'),
+      allDay: false,
+      location: 'S311/08',
+      description: '',
+      categories: [],
+    }
+    expect(matchModule(mosesEvent, realUserModules, semId)).toBe('mod-moses')
+  })
+
+  it('10. Automatically rematches unassigned events on createService startup and calendarRematchEvents', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tucan-rematch-test-'))
+    try {
+      const store = await Store.open(tmpDir)
+      const semId = 'sem-1'
+      store.put('semesters', {
+        id: semId,
+        createdAt: new Date().toISOString(),
+        ...buildSemester('uni', 'winter', 2024),
+      })
+      store.update({ activeSemesterId: semId })
+
+      // User has existing unassigned events in DB (e.g. from previous import)
+      store.put('events', {
+        id: 'ev-1',
+        title: 'Digitaltechnik',
+        kind: 'lecture',
+        start: '2026-10-20T08:00:00.000Z',
+        end: '2026-10-20T09:40:00.000Z',
+        allDay: false,
+        moduleId: null, // Unassigned!
+        location: '',
+        notes: '',
+        subscriptionId: 'sub-tucan',
+        externalId: 'ext-1',
+      })
+      store.put('events', {
+        id: 'ev-2',
+        title: 'Parallele Programmierung',
+        kind: 'lecture',
+        start: '2026-10-21T08:00:00.000Z',
+        end: '2026-10-21T09:40:00.000Z',
+        allDay: false,
+        moduleId: null, // Unassigned!
+        location: '',
+        notes: '',
+        subscriptionId: 'sub-tucan',
+        externalId: 'ext-2',
+      })
+
+      // Add modules with full copy-pasted name
+      const modDigi = newModule(semId, { id: 'mod-digi', name: '20-00-0900 Digitaltechnik', code: 'DIGI' })
+      const modPP = newModule(semId, { id: 'mod-pp', name: '20-00-1152 Parallele Programmierung', code: 'PP' })
+      store.put('modules', modDigi)
+      store.put('modules', modPP)
+
+      const secrets: Secrets = {
+        get: async () => null,
+        set: async () => undefined,
+        remove: async () => undefined,
+      }
+
+      // createService startup triggers rematchEvents()
+      const service = createService(store, secrets)
+
+      const eventsAfterStartup = store.get().events
+      expect(eventsAfterStartup.find((e) => e.id === 'ev-1')?.moduleId).toBe('mod-digi')
+      expect(eventsAfterStartup.find((e) => e.id === 'ev-2')?.moduleId).toBe('mod-pp')
+
+      // Calling calendarRematchEvents directly also works and reports count
+      const rematched = service.calendarRematchEvents()
+      expect(rematched).toBe(0) // Already matched!
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined)
+    }
   })
 })

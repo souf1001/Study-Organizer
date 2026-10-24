@@ -395,29 +395,62 @@ function findModuleMatch(
     return bActive - aActive
   }
 
-  // Baseline list: active semester first
-  const sorted = [...modules].sort(activeFirst)
+  // Pre-prepare module candidates with extracted metadata
+  interface PreparedModule {
+    m: Module
+    mCode: string
+    mCodeStripped: string
+    mExtCodeStripped: string
+    mEffectiveCodeStripped: string
+    mNameNorm: string
+    mCleanNameNorm: string
+  }
 
-  // Candidate sorting for name matching: active semester first, then length descending (prevents short module shadowing)
-  const sortedByNameLength = [...modules].sort((a, b) => {
-    const act = activeFirst(a, b)
+  const prepared: PreparedModule[] = modules.map((m) => {
+    const mExtracted = extractCourseInfo(m.name)
+    const mCode = m.code.trim().toLowerCase()
+    const mCodeStripped = stripModuleSuffix(mCode)
+    const mExtCodeStripped = mExtracted?.code ? stripModuleSuffix(mExtracted.code.toLowerCase()) : ''
+    const mEffectiveCodeStripped = mCodeStripped || mExtCodeStripped
+    const mNameNorm = normalizeTextForMatching(m.name)
+    const mCleanNameNorm = mExtracted?.name ? normalizeTextForMatching(mExtracted.name) : mNameNorm
+    return {
+      m,
+      mCode,
+      mCodeStripped,
+      mExtCodeStripped,
+      mEffectiveCodeStripped,
+      mNameNorm,
+      mCleanNameNorm,
+    }
+  })
+
+  // Baseline list: active semester first
+  const sorted = [...prepared].sort((a, b) => activeFirst(a.m, b.m))
+
+  // Candidate sorting for name matching: active semester first, then longest clean name length descending
+  const sortedByNameLength = [...prepared].sort((a, b) => {
+    const act = activeFirst(a.m, b.m)
     if (act !== 0) return act
-    const aLen = normalizeTextForMatching(a.name).length
-    const bLen = normalizeTextForMatching(b.name).length
+    const aLen = Math.max(a.mCleanNameNorm.length, a.mNameNorm.length)
+    const bLen = Math.max(b.mCleanNameNorm.length, b.mNameNorm.length)
     return bLen - aLen
   })
 
   // Candidate sorting for code matching: active semester first, then code length descending
-  const sortedByCodeLength = [...modules].sort((a, b) => {
-    const act = activeFirst(a, b)
+  const sortedByCodeLength = [...prepared].sort((a, b) => {
+    const act = activeFirst(a.m, b.m)
     if (act !== 0) return act
-    return b.code.trim().length - a.code.trim().length
+    return b.mEffectiveCodeStripped.length - a.mEffectiveCodeStripped.length
   })
 
   const normCategories = categories.map((c) => c.trim().toLowerCase())
   const strippedCategories = categories.map((c) => stripModuleSuffix(c.trim().toLowerCase()))
   const normSummary = normalizeTextForMatching(summary)
   const primaryText = [summary, ...categories].filter(Boolean).join(' ')
+  const extracted = extractCourseInfo(summary, categories, description)
+  const extNameNorm = extracted?.name ? normalizeTextForMatching(extracted.name) : ''
+  const extCodeStripped = extracted?.code ? stripModuleSuffix(extracted.code.toLowerCase()) : ''
 
   // =========================================================================
   // STAGE 1: Primary Match (Title / Summary, Categories, Extracted Codes)
@@ -425,70 +458,104 @@ function findModuleMatch(
   // =========================================================================
 
   // 1. Direct Category Match (exact or stripped code or name)
-  for (const m of sorted) {
-    const mCode = m.code.trim().toLowerCase()
-    const mCodeStripped = stripModuleSuffix(mCode)
-    const mName = m.name.trim().toLowerCase()
-    const mNameNorm = normalizeTextForMatching(m.name)
-
-    if (mCode && (normCategories.includes(mCode) || (mCodeStripped && strippedCategories.includes(mCodeStripped)))) {
-      return m
+  for (const item of sorted) {
+    if (
+      item.mCode &&
+      (normCategories.includes(item.mCode) ||
+        (item.mCodeStripped && strippedCategories.includes(item.mCodeStripped)))
+    ) {
+      return item.m
     }
-    if (mName && (normCategories.includes(mName) || (mNameNorm && categories.some((c) => normalizeTextForMatching(c) === mNameNorm)))) {
-      return m
+    if (item.mEffectiveCodeStripped && strippedCategories.includes(item.mEffectiveCodeStripped)) {
+      return item.m
+    }
+    if (
+      item.mNameNorm &&
+      (normCategories.includes(item.m.name.trim().toLowerCase()) ||
+        categories.some((c) => normalizeTextForMatching(c) === item.mNameNorm))
+    ) {
+      return item.m
+    }
+    if (
+      item.mCleanNameNorm &&
+      item.mCleanNameNorm !== item.mNameNorm &&
+      categories.some((c) => normalizeTextForMatching(c) === item.mCleanNameNorm)
+    ) {
+      return item.m
     }
   }
 
   // 2. Extracted Course Code Match (from summary or category)
-  const extracted = extractCourseInfo(summary, categories, description)
-  if (extracted?.code) {
-    const extCodeStripped = stripModuleSuffix(extracted.code.toLowerCase())
-    for (const m of sortedByCodeLength) {
-      const mCodeStripped = stripModuleSuffix(m.code.trim().toLowerCase())
-      if (mCodeStripped && extCodeStripped === mCodeStripped) {
-        return m
+  if (extCodeStripped) {
+    for (const item of sortedByCodeLength) {
+      if (item.mEffectiveCodeStripped && extCodeStripped === item.mEffectiveCodeStripped) {
+        return item.m
       }
     }
   }
 
   // 3. Word Pattern match on Module Code in Summary / Categories
-  for (const m of sortedByCodeLength) {
-    const mCode = m.code.trim()
-    const mCodeStripped = stripModuleSuffix(mCode)
-    if (mCode.length >= 2 && wordPattern(mCode).test(primaryText)) {
-      return m
-    }
-    if (mCodeStripped.length >= 2 && wordPattern(mCodeStripped).test(primaryText)) {
-      return m
+  for (const item of sortedByCodeLength) {
+    const codes = [item.mCode, item.mCodeStripped, item.mEffectiveCodeStripped].filter(
+      (c): c is string => Boolean(c) && c.length >= 2,
+    )
+    for (const code of codes) {
+      if (wordPattern(code).test(primaryText)) {
+        return item.m
+      }
     }
   }
 
-  // 4. Exact Extracted Course Name Match
-  if (extracted?.name) {
-    const extNameNorm = normalizeTextForMatching(extracted.name)
+  // 4. Exact Course Name Match (m.name or clean name equals event summary or extracted name)
+  for (const item of sortedByNameLength) {
+    if (normSummary.length >= 3) {
+      if (item.mNameNorm === normSummary || item.mCleanNameNorm === normSummary) {
+        return item.m
+      }
+    }
     if (extNameNorm.length >= 3) {
-      for (const m of sortedByNameLength) {
-        const mNameNorm = normalizeTextForMatching(m.name)
-        if (mNameNorm && mNameNorm === extNameNorm) {
-          return m
+      if (item.mNameNorm === extNameNorm || item.mCleanNameNorm === extNameNorm) {
+        return item.m
+      }
+    }
+  }
+
+  // 5. Course Name Match in Title / Summary (Longest module clean name first, bidirectional)
+  for (const item of sortedByNameLength) {
+    const names = Array.from(
+      new Set([item.mCleanNameNorm, item.mNameNorm].filter((n) => Boolean(n) && n.length >= 3)),
+    )
+    for (const name of names) {
+      const namePattern = new RegExp(`(^|\\s)${escapeRegExp(name)}($|\\s)`)
+      // Forward containment: module name in event summary
+      if (normSummary && namePattern.test(normSummary)) {
+        return item.m
+      }
+      if (extNameNorm && namePattern.test(extNameNorm)) {
+        return item.m
+      }
+      // Reverse containment: event summary (or extracted name) in module name
+      // (Crucial when module was copy-pasted as e.g. "20-00-0900 Digitaltechnik" and event is "Digitaltechnik")
+      if (normSummary && normSummary.length >= 3) {
+        const summaryPattern = new RegExp(`(^|\\s)${escapeRegExp(normSummary)}($|\\s)`)
+        if (summaryPattern.test(name)) {
+          return item.m
+        }
+      }
+      if (extNameNorm && extNameNorm.length >= 3) {
+        const extPattern = new RegExp(`(^|\\s)${escapeRegExp(extNameNorm)}($|\\s)`)
+        if (extPattern.test(name)) {
+          return item.m
         }
       }
     }
-  }
 
-  // 5. Course Name Match in Title / Summary (Longest module name first)
-  for (const m of sortedByNameLength) {
-    const mName = m.name.trim()
-    if (!mName) continue
-    const mNameNorm = normalizeTextForMatching(mName)
-    if (mNameNorm.length >= 3) {
-      const namePattern = new RegExp(`(^|\\s)${escapeRegExp(mNameNorm)}($|\\s)`)
-      if (namePattern.test(normSummary)) {
-        return m
+    // Word pattern fallback on raw names
+    const rawNames = [item.m.name.trim()].filter((n) => n.length >= 3)
+    for (const rName of rawNames) {
+      if (wordPattern(rName).test(summary)) {
+        return item.m
       }
-    }
-    if (mName.length >= 3 && wordPattern(mName).test(summary)) {
-      return m
     }
   }
 
@@ -501,30 +568,30 @@ function findModuleMatch(
     const normDesc = normalizeTextForMatching(trimmedDesc)
 
     // 6. Word Pattern match on Module Code in Description
-    for (const m of sortedByCodeLength) {
-      const mCode = m.code.trim()
-      const mCodeStripped = stripModuleSuffix(mCode)
-      if (mCode.length >= 2 && wordPattern(mCode).test(trimmedDesc)) {
-        return m
-      }
-      if (mCodeStripped.length >= 2 && wordPattern(mCodeStripped).test(trimmedDesc)) {
-        return m
+    for (const item of sortedByCodeLength) {
+      const codes = [item.mCode, item.mCodeStripped, item.mEffectiveCodeStripped].filter(
+        (c): c is string => Boolean(c) && c.length >= 2,
+      )
+      for (const code of codes) {
+        if (wordPattern(code).test(trimmedDesc)) {
+          return item.m
+        }
       }
     }
 
-    // 7. Course Name Match in Description (Longest module name first)
-    for (const m of sortedByNameLength) {
-      const mName = m.name.trim()
-      if (!mName) continue
-      const mNameNorm = normalizeTextForMatching(mName)
-      if (mNameNorm.length >= 3) {
-        const namePattern = new RegExp(`(^|\\s)${escapeRegExp(mNameNorm)}($|\\s)`)
+    // 7. Course Name Match in Description (Longest module clean name first)
+    for (const item of sortedByNameLength) {
+      const names = Array.from(
+        new Set([item.mCleanNameNorm, item.mNameNorm].filter((n) => Boolean(n) && n.length >= 3)),
+      )
+      for (const name of names) {
+        const namePattern = new RegExp(`(^|\\s)${escapeRegExp(name)}($|\\s)`)
         if (namePattern.test(normDesc)) {
-          return m
+          return item.m
         }
-      }
-      if (mName.length >= 3 && wordPattern(mName).test(trimmedDesc)) {
-        return m
+        if (wordPattern(name).test(trimmedDesc)) {
+          return item.m
+        }
       }
     }
   }

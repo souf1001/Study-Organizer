@@ -74,6 +74,7 @@ export function registerIpc(service: Service, store: Store): void {
     'calendar:removeSubscription': service.calendarUnsubscribe,
     'calendar:sync': service.calendarSync,
     'calendar:importFile': service.calendarImportFile,
+    'calendar:rematchEvents': service.calendarRematchEvents,
     'tucan:startWizard': () => startTucanWizard(service, BrowserWindow.getFocusedWindow()),
     'moodle:siteInfo': service.moodleSiteInfo,
     'moodle:connect': service.moodleConnect,

@@ -91,6 +91,8 @@ export interface CalendarApi {
   sync(id: ID): Promise<SyncResult>
   /** Einmaliger Import einer .ics-Datei (z. B. Stundenplan aus my h_da / HISinOne) */
   importFile(name: string, text: string): Promise<SyncResult>
+  /** Weist unzugeordnete Termine anhand der Modulnamen und -codes automatisch neu zu */
+  rematchEvents?(): Promise<number>
 }
 
 export interface TucanWizardResult {

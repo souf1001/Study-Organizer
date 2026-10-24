@@ -216,8 +216,8 @@ export class MoodleClient {
     forumid?: number
     course?: number
     subject?: string
-    message: string
-    userfullname: string
+    message?: string
+    userfullname?: string
     userpictureurl?: string
     created: number
     modified?: number
@@ -235,8 +235,8 @@ export class MoodleClient {
           forumid?: number
           course?: number
           subject?: string
-          message: string
-          userfullname: string
+          message?: string
+          userfullname?: string
           userpictureurl?: string
           created: number
           modified?: number
@@ -248,7 +248,8 @@ export class MoodleClient {
         forumid,
         page: 0,
         perpage: 50,
-        sortorder: 1,
+        sortby: 'timemodified',
+        sortdirection: 'DESC',
       })
       if (res && Array.isArray(res.discussions)) return res.discussions
     } catch {
@@ -263,8 +264,8 @@ export class MoodleClient {
         forumid?: number
         course?: number
         subject?: string
-        message: string
-        userfullname: string
+        message?: string
+        userfullname?: string
         userpictureurl?: string
         created: number
         modified?: number
@@ -272,7 +273,7 @@ export class MoodleClient {
         numreplies?: number
         pinned?: boolean
       }[]
-    }>('mod_forum_get_forum_discussions', { forumid }).catch(() => ({ discussions: [] }))
+    }>('mod_forum_get_forum_discussions', { forumids: [forumid] }).catch(() => ({ discussions: [] }))
     return fallback?.discussions ?? []
   }
 
@@ -291,6 +292,7 @@ export class MoodleClient {
   }
 
   async discussionPosts(discussionid: number): Promise<MoodlePost[]> {
+    const discIdNum = Math.trunc(Number(discussionid))
     try {
       const res = await this.call<{
         posts?: {
@@ -309,11 +311,15 @@ export class MoodleClient {
           capabilities?: { reply?: boolean }
           canreply?: boolean
         }[]
-      }>('mod_forum_get_discussion_posts', { discussionid })
-      if (res && Array.isArray(res.posts)) {
+      }>('mod_forum_get_discussion_posts', {
+        discussionid: discIdNum,
+        sortby: 'created',
+        sortdirection: 'ASC',
+      })
+      if (res && Array.isArray(res.posts) && res.posts.length > 0) {
         return res.posts.map((p) => ({
           id: p.id,
-          discussionId: p.discussion ?? p.discussionid ?? discussionid,
+          discussionId: p.discussion ?? p.discussionid ?? discIdNum,
           parentId: p.parent ?? p.parentid ?? 0,
           subject: p.subject || '',
           message: p.message || '',
@@ -343,11 +349,15 @@ export class MoodleClient {
           created?: number
           canreply?: boolean
         }[]
-      }>('mod_forum_get_forum_discussion_posts', { discussionid })
-      if (legacyRes && Array.isArray(legacyRes.posts)) {
+      }>('mod_forum_get_forum_discussion_posts', {
+        discussionid: discIdNum,
+        sortby: 'created',
+        sortdirection: 'ASC',
+      })
+      if (legacyRes && Array.isArray(legacyRes.posts) && legacyRes.posts.length > 0) {
         return legacyRes.posts.map((p) => ({
           id: p.id,
-          discussionId: p.discussionid ?? p.discussion ?? discussionid,
+          discussionId: p.discussionid ?? p.discussion ?? discIdNum,
           parentId: p.parentid ?? p.parent ?? 0,
           subject: p.subject || '',
           message: p.message || '',
@@ -357,30 +367,29 @@ export class MoodleClient {
           canReply: p.canreply,
         }))
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('cannotfindrecord') || msg.includes('Datensatz')) {
-        // Möglicherweise wurde versehentlich eine Post-ID übergeben: Auflösen versuchen
-        const resolved = await this.getDiscussionPost(discussionid)
-        if (resolved && resolved.discussion && resolved.discussion !== discussionid) {
-          try {
-            return await this.discussionPosts(resolved.discussion)
-          } catch {
-            return []
-          }
-        }
-        return []
-      }
-      throw err
+    } catch {
+      // Weiter mit Post-ID Auflösung
     }
+
+    try {
+      const resolved = await this.getDiscussionPost(discIdNum)
+      if (resolved && resolved.discussion && resolved.discussion !== discIdNum) {
+        return await this.discussionPosts(resolved.discussion)
+      }
+    } catch {
+      // Ignorieren
+    }
+
     return []
   }
 
   async replyPost(postid: number, subject: string, message: string): Promise<{ postid: number }> {
     return this.call<{ postid: number }>('mod_forum_add_discussion_post', {
-      postid,
-      subject,
+      postid: Math.trunc(Number(postid)),
+      subject: subject || 'Re:',
       message,
+      messageformat: 1,
+      options: [],
     })
   }
 

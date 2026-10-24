@@ -3,7 +3,7 @@ import { repairMarkdown } from '@shared/markdown'
 import { extractAgentActions, agentSystemPrompt } from '@shared/agent'
 import { newModule, normalizeDb } from '@shared/defaults'
 
-import { extractValidTokenLimit } from '../src/backend/ai-openai'
+import { extractValidTokenLimit, streamOpenAi } from '../src/backend/ai-openai'
 
 describe('repairMarkdown', () => {
   it('schließt unvollständige Codeblöcke bei Token-Cut-Off', () => {
@@ -103,3 +103,62 @@ describe('agentSystemPrompt', () => {
     expect(prompt).toContain('create_note')
   })
 })
+
+describe('streamOpenAi auto-continuation', () => {
+  it('setzt die Textgenerierung nahtlos fort, wenn finish_reason === "length"', async () => {
+    let callCount = 0
+    const receivedBodies: any[] = []
+
+    const fakeFetch: typeof fetch = (async (_url: any, init: any) => {
+      callCount++
+      const body = JSON.parse(init.body)
+      receivedBodies.push(body)
+
+      let sse = ''
+      if (callCount === 1) {
+        sse = [
+          'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Teil 1 ' }, finish_reason: 'length' }] }),
+          'data: [DONE]',
+          '',
+        ].join('\n\n')
+      } else {
+        sse = [
+          'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Teil 2 abgeschlossen.' }, finish_reason: 'stop' }] }),
+          'data: [DONE]',
+          '',
+        ].join('\n\n')
+      }
+
+      return new Response(sse, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }) as any
+
+    const streamedChunks: string[] = []
+    const fullText = await streamOpenAi(
+      'https://api.openai.com/v1',
+      'key123',
+      'gpt-4o',
+      {
+        system: 'System Prompt',
+        messages: [{ role: 'user', content: 'Schreib einen Aufsatz.' }],
+      },
+      (chunk) => streamedChunks.push(chunk),
+      new AbortController().signal,
+      fakeFetch,
+    )
+
+    expect(callCount).toBe(2)
+    expect(fullText).toBe('Teil 1 Teil 2 abgeschlossen.')
+    expect(streamedChunks).toEqual(['Teil 1 ', 'Teil 2 abgeschlossen.'])
+
+    // In Iteration 2 wurde die vorherige Antwort als Assistant-Nachricht angefügt
+    expect(receivedBodies[1].messages).toEqual([
+      { role: 'system', content: 'System Prompt' },
+      { role: 'user', content: 'Schreib einen Aufsatz.' },
+      { role: 'assistant', content: 'Teil 1 ' },
+    ])
+  })
+})
+

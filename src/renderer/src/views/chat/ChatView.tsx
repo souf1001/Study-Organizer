@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import 'katex/dist/katex.min.css'
-import { ArrowUp, Bot, Copy, FilePlus, MessageCircle, RotateCcw, Settings, Sparkles, Square } from 'lucide-react'
+import { ArrowUp, Bot, Copy, FilePlus, MessageCircle, RotateCcw, Settings, Square } from 'lucide-react'
 import type { AiMessage, Db, ID, Item } from '@shared/types'
 import { api } from '@/lib/api'
 import { activeSemester, semesterModules } from '@/lib/actions'
@@ -268,18 +268,6 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
                   <span className="spinner" /> Unterlagen werden gelesen …
                 </span>
               )}
-            </div>
-          )}
-          {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && !streaming && (
-            <div className="row" style={{ justifyContent: 'center', margin: '8px 0' }}>
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Sparkles size={13} />}
-                onClick={() => void send('Bitte fahre genau an der vorherigen Stelle fort und schreibe den Text nahtlos weiter.')}
-              >
-                Antwort fortsetzen / weiter schreiben
-              </Button>
             </div>
           )}
           <div ref={endRef} />

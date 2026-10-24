@@ -37,68 +37,125 @@ export async function streamOpenAi(
 ): Promise<string> {
   const isReasoning = /^(?:o1|o3|o4)\b/i.test(model)
   const defaultTokens = 8_192
-  const tokenLimit = request.maxTokens ?? defaultTokens
+  let tokenLimit = request.maxTokens ?? defaultTokens
+  const openAiClient = client(baseUrl, apiKey, fetchImpl)
 
-  const createParams = (tokens: number) => ({
+  const createParams = (tokens: number, msgs: typeof request.messages) => ({
     model,
     stream: true as const,
-    messages: [{ role: 'system' as const, content: request.system }, ...request.messages],
+    messages: [{ role: 'system' as const, content: request.system }, ...msgs],
     ...(isReasoning ? { max_completion_tokens: tokens } : { max_tokens: tokens }),
   })
 
-  let stream
-  try {
-    stream = await client(baseUrl, apiKey, fetchImpl).chat.completions.create(
-      createParams(tokenLimit),
-      { signal },
-    )
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const validLimit = extractValidTokenLimit(msg, tokenLimit)
-    if (validLimit && validLimit > 0) {
-      stream = await client(baseUrl, apiKey, fetchImpl).chat.completions.create(
-        createParams(validLimit),
+  let totalText = ''
+  let continuations = 0
+  const maxContinuations = 4
+
+  while (continuations <= maxContinuations) {
+    if (signal.aborted) break
+
+    const messagesToSend =
+      totalText.length > 0
+        ? [...request.messages, { role: 'assistant' as const, content: totalText }]
+        : request.messages
+
+    let stream
+    try {
+      stream = await openAiClient.chat.completions.create(
+        createParams(tokenLimit, messagesToSend),
         { signal },
       )
-    } else if (tokenLimit > 4_096) {
-      try {
-        stream = await client(baseUrl, apiKey, fetchImpl).chat.completions.create(
-          createParams(4_096),
+    } catch (err: unknown) {
+      if (signal.aborted) break
+      const msg = err instanceof Error ? err.message : String(err)
+      const validLimit = extractValidTokenLimit(msg, tokenLimit)
+      if (validLimit && validLimit > 0) {
+        tokenLimit = validLimit
+        stream = await openAiClient.chat.completions.create(
+          createParams(tokenLimit, messagesToSend),
           { signal },
         )
-      } catch {
-        stream = await client(baseUrl, apiKey, fetchImpl).chat.completions.create(
+      } else if (tokenLimit > 8_192) {
+        tokenLimit = 8_192
+        try {
+          stream = await openAiClient.chat.completions.create(
+            createParams(tokenLimit, messagesToSend),
+            { signal },
+          )
+        } catch {
+          tokenLimit = 4_096
+          try {
+            stream = await openAiClient.chat.completions.create(
+              createParams(tokenLimit, messagesToSend),
+              { signal },
+            )
+          } catch {
+            stream = await openAiClient.chat.completions.create(
+              {
+                model,
+                stream: true,
+                messages: [{ role: 'system', content: request.system }, ...messagesToSend],
+              },
+              { signal },
+            )
+          }
+        }
+      } else if (tokenLimit > 4_096) {
+        tokenLimit = 4_096
+        try {
+          stream = await openAiClient.chat.completions.create(
+            createParams(tokenLimit, messagesToSend),
+            { signal },
+          )
+        } catch {
+          stream = await openAiClient.chat.completions.create(
+            {
+              model,
+              stream: true,
+              messages: [{ role: 'system', content: request.system }, ...messagesToSend],
+            },
+            { signal },
+          )
+        }
+      } else {
+        // Fallback without explicit token limit if rejected by a custom provider
+        stream = await openAiClient.chat.completions.create(
           {
             model,
             stream: true,
-            messages: [{ role: 'system', content: request.system }, ...request.messages],
+            messages: [{ role: 'system', content: request.system }, ...messagesToSend],
           },
           { signal },
         )
       }
+    }
+
+    let finishReason: string | null = null
+    let iterText = ''
+
+    for await (const chunk of stream) {
+      if (signal.aborted) break
+      const choice = chunk.choices[0]
+      if (choice?.finish_reason) {
+        finishReason = choice.finish_reason
+      }
+      const delta = choice?.delta?.content
+      if (delta) {
+        iterText += delta
+        totalText += delta
+        onText(delta)
+      }
+    }
+
+    // Wenn Token-Limit erreicht wurde ('length'), automatisch nahtlos fortsetzen
+    if (finishReason === 'length' && iterText.length > 0 && !signal.aborted) {
+      continuations++
     } else {
-      // Fallback without explicit token limit if rejected by a custom provider
-      stream = await client(baseUrl, apiKey, fetchImpl).chat.completions.create(
-        {
-          model,
-          stream: true,
-          messages: [{ role: 'system', content: request.system }, ...request.messages],
-        },
-        { signal },
-      )
+      break
     }
   }
 
-  let text = ''
-  for await (const chunk of stream) {
-    const choice = chunk.choices[0]
-    const delta = choice?.delta?.content
-    if (delta) {
-      text += delta
-      onText(delta)
-    }
-  }
-  return text
+  return totalText
 }
 
 export async function listOpenAiModels(baseUrl: string, apiKey: string, fetchImpl?: typeof fetch): Promise<string[]> {
