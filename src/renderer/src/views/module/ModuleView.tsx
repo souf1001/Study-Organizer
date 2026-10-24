@@ -4,6 +4,8 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Circle,
   CornerDownRight,
   FilePlus,
@@ -24,6 +26,7 @@ import {
   Trash2,
   Upload,
   User,
+  X,
 } from 'lucide-react'
 import DOMPurify from 'dompurify'
 import { isoDateOf, today } from '@shared/dates'
@@ -272,12 +275,13 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
   const replies = useMemo(() => {
     if (!posts) return []
     const rootId = rootPost?.id ?? discussion.firstPostId
-    return posts.filter((p) => p.id !== rootId && p.parentId !== 0)
+    return posts.filter((p) => p.id !== rootId)
   }, [posts, rootPost, discussion.firstPostId])
 
   const canReplyToDiscussion = !discussion.isAnnouncement && (!rootPost || rootPost.canReply !== false)
 
-  const handleOpenDiscussionReply = () => {
+  const handleOpenDiscussionReply = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
     const targetId =
       rootPost?.id ??
       (discussion.firstPostId && discussion.firstPostId !== discussion.discussionId ? discussion.firstPostId : null) ??
@@ -285,10 +289,14 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
     setReplyTargetPostId(targetId)
     setReplyTargetAuthor(discussion.userFullName)
     setReplySubject(discussion.subject.startsWith('Re:') ? discussion.subject : `Re: ${discussion.subject}`)
-    setShowReplyBox((v) => !v)
+    setShowReplyBox(true)
+    if (!expanded) {
+      void toggleReplies()
+    }
   }
 
-  const handleOpenPostReply = (post: MoodlePost) => {
+  const handleOpenPostReply = (post: MoodlePost, e?: React.MouseEvent) => {
+    e?.stopPropagation()
     setReplyTargetPostId(post.id)
     setReplyTargetAuthor(post.userFullName)
     setReplySubject(post.subject.startsWith('Re:') ? post.subject : `Re: ${post.subject}`)
@@ -328,46 +336,64 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
     .join('')
     .toUpperCase()
 
+  const replyCount = posts ? replies.length : discussion.numReplies
+
   return (
-    <div className={`discussion-card ${discussion.pinned ? 'pinned' : ''}`}>
-      <div className="discussion-header">
-        <div className="discussion-user-meta">
-          <div className="forum-avatar" title={discussion.userFullName}>
-            {discussion.userPictureUrl ? (
-              <img src={discussion.userPictureUrl} alt={discussion.userFullName} />
-            ) : (
-              <span>{authorInitials}</span>
+    <div className={`discussion-card ${discussion.pinned ? 'pinned' : ''} ${discussion.isAnnouncement ? 'announcement-card' : ''}`}>
+      <div className="discussion-card-main" onClick={() => void toggleReplies()}>
+        <div className="discussion-header">
+          <div className="discussion-user-meta">
+            <div className="forum-avatar" title={discussion.userFullName}>
+              {discussion.userPictureUrl ? (
+                <img src={discussion.userPictureUrl} alt={discussion.userFullName} />
+              ) : (
+                <span>{authorInitials}</span>
+              )}
+            </div>
+            <div className="forum-user-info">
+              <span className="forum-author-name">{discussion.userFullName}</span>
+              <span className="forum-date-meta">{formatDateTime(discussion.timeCreated)}</span>
+            </div>
+          </div>
+
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {discussion.pinned && (
+              <span className="badge color-orange row" style={{ gap: 4 }}>
+                <Pin size={11} /> Angepinnt
+              </span>
             )}
-          </div>
-          <div className="forum-user-info">
-            <span className="forum-author-name">{discussion.userFullName}</span>
-            <span className="forum-date-meta">{formatDateTime(discussion.timeCreated)}</span>
+            {discussion.isAnnouncement ? (
+              <span className="badge color-red">📢 Ankündigung</span>
+            ) : (
+              <span className="badge color-blue">Forum: {discussion.forumName}</span>
+            )}
+            <button
+              type="button"
+              className="forum-expand-btn"
+              title={expanded ? 'Einklappen' : 'Ausklappen'}
+              onClick={(e) => {
+                e.stopPropagation()
+                void toggleReplies()
+              }}
+            >
+              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
           </div>
         </div>
 
-        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-          {discussion.pinned && (
-            <span className="badge color-orange row" style={{ gap: 4 }}>
-              <Pin size={11} /> Angepinnt
-            </span>
-          )}
-          {discussion.isAnnouncement ? (
-            <span className="badge color-red">📢 Ankündigung</span>
-          ) : (
-            <span className="badge color-blue">Forum: {discussion.forumName}</span>
-          )}
-        </div>
+        <h3 className="discussion-title">{discussion.subject}</h3>
+
+        {sanitizedBody ? (
+          <div
+            className={`discussion-body ${!expanded ? 'discussion-body-collapsed' : ''}`}
+            dangerouslySetInnerHTML={{ __html: sanitizedBody }}
+          />
+        ) : (
+          <div className="discussion-body muted small" style={{ fontStyle: 'italic' }}>
+            {expanded ? 'Kein Text im Eröffnungsbeitrag.' : 'Klicke zum Öffnen und Laden des Inhalts.'}
+          </div>
+        )}
       </div>
-
-      <h3 className="discussion-title">{discussion.subject}</h3>
-
-      {sanitizedBody ? (
-        <div className="discussion-body" dangerouslySetInnerHTML={{ __html: sanitizedBody }} />
-      ) : (
-        <div className="discussion-body muted small" style={{ fontStyle: 'italic' }}>
-          Keine Textvorschau verfügbar. Klicke auf Antworten zum Laden.
-        </div>
-      )}
 
       <div className="discussion-actions">
         <div className="discussion-actions-left">
@@ -377,23 +403,25 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
             icon={<MessageSquare size={14} />}
             onClick={() => void toggleReplies()}
           >
-            {discussion.numReplies} {discussion.numReplies === 1 ? 'Antwort' : 'Antworten'}
+            {replyCount} {replyCount === 1 ? 'Antwort' : 'Antworten'}
           </Button>
           {discussion.isAnnouncement && (
-            <span className="forum-announcement-hint muted small">📢 Nur Lesen</span>
+            <span className="forum-announcement-hint muted small">📢 Nur Lesezugriff</span>
           )}
         </div>
 
-        {canReplyToDiscussion && (
-          <Button
-            size="sm"
-            variant="default"
-            icon={<CornerDownRight size={14} />}
-            onClick={handleOpenDiscussionReply}
-          >
-            Antworten
-          </Button>
-        )}
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          {canReplyToDiscussion && (
+            <Button
+              size="sm"
+              variant="default"
+              icon={<CornerDownRight size={14} />}
+              onClick={handleOpenDiscussionReply}
+            >
+              Antworten
+            </Button>
+          )}
+        </div>
       </div>
 
       {showReplyBox && (
@@ -402,6 +430,18 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
             <span className="small muted font-semibold">
               {replyTargetAuthor ? `Antwort an ${replyTargetAuthor}` : 'Antwort verfassen'}
             </span>
+            <button
+              type="button"
+              className="forum-search-clear"
+              title="Abbrechen"
+              onClick={() => {
+                setShowReplyBox(false)
+                setReplyTargetPostId(null)
+                setReplyTargetAuthor(null)
+              }}
+            >
+              <X size={14} />
+            </button>
           </div>
           <Input
             value={replySubject}
@@ -415,7 +455,15 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
             onChange={(e) => setReplyMessage(e.target.value)}
           />
           <div className="row" style={{ justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-            <Button size="sm" variant="ghost" onClick={() => setShowReplyBox(false)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setShowReplyBox(false)
+                setReplyTargetPostId(null)
+                setReplyTargetAuthor(null)
+              }}
+            >
               Abbrechen
             </Button>
             <Button
@@ -433,6 +481,11 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
 
       {expanded && (
         <div className="discussion-thread">
+          <div className="thread-section-title">
+            <span>Antworten</span>
+            <span className="badge color-gray">{replies.length}</span>
+          </div>
+
           {loadingPosts && (
             <div className="forum-state-box muted small row" style={{ gap: 8 }}>
               <span className="spinner" /> Antworten werden geladen…
@@ -450,9 +503,18 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
 
           {!loadingPosts && !errorLoadingPosts && replies.length === 0 && (
             <div className="forum-empty-replies">
-              {discussion.isAnnouncement
-                ? 'In Ankündigungen gibt es keine weiteren Antworten.'
-                : 'Noch keine Antworten in diesem Strang. Sei der Erste, der antwortet!'}
+              {discussion.numReplies > 0 ? (
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <span>Antworten konnten noch nicht geladen werden oder sind offline.</span>
+                  <Button size="sm" variant="ghost" onClick={() => void fetchPosts()}>
+                    Erneut laden
+                  </Button>
+                </div>
+              ) : discussion.isAnnouncement ? (
+                'In Ankündigungen gibt es keine weiteren Antworten.'
+              ) : (
+                'Noch keine Antworten in diesem Strang. Sei der/die Erste, der/die antwortet!'
+              )}
             </div>
           )}
 
@@ -485,7 +547,7 @@ function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
                         size="sm"
                         variant="ghost"
                         icon={<CornerDownRight size={13} />}
-                        onClick={() => handleOpenPostReply(post)}
+                        onClick={(e) => handleOpenPostReply(post, e)}
                       >
                         Antworten
                       </Button>
@@ -570,14 +632,15 @@ function ModuleAnnouncements({ module }: { module: Module }) {
   }
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
+    <div className="stack" style={{ gap: 18 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="section-title" style={{ margin: 0 }}>
-          Moodle Foren & Ankündigungen ({discussions.length})
+        <div className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>Moodle Foren & Ankündigungen</span>
+          <span className="badge color-gray">{discussions.length}</span>
         </div>
         <Button
           size="sm"
-          icon={<RefreshCw className={syncing ? 'spin' : ''} />}
+          icon={<RefreshCw size={14} className={syncing ? 'spin' : ''} />}
           disabled={syncing}
           onClick={() => void handleSync()}
         >
@@ -586,14 +649,26 @@ function ModuleAnnouncements({ module }: { module: Module }) {
       </div>
 
       {discussions.length > 0 && (
-        <div className="stack" style={{ gap: 12 }}>
-          <div className="forum-search-row">
-            <Search size={16} className="muted" />
-            <Input
+        <div className="stack" style={{ gap: 10 }}>
+          <div className="forum-search-box">
+            <Search size={15} className="muted" />
+            <input
+              type="text"
+              className="forum-search-input"
               value={searchQuery}
               placeholder="Beitrag, Thema oder Autor suchen…"
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                className="forum-search-clear"
+                title="Suche zurücksetzen"
+                onClick={() => setSearchQuery('')}
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           <div className="forum-filters-bar">
@@ -632,7 +707,7 @@ function ModuleAnnouncements({ module }: { module: Module }) {
           icon={<MessageSquare />}
           title="Keine Forenbeiträge"
           action={
-            <Button icon={<RefreshCw />} disabled={syncing} onClick={() => void handleSync()}>
+            <Button icon={<RefreshCw size={14} />} disabled={syncing} onClick={() => void handleSync()}>
               Mit Moodle abgleichen
             </Button>
           }
@@ -641,9 +716,23 @@ function ModuleAnnouncements({ module }: { module: Module }) {
         </Empty>
       ) : filteredDiscussions.length === 0 ? (
         <Empty icon={<MessageSquare />} title="Keine Beiträge gefunden">
-          {searchQuery
-            ? `Keine Suchergebnisse für „${searchQuery}“.`
-            : 'In diesem Filter wurden keine Forenbeiträge gefunden.'}
+          <div className="stack" style={{ alignItems: 'center', gap: 10 }}>
+            <span>
+              {searchQuery
+                ? `Keine Suchergebnisse für „${searchQuery}“.`
+                : 'In diesem Filter wurden keine Forenbeiträge gefunden.'}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSearchQuery('')
+                setForumFilter('all')
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </div>
         </Empty>
       ) : (
         <div className="stack" style={{ gap: 14 }}>

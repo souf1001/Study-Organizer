@@ -153,11 +153,16 @@ describe('streamOpenAi auto-continuation', () => {
     expect(fullText).toBe('Teil 1 Teil 2 abgeschlossen.')
     expect(streamedChunks).toEqual(['Teil 1 ', 'Teil 2 abgeschlossen.'])
 
-    // In Iteration 2 wurde die vorherige Antwort als Assistant-Nachricht angefügt
+    // In Iteration 2 wurde die bisherige Antwort als Assistant-Nachricht plus Fortsetzungs-Prompt angefügt
     expect(receivedBodies[1].messages).toEqual([
       { role: 'system', content: 'System Prompt' },
       { role: 'user', content: 'Schreib einen Aufsatz.' },
       { role: 'assistant', content: 'Teil 1 ' },
+      {
+        role: 'user',
+        content:
+          'Bitte fahre genau an der Stelle fort, an der deine vorherige Antwort abgeschnitten wurde. Wiederhole nichts vom bisherigen Text, sondern schreibe direkt das nächste Wort weiter.',
+      },
     ])
   })
 })

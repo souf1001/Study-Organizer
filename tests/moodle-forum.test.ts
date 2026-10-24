@@ -191,6 +191,7 @@ describe('Moodle Foren & Ankündigungen', () => {
       expect(mapped[0].discussionId).toBe(4442)
       expect(mapped[0].firstPostId).toBe(9991)
     } finally {
+      await store.flush()
       await rm(dir, { recursive: true, force: true })
     }
   })
@@ -345,6 +346,7 @@ describe('Moodle Foren & Ankündigungen', () => {
       expect(discussions[0].isAnnouncement).toBe(true)
       expect(discussions[0].pinned).toBe(true)
     } finally {
+      await store.flush()
       await rm(dir, { recursive: true, force: true })
     }
   })
@@ -452,6 +454,7 @@ describe('Moodle Foren & Ankündigungen', () => {
       const updatedDisc = store.get().moodleDiscussions.find((d) => d.id === 200)
       expect(updatedDisc?.firstPostId).toBe(7001)
     } finally {
+      await store.flush()
       await rm(dir, { recursive: true, force: true })
     }
   })
@@ -533,7 +536,101 @@ describe('Moodle Foren & Ankündigungen', () => {
       expect(disc?.message).toBe('<p>Hier ist die Aufgabe 1.</p>')
       expect(disc?.firstPostId).toBe(8001)
     } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('service.moodleReply fängt ungültigen Parameterwert bei veralteter firstPostId ab und versucht erneute Auflösung via discussionPosts', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-invalid-param-'))
+    const store = await Store.open(dir)
+    try {
+      const secretsData = new Map<string, string>()
+      const secrets: Secrets = {
+        get: async (n) => secretsData.get(n) ?? null,
+        set: async (n, v) => void secretsData.set(n, v),
+        remove: async (n) => void secretsData.delete(n),
+      }
+      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            url: 'https://moodle.hochschule.de',
+            userId: 42,
+          },
+        },
+        moodleDiscussions: [
+          {
+            id: 400,
+            discussionId: 400,
+            firstPostId: 99999, // Ungültige oder veraltete Post-ID
+            forumId: 10,
+            courseId: 101,
+            moduleId: null,
+            forumName: 'Allgemein',
+            subject: 'Thema mit ungültiger firstPostId',
+            message: '',
+            userFullName: 'Prof',
+            timeCreated: new Date().toISOString(),
+            timeModified: new Date().toISOString(),
+            numReplies: 0,
+            pinned: false,
+            isAnnouncement: false,
+          },
+        ],
+      })
+
+      let attempts = 0
+      const fetchImpl = fakeFetch((fn, body) => {
+        if (fn === 'mod_forum_add_discussion_post') {
+          attempts++
+          const postId = body.get('postid')
+          if (postId === '99999') {
+            return {
+              exception: 'invalid_parameter_exception',
+              errorcode: 'invalidparameter',
+              message: 'Ungültiger Parameterwert (postid)',
+            }
+          }
+          if (postId === '88888') {
+            return { postid: 77777 }
+          }
+        }
+        if (fn === 'mod_forum_get_discussion_posts') {
+          expect(body.get('discussionid')).toBe('400')
+          return {
+            posts: [
+              {
+                id: 88888, // Echte Root-Post-ID
+                discussionid: 400,
+                parentid: 0,
+                subject: 'Thema mit ungültiger firstPostId',
+                message: '<p>Echter Inhalt</p>',
+                userfullname: 'Prof',
+              },
+            ],
+          }
+        }
+        throw new Error(`Unerwartet: ${fn}`)
+      })
+
+      const { createService } = await import('../src/backend/service')
+      const service = createService(store, secrets, { fetchImpl })
+
+      // User klickt auf Antworten mit der im Store vorhandenen firstPostId (99999)
+      const res = await service.moodleReply(99999, 'Re: Thema', 'Meine Antwort')
+      expect(res.postId).toBe(77777)
+      expect(attempts).toBe(2) // 1 Fehlversuch an 99999, 1 erfolgreicher Retry an 88888
+
+      // Store muss jetzt die korrigierte firstPostId besitzen
+      const updated = store.get().moodleDiscussions.find((d) => d.id === 400)
+      expect(updated?.firstPostId).toBe(88888)
+    } finally {
+      await store.flush()
       await rm(dir, { recursive: true, force: true })
     }
   })
 })
+

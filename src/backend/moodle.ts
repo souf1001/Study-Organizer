@@ -313,11 +313,9 @@ export class MoodleClient {
         }[]
       }>('mod_forum_get_discussion_posts', {
         discussionid: discIdNum,
-        sortby: 'created',
-        sortdirection: 'ASC',
       })
       if (res && Array.isArray(res.posts) && res.posts.length > 0) {
-        return res.posts.map((p) => ({
+        const mapped = res.posts.map((p) => ({
           id: p.id,
           discussionId: p.discussion ?? p.discussionid ?? discIdNum,
           parentId: p.parent ?? p.parentid ?? 0,
@@ -328,6 +326,9 @@ export class MoodleClient {
           timeCreated: toIso(p.created ?? p.timecreated ?? Math.floor(Date.now() / 1000)),
           canReply: p.capabilities?.reply ?? p.canreply,
         }))
+        // Chronologisch sortieren: der älteste Beitrag (Root-Post) steht immer an Index 0
+        mapped.sort((a, b) => a.id - b.id || a.timeCreated.localeCompare(b.timeCreated))
+        return mapped
       }
     } catch {
       // Fallback zu mod_forum_get_forum_discussion_posts
@@ -351,11 +352,9 @@ export class MoodleClient {
         }[]
       }>('mod_forum_get_forum_discussion_posts', {
         discussionid: discIdNum,
-        sortby: 'created',
-        sortdirection: 'ASC',
       })
       if (legacyRes && Array.isArray(legacyRes.posts) && legacyRes.posts.length > 0) {
-        return legacyRes.posts.map((p) => ({
+        const mapped = legacyRes.posts.map((p) => ({
           id: p.id,
           discussionId: p.discussionid ?? p.discussion ?? discIdNum,
           parentId: p.parentid ?? p.parent ?? 0,
@@ -366,6 +365,8 @@ export class MoodleClient {
           timeCreated: toIso(p.timecreated ?? p.created ?? Math.floor(Date.now() / 1000)),
           canReply: p.canreply,
         }))
+        mapped.sort((a, b) => a.id - b.id || a.timeCreated.localeCompare(b.timeCreated))
+        return mapped
       }
     } catch {
       // Weiter mit Post-ID Auflösung
@@ -384,12 +385,14 @@ export class MoodleClient {
   }
 
   async replyPost(postid: number, subject: string, message: string): Promise<{ postid: number }> {
+    const id = Math.trunc(Number(postid))
+    if (!id || isNaN(id) || id <= 0) throw new Error('Ungültige Post-ID.')
+    if (!message || !message.trim()) throw new Error('Nachricht darf nicht leer sein.')
     return this.call<{ postid: number }>('mod_forum_add_discussion_post', {
-      postid: Math.trunc(Number(postid)),
-      subject: subject || 'Re:',
-      message,
+      postid: id,
+      subject: subject?.trim() || 'Re:',
+      message: message.trim(),
       messageformat: 1,
-      options: [],
     })
   }
 

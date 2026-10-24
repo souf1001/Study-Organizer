@@ -130,9 +130,21 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
 
   const service = {
     loadDb: () => store.get(),
-    put: <C extends CollectionName>(collection: C, record: RecordOf<C>) => store.put(collection, record),
+    put: <C extends CollectionName>(collection: C, record: RecordOf<C>) => {
+      const res = store.put(collection, record)
+      if (collection === 'modules') {
+        rematchEvents()
+      }
+      return res
+    },
     remove: (collection: CollectionName, id: string) => store.remove(collection, id),
-    update: (patch: DbPatch) => store.update(patch),
+    update: (patch: DbPatch) => {
+      const res = store.update(patch)
+      if (patch.activeSemesterId) {
+        rematchEvents()
+      }
+      return res
+    },
 
     readNote: (id: string) => store.readNote(id),
     writeNote: (id: string, doc: NoteDoc) => store.writeNote(id, doc),
@@ -320,14 +332,23 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     },
     moodleReply: async (postIdOrDiscussionId: number, subject: string, message: string): Promise<{ postId: number }> => {
       const client = await moodleClient()
-      const disc = store
-        .get()
-        .moodleDiscussions.find(
-          (d) => d.id === postIdOrDiscussionId || d.discussionId === postIdOrDiscussionId || d.firstPostId === postIdOrDiscussionId,
-        )
+      const db = store.get()
+      const disc = db.moodleDiscussions.find(
+        (d) =>
+          d.id === postIdOrDiscussionId ||
+          d.discussionId === postIdOrDiscussionId ||
+          d.firstPostId === postIdOrDiscussionId,
+      )
       let targetPostId = postIdOrDiscussionId
-      if (disc && (postIdOrDiscussionId === disc.discussionId || postIdOrDiscussionId === disc.id)) {
-        if (disc.firstPostId && disc.firstPostId !== disc.discussionId) {
+
+      // Wenn eine Diskussion referenziert wird, versuchen wir vorab die echte Root-Post-ID zu ermitteln
+      if (disc) {
+        if (
+          disc.firstPostId &&
+          disc.firstPostId !== disc.discussionId &&
+          postIdOrDiscussionId !== disc.discussionId &&
+          postIdOrDiscussionId !== disc.id
+        ) {
           targetPostId = disc.firstPostId
         } else {
           try {
@@ -335,14 +356,18 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
             const root = posts.find((p) => p.parentId === 0) || posts[0]
             if (root) {
               targetPostId = root.id
-              store.update({
-                moodleDiscussions: store.get().moodleDiscussions.map((d) =>
-                  d.id === disc.id ? { ...d, firstPostId: root.id } : d,
-                ),
-              })
+              if (disc.firstPostId !== root.id || !disc.message) {
+                store.update({
+                  moodleDiscussions: store.get().moodleDiscussions.map((d) =>
+                    d.id === disc.id ? { ...d, firstPostId: root.id, message: d.message || root.message } : d,
+                  ),
+                })
+              }
             }
           } catch {
-            // Fallback
+            if (disc.firstPostId && disc.firstPostId !== disc.discussionId) {
+              targetPostId = disc.firstPostId
+            }
           }
         }
       }
@@ -351,16 +376,36 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
         const res = await client.replyPost(targetPostId, subject, message)
         return { postId: res.postid }
       } catch (err) {
-        if (disc && targetPostId !== disc.firstPostId) {
+        // Falls Moodle den Parameterwert zurückgewiesen hat: Post-ID über discussionPosts auflösen und erneut versuchen
+        if (disc) {
           try {
             const posts = await client.discussionPosts(disc.discussionId)
             const root = posts.find((p) => p.parentId === 0) || posts[0]
             if (root && root.id !== targetPostId) {
               const retryRes = await client.replyPost(root.id, subject, message)
+              store.update({
+                moodleDiscussions: store.get().moodleDiscussions.map((d) =>
+                  d.id === disc.id ? { ...d, firstPostId: root.id, message: d.message || root.message } : d,
+                ),
+              })
               return { postId: retryRes.postid }
             }
           } catch {
-            // Re-throw
+            // Re-throw original error
+          }
+        } else {
+          try {
+            const resolved = await client.getDiscussionPost(postIdOrDiscussionId)
+            if (resolved?.discussion) {
+              const posts = await client.discussionPosts(resolved.discussion)
+              const root = posts.find((p) => p.parentId === 0) || posts[0]
+              if (root && root.id !== postIdOrDiscussionId) {
+                const retryRes = await client.replyPost(root.id, subject, message)
+                return { postId: retryRes.postid }
+              }
+            }
+          } catch {
+            // Re-throw original error
           }
         }
         throw err

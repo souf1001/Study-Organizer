@@ -507,4 +507,119 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined)
     }
   })
+
+  it('11. Automatically rematches existing unassigned events immediately when a module is added via service.put', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tucan-put-rematch-'))
+    try {
+      const store = await Store.open(tmpDir)
+      const semId = 'sem-wise'
+      store.put('semesters', {
+        id: semId,
+        createdAt: new Date().toISOString(),
+        ...buildSemester('uni', 'winter', 2024),
+      })
+      store.update({ activeSemesterId: semId })
+
+      // Event exists, unassigned
+      store.put('events', {
+        id: 'ev-moses-1',
+        title: 'Modellierung, Spezifikation und Semantik',
+        kind: 'lecture',
+        start: '2026-10-22T08:00:00.000Z',
+        end: '2026-10-22T09:40:00.000Z',
+        allDay: false,
+        moduleId: null,
+        location: 'S202',
+        notes: '',
+        subscriptionId: 'sub-1',
+        externalId: 'ext-m1',
+      })
+
+      const secrets: Secrets = {
+        get: async () => null,
+        set: async () => undefined,
+        remove: async () => undefined,
+      }
+      const service = createService(store, secrets)
+
+      // Noch nicht zugeordnet
+      expect(store.get().events.find((e) => e.id === 'ev-moses-1')?.moduleId).toBeNull()
+
+      // User legt jetzt das Modul an mit TUCaN-Kopiernamen
+      service.put(
+        'modules',
+        newModule(semId, {
+          id: 'mod-moses',
+          name: '20-00-0013 Modellierung, Spezifikation und Semantik',
+          code: 'MOSES',
+        }),
+      )
+
+      // Sofort automatisch zugeordnet ohne Neustart!
+      const after = store.get().events.find((e) => e.id === 'ev-moses-1')
+      expect(after?.moduleId).toBe('mod-moses')
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  })
+
+  it('12. Rematches events when switching active semester via service.update', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tucan-sem-rematch-'))
+    try {
+      const store = await Store.open(tmpDir)
+      const semA = 'sem-a'
+      const semB = 'sem-b'
+      store.put('semesters', {
+        id: semA,
+        createdAt: new Date().toISOString(),
+        ...buildSemester('uni', 'winter', 2024),
+      })
+      store.put('semesters', {
+        id: semB,
+        createdAt: new Date().toISOString(),
+        ...buildSemester('uni', 'summer', 2025),
+      })
+      store.update({ activeSemesterId: semA })
+
+      store.put('events', {
+        id: 'ev-calc-1',
+        title: 'Analysis 1',
+        kind: 'lecture',
+        start: '2026-10-22T08:00:00.000Z',
+        end: '2026-10-22T09:40:00.000Z',
+        allDay: false,
+        moduleId: null,
+        location: '',
+        notes: '',
+        subscriptionId: 'sub-1',
+        externalId: 'ext-calc-1',
+      })
+
+      const secrets: Secrets = {
+        get: async () => null,
+        set: async () => undefined,
+        remove: async () => undefined,
+      }
+      const service = createService(store, secrets)
+
+      // Modul in semB anlegen
+      store.put(
+        'modules',
+        newModule(semB, {
+          id: 'mod-ana-b',
+          name: '04-00-0101 Analysis 1',
+          code: 'ANA1',
+        }),
+      )
+
+      // Umschalten des aktiven Semesters auf semB via service.update
+      service.update({ activeSemesterId: semB })
+
+      const after = store.get().events.find((e) => e.id === 'ev-calc-1')
+      expect(after?.moduleId).toBe('mod-ana-b')
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  })
 })
+

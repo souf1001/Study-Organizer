@@ -56,7 +56,15 @@ export async function streamOpenAi(
 
     const messagesToSend =
       totalText.length > 0
-        ? [...request.messages, { role: 'assistant' as const, content: totalText }]
+        ? [
+            ...request.messages,
+            { role: 'assistant' as const, content: totalText },
+            {
+              role: 'user' as const,
+              content:
+                'Bitte fahre genau an der Stelle fort, an der deine vorherige Antwort abgeschnitten wurde. Wiederhole nichts vom bisherigen Text, sondern schreibe direkt das nächste Wort weiter.',
+            },
+          ]
         : request.messages
 
     let stream
