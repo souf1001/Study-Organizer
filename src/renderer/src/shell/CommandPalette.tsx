@@ -116,6 +116,18 @@ function Palette() {
         view: { type: 'item', id: i.id },
       }))
 
+    const chatResults: Result[] = (db.chats ?? [])
+      .filter((c) => match(c.title) || c.messages.some((m) => match(m.content)))
+      .slice(0, 8)
+      .map((c) => ({
+        key: `chat-${c.id}`,
+        group: 'KI-Chats',
+        label: c.title,
+        hint: c.moduleId ? moduleName(c.moduleId) : 'Allgemein',
+        icon: <MessageCircle />,
+        view: { type: 'chat', chatId: c.id, moduleId: c.moduleId ?? undefined },
+      }))
+
     const shown = new Set(items.map((r) => r.key))
     const fullText: Result[] = hits
       .filter((h) => !shown.has(h.itemId))
@@ -125,7 +137,7 @@ function Palette() {
         return [{ key: `t-${h.itemId}`, group: 'Im Inhalt gefunden', label: item.title, snippet: h.snippet, hint: moduleName(item.moduleId), icon: <Search />, view: { type: 'item', id: item.id } }]
       })
 
-    return q ? [...modules, ...folders, ...items, ...fullText, ...commands] : [...items, ...commands, ...modules]
+    return q ? [...modules, ...folders, ...items, ...chatResults, ...fullText, ...commands] : [...items, ...chatResults, ...commands, ...modules]
   }, [db, query, hits])
 
   useEffect(() => {

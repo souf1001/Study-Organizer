@@ -3,7 +3,7 @@ import { emptyNote, newFolder, newNoteItem } from '@shared/defaults'
 import { today } from '@shared/dates'
 import { moduleOccurrences, sessionFolderName, SESSION_LABELS, type Occurrence } from '@shared/schedule'
 import { findSemesterAt } from '@shared/semester'
-import type { Db, Folder, ID, Item, Module, Semester, SessionKind } from '@shared/types'
+import type { ChatSession, Db, Folder, ID, Item, Module, Semester, SessionKind } from '@shared/types'
 import { confirm, prompt } from '@/ui/Dialogs'
 import { toast, toastError } from '@/ui/Toast'
 import { api } from './api'
@@ -210,3 +210,32 @@ export async function deleteModule(module: Module): Promise<boolean> {
   if (ok) await removeRecord('modules', module.id)
   return ok
 }
+
+export function moduleChats(db: Db, moduleId: ID | null): ChatSession[] {
+  return (db.chats ?? [])
+    .filter((c) => c.moduleId === moduleId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+export async function renameChat(chat: ChatSession): Promise<void> {
+  const title = await prompt({
+    title: 'Chat umbenennen',
+    initial: chat.title,
+    placeholder: 'z. B. Zusammenfassung Kapitel 2',
+  })
+  if (title && title.trim()) {
+    putRecord('chats', { ...chat, title: title.trim(), updatedAt: new Date().toISOString() })
+  }
+}
+
+export async function deleteChat(chat: ChatSession): Promise<boolean> {
+  const ok = await confirm({
+    title: `Chat „${chat.title}“ löschen?`,
+    message: 'Der bisherige Chatverlauf wird unwiderruflich entfernt.',
+    confirmLabel: 'Löschen',
+    danger: true,
+  })
+  if (ok) await removeRecord('chats', chat.id)
+  return ok
+}
+

@@ -160,6 +160,7 @@ export class Store {
       drop('folders', (f) => f.moduleId !== id)
       drop('events', (e) => e.moduleId !== id)
       drop('tasks', (t) => t.moduleId !== id)
+      drop('chats', (c) => c.moduleId !== id)
     }
     if (collection === 'folders') {
       const folderIds = new Set([id])

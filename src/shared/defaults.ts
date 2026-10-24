@@ -1,6 +1,8 @@
 // Standardwerte und Fabrikfunktionen für neue Datensätze.
 import type {
+  AiMessage,
   CalendarEvent,
+  ChatSession,
   Db,
   Folder,
   ID,
@@ -73,6 +75,7 @@ export function createDefaultDb(): Db {
     tasks: [],
     subscriptions: [],
     moodleDiscussions: [],
+    chats: [],
   }
 }
 
@@ -114,6 +117,19 @@ export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
       numReplies: Number(d.numReplies ?? 0),
       pinned: Boolean(d.pinned),
       isAnnouncement: Boolean(d.isAnnouncement),
+    })),
+    chats: (raw.chats ?? []).map((c) => ({
+      id: c.id || newId(),
+      moduleId: c.moduleId ?? null,
+      title: c.title || 'Neuer Chat',
+      messages: Array.isArray(c.messages)
+        ? c.messages.filter(
+            (m): m is AiMessage =>
+              Boolean(m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'),
+          )
+        : [],
+      createdAt: c.createdAt || new Date().toISOString(),
+      updatedAt: c.updatedAt || c.createdAt || new Date().toISOString(),
     })),
   }
 }
@@ -233,3 +249,16 @@ export function emptyNote(settings: Settings['editor']): NoteDoc {
     text: '',
   }
 }
+
+export function newChatSession(moduleId: ID | null = null, partial: Partial<ChatSession> = {}): ChatSession {
+  return {
+    id: newId(),
+    moduleId,
+    title: 'Neuer Chat',
+    messages: [],
+    createdAt: now(),
+    updatedAt: now(),
+    ...partial,
+  }
+}
+

@@ -524,3 +524,65 @@
   line-height: 1.5;
   word-break: break-word;
 }
+
+/* ---- Modul KI-Chats ---- */
+.module-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.module-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.module-chat-card {
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+}
+
+.module-chat-card:hover {
+  border-color: var(--border-strong);
+}
+
+.module-chat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.module-chat-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+
+.module-chat-card-snippet {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: 1.45;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.module-chat-card-bottom {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+}
+

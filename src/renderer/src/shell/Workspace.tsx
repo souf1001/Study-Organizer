@@ -40,8 +40,15 @@ function crumbsFor(db: Db, view: View): Crumb[] {
       return [{ label: 'Kalender', view }]
     case 'tasks':
       return [{ label: 'Aufgaben', view }]
-    case 'chat':
-      return [{ label: 'KI-Chat', view }]
+    case 'chat': {
+      const chat = view.chatId ? (db.chats ?? []).find((c) => c.id === view.chatId) : null
+      const modId = view.moduleId ?? chat?.moduleId
+      const label = chat ? `KI-Chat: ${chat.title}` : 'KI-Chat'
+      return [
+        ...(modId ? moduleCrumb(modId) : []),
+        { label, view },
+      ]
+    }
     case 'settings':
       return [{ label: 'Einstellungen', view }]
     case 'launcher':

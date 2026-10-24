@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Store } from '../src/backend/store'
-import { newFolder, newModule, newNoteItem, newTask } from '../src/shared/defaults'
+import { newChatSession, newFolder, newModule, newNoteItem, newTask } from '../src/shared/defaults'
 
 let dir: string
 let store: Store
@@ -45,6 +45,7 @@ describe('Store', () => {
     store.put('folders', sub)
     store.put('items', note)
     store.put('tasks', newTask({ moduleId: module.id }))
+    store.put('chats', newChatSession(module.id, { title: 'Modul Chat' }))
     await store.writeNote(note.id, { content: null, strokes: [], paper: 'plain', paperColor: 'auto', font: 'inter', height: 1000, text: 'Hallo' })
     const tmpFile = path.join(dir, 'upload.pdf')
     await writeFile(tmpFile, 'pdf')
@@ -58,6 +59,7 @@ describe('Store', () => {
     expect(db.folders).toHaveLength(0)
     expect(db.items).toHaveLength(0)
     expect(db.tasks).toHaveLength(0)
+    expect(db.chats).toHaveLength(0)
     expect(await exists(path.join(dir, 'notes', `${note.id}.json`))).toBe(false)
     expect(await exists(store.filePath(file.fileName!))).toBe(false)
   })

@@ -4,13 +4,13 @@ import { persist } from 'zustand/middleware'
 import type { ID } from '@shared/types'
 import { toast } from '@/ui/Toast'
 
-export type ModuleTab = 'overview' | 'sessions' | 'lab' | 'files' | 'tasks' | 'announcements'
+export type ModuleTab = 'overview' | 'sessions' | 'lab' | 'files' | 'tasks' | 'announcements' | 'chats'
 
 export type View =
   | { type: 'home' }
   | { type: 'calendar' }
   | { type: 'tasks' }
-  | { type: 'chat'; itemIds?: ID[]; folderId?: ID; moduleId?: ID }
+  | { type: 'chat'; chatId?: ID; itemIds?: ID[]; folderId?: ID; moduleId?: ID }
   | { type: 'module'; id: ID; tab?: ModuleTab }
   | { type: 'folder'; id: ID }
   | { type: 'item'; id: ID }

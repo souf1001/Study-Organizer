@@ -268,6 +268,7 @@ export interface Db {
   tasks: Task[]
   subscriptions: Subscription[]
   moodleDiscussions: MoodleDiscussion[]
+  chats: ChatSession[]
 }
 
 export const COLLECTIONS = [
@@ -278,6 +279,7 @@ export const COLLECTIONS = [
   'events',
   'tasks',
   'subscriptions',
+  'chats',
 ] as const
 
 export type CollectionName = (typeof COLLECTIONS)[number]
@@ -329,6 +331,15 @@ export interface AiRequest {
   system: string
   messages: AiMessage[]
   maxTokens?: number
+}
+
+export interface ChatSession {
+  id: ID
+  moduleId: ID | null
+  title: string
+  messages: AiMessage[]
+  createdAt: string
+  updatedAt: string
 }
 
 // ---- Integrationen ----

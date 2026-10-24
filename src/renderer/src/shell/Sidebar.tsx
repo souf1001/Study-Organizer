@@ -208,6 +208,9 @@ function ModuleRow({ module, onEdit }: { module: Module; onEdit: () => void }) {
     showMenu(e, [
       { label: 'Neue Notiz', icon: <FilePlus />, onClick: () => void createNote(module.id, null).then(() => open(module.id)) },
       { label: 'Neuer Ordner', icon: <FolderPlus />, onClick: () => void createFolder(module.id, null).then(() => open(module.id)) },
+      ...(db.settings.ai.enabled
+        ? [{ label: 'KI-Chat', icon: <MessageCircle />, onClick: () => openView({ type: 'chat', moduleId: module.id }) }]
+        : []),
       { separator: true },
       { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane(view) },
       { label: 'Modul bearbeiten', icon: <Pencil />, onClick: onEdit },

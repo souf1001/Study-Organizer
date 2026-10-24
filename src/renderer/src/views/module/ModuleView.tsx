@@ -23,6 +23,7 @@ import {
   ScrollText,
   Search,
   Send,
+  SplitSquareHorizontal,
   Trash2,
   Upload,
   User,
@@ -38,10 +39,12 @@ import {
   createFolder,
   createManualSession,
   createNote,
+  deleteChat,
   deleteModule,
   findSessionFolder,
   openSession,
   pickFiles,
+  renameChat,
   semesterOf,
   uploadFiles,
   visibleItems,
@@ -49,7 +52,7 @@ import {
 import { summarizePastSessions } from '@/lib/ai'
 import { loadDb, putRecord, updateSettings, useDb } from '@/lib/db'
 import { formatDateTime, formatDay, relativeDay } from '@/lib/format'
-import { openView, useWorkspace, type ModuleTab } from '@/lib/workspace'
+import { openInNewPane, openView, useWorkspace, type ModuleTab } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
 import { Input, Select, Textarea } from '@/ui/Field'
@@ -290,6 +293,46 @@ function Overview({
             ))}
           </div>
           <TaskList tasks={openTasks.slice(0, 5)} />
+        </div>
+      )}
+
+      {db.settings.ai.enabled && (
+        <div>
+          <div className="section-title">
+            KI-Chats {db.chats?.filter((c) => c.moduleId === module.id).length ? `(${db.chats.filter((c) => c.moduleId === module.id).length})` : ''}
+          </div>
+          {db.chats?.filter((c) => c.moduleId === module.id).length > 0 ? (
+            <div className="list">
+              {db.chats
+                .filter((c) => c.moduleId === module.id)
+                .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+                .slice(0, 3)
+                .map((c) => (
+                  <div
+                    key={c.id}
+                    className="list-row clickable"
+                    onClick={(ev) => openView({ type: 'chat', chatId: c.id, moduleId: module.id }, ev)}
+                  >
+                    <MessageSquare size={16} className="faint" />
+                    <span className="truncate">{c.title}</span>
+                    <span className="meta">{formatDateTime(c.updatedAt)}</span>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="row" style={{ gap: 8 }}>
+              <Button size="sm" variant="ghost" icon={<MessageCircle />} onClick={(ev) => openView({ type: 'chat', moduleId: module.id }, ev)}>
+                Chat zu diesem Modul starten
+              </Button>
+            </div>
+          )}
+          {db.chats?.filter((c) => c.moduleId === module.id).length > 3 && (
+            <div className="row" style={{ marginTop: 8 }}>
+              <Button size="sm" variant="ghost" onClick={() => openView({ type: 'module', id: module.id, tab: 'chats' })}>
+                Alle {db.chats.filter((c) => c.moduleId === module.id).length} Chats anzeigen …
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -940,6 +983,108 @@ function ModuleAnnouncements({ module }: { module: Module }) {
   )
 }
 
+function ModuleChats({ module }: { module: Module }) {
+  const db = useDb()
+  const [search, setSearch] = useState('')
+  const chats = (db.chats ?? [])
+    .filter((c) => c.moduleId === module.id)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? chats.filter(
+        (c) =>
+          c.title.toLowerCase().includes(q) ||
+          c.messages.some((m) => m.content.toLowerCase().includes(q)),
+      )
+    : chats
+
+  return (
+    <div className="module-chats">
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 650, margin: 0 }}>KI-Chats zu {module.name}</h2>
+          <p className="muted small" style={{ margin: '2px 0 0' }}>
+            Bisherige Unterhaltungen und Fragen zur Vorlesung und Übung
+          </p>
+        </div>
+        <Button icon={<Plus />} onClick={(e) => openView({ type: 'chat', moduleId: module.id }, e)}>
+          Neuer Chat
+        </Button>
+      </div>
+
+      {chats.length > 0 && (
+        <input
+          type="search"
+          className="chat-sidebar-search"
+          style={{ maxWidth: 360, marginBottom: 8 }}
+          placeholder="Chats in diesem Modul durchsuchen …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
+
+      {chats.length === 0 ? (
+        <Empty
+          icon={<MessageCircle />}
+          title={`Noch keine Chats zu ${module.name}`}
+          action={
+            <Button icon={<Plus />} onClick={(e) => openView({ type: 'chat', moduleId: module.id }, e)}>
+              Chat starten
+            </Button>
+          }
+        >
+          Frag die KI nach Erklärungen zu deinen Vorlesungsfolien, Formeln oder erstelle Übungsaufgaben für dieses Modul.
+        </Empty>
+      ) : filtered.length === 0 ? (
+        <div className="muted small" style={{ padding: '32px 0', textAlign: 'center' }}>
+          Keine Chats zu „{search}“ in diesem Modul gefunden.
+        </div>
+      ) : (
+        <div className="module-chat-list">
+          {filtered.map((c) => {
+            const lastMsg = c.messages.at(-1)?.content ?? ''
+            const preview = lastMsg.replace(/[#*`_~[\]]/g, '').slice(0, 140)
+            return (
+              <div
+                key={c.id}
+                className="module-chat-card clickable"
+                onClick={(e) => openView({ type: 'chat', chatId: c.id, moduleId: module.id }, e)}
+              >
+                <div className="module-chat-card-top">
+                  <div className="module-chat-card-title">
+                    <MessageSquare size={16} className="faint" />
+                    <span>{c.title}</span>
+                  </div>
+                  <span className="small muted">{formatDateTime(c.updatedAt)}</span>
+                </div>
+                {preview && <p className="module-chat-card-snippet">{preview}</p>}
+                <div className="module-chat-card-bottom">
+                  <span className="badge small faint">
+                    {c.messages.length} {c.messages.length === 1 ? 'Nachricht' : 'Nachrichten'}
+                  </span>
+                  <span className="spacer" />
+                  <div className="row" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                    <IconButton small label="In neuem Bereich öffnen" onClick={() => openInNewPane({ type: 'chat', chatId: c.id, moduleId: module.id })}>
+                      <SplitSquareHorizontal size={14} />
+                    </IconButton>
+                    <IconButton small label="Umbenennen" onClick={() => void renameChat(c)}>
+                      <Pencil size={14} />
+                    </IconButton>
+                    <IconButton small label="Löschen" onClick={() => void deleteChat(c)}>
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ModuleView({ module, tab, paneId }: { module: Module; tab: ModuleTab; paneId: string }) {
   const db = useDb()
   const [editing, setEditing] = useState(false)
@@ -1021,6 +1166,8 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
     (d) => d.moduleId === module.id || (d.courseId && mappedCourseKeys.some((k) => k === String(d.courseId))),
   )
 
+  const moduleChats = (db.chats ?? []).filter((c) => c.moduleId === module.id)
+
   const tabs: { id: ModuleTab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Übersicht' },
     { id: 'sessions', label: 'Termine', count: lectures.length || undefined },
@@ -1028,6 +1175,7 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
     { id: 'files', label: 'Dateien' },
     { id: 'tasks', label: 'Aufgaben', count: moduleTasks.filter((t) => !t.done).length || undefined },
     { id: 'announcements', label: 'Ankündigungen & Forum', count: moduleDiscussions.length || undefined },
+    ...(db.settings.ai.enabled ? [{ id: 'chats' as ModuleTab, label: 'KI-Chat', count: moduleChats.length || undefined }] : []),
   ]
 
   const moreMenu = (e: React.MouseEvent<HTMLButtonElement>) =>
@@ -1110,6 +1258,7 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
         )}
         {tab === 'tasks' && <TaskList tasks={moduleTasks} newTask={{ moduleId: module.id, kind: 'assignment' }} showDone />}
         {tab === 'announcements' && <ModuleAnnouncements module={module} />}
+        {tab === 'chats' && <ModuleChats module={module} />}
       </div>
       {editing && semester && <ModuleDialog semester={semester} module={module} onClose={() => setEditing(false)} />}
       {editingEvent && <EventDialog event={editingEvent} onClose={() => setEditingEvent(null)} />}
