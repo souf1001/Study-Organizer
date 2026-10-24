@@ -51,12 +51,21 @@ test('KI-Zusammenfassung, Chat mit Kontext und Kalender-Abo', async () => {
   // Termine landen im Kalender (Liste) und die Klausur wird dem Modul zugeordnet
   await page.locator('.sidebar .nav-item', { hasText: 'Kalender' }).click()
   await page.getByRole('button', { name: 'Monat' }).click()
-  await page.getByRole('button', { name: 'Weiter' }).click()
+  if (!(await page.locator('.cal-chip', { hasText: 'Klausur Analysis 1' }).isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Weiter' }).click()
+  }
+  if (!(await page.locator('.cal-chip', { hasText: 'Klausur Analysis 1' }).isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Zurück' }).click()
+  }
   await expect(page.locator('.cal-chip', { hasText: 'Klausur Analysis 1' })).toBeVisible()
   await shot(page, '21-calendar-month')
   await page.getByRole('button', { name: 'Woche' }).click()
-  await page.getByRole('button', { name: 'Weiter' }).click()
-  await page.getByRole('button', { name: 'Weiter' }).click()
+  if (!(await page.locator('.cal-event', { hasText: 'Analysis 1' }).first().isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Weiter' }).click()
+  }
+  if (!(await page.locator('.cal-event', { hasText: 'Analysis 1' }).first().isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Zurück' }).click()
+  }
   await expect(page.locator('.cal-event', { hasText: 'Analysis 1' }).first()).toBeVisible()
   await shot(page, '22-calendar-week')
 
