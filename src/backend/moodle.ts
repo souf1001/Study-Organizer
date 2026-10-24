@@ -81,6 +81,8 @@ export async function moodleSiteInfo(
 interface MoodleSection {
   name: string
   modules: {
+    id?: number
+    instance?: number
     modname: string
     name: string
     contents?: {
@@ -218,63 +220,53 @@ export class MoodleClient {
     subject?: string
     message?: string
     userfullname?: string
+    firstuserfullname?: string
     userpictureurl?: string
+    firstuserimageurl?: string
     created: number
+    timecreated?: number
     modified?: number
     timemodified?: number
     numreplies?: number
     pinned?: boolean
   }[]> {
+    // 1. Versuche die moderne Standard-Funktion mod_forum_get_forum_discussions
     try {
-      const res = await this.call<{
-        discussions?: {
-          id: number
-          discussion?: number
-          firstpost?: number
-          name: string
-          forumid?: number
-          course?: number
-          subject?: string
-          message?: string
-          userfullname?: string
-          userpictureurl?: string
-          created: number
-          modified?: number
-          timemodified?: number
-          numreplies?: number
-          pinned?: boolean
-        }[]
-      }>('mod_forum_get_forum_discussions_paginated', {
+      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumids: [forumid] })
+      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
+      if (list && list.length >= 0) return list
+    } catch {
+      // Weiter mit paginated
+    }
+
+    // 2. Versuche mod_forum_get_forum_discussions_paginated mit Sortierung
+    try {
+      const res = await this.call<any>('mod_forum_get_forum_discussions_paginated', {
         forumid,
         page: 0,
         perpage: 50,
         sortby: 'timemodified',
         sortdirection: 'DESC',
       })
-      if (res && Array.isArray(res.discussions)) return res.discussions
+      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
+      if (list && list.length >= 0) return list
     } catch {
-      // Ältere Moodle-Versionen unterstützen evtl. kein paginated
+      // Weiter mit paginated ohne Sortierparameter
     }
-    const fallback = await this.call<{
-      discussions?: {
-        id: number
-        discussion?: number
-        firstpost?: number
-        name: string
-        forumid?: number
-        course?: number
-        subject?: string
-        message?: string
-        userfullname?: string
-        userpictureurl?: string
-        created: number
-        modified?: number
-        timemodified?: number
-        numreplies?: number
-        pinned?: boolean
-      }[]
-    }>('mod_forum_get_forum_discussions', { forumids: [forumid] }).catch(() => ({ discussions: [] }))
-    return fallback?.discussions ?? []
+
+    try {
+      const res = await this.call<any>('mod_forum_get_forum_discussions_paginated', {
+        forumid,
+        page: 0,
+        perpage: 50,
+      })
+      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
+      if (list && list.length >= 0) return list
+    } catch {
+      // Keine Beiträge oder nicht unterstützt
+    }
+
+    return []
   }
 
   async getDiscussionPost(postid: number): Promise<{ id: number; discussion: number } | null> {
@@ -517,32 +509,138 @@ export async function syncMoodle(
 
   // Foren & Ankündigungen
   try {
-    const forumsRaw = await client.forums(courseIds).catch(() => [])
-    const forums = Array.isArray(forumsRaw) ? forumsRaw : []
+    interface DiscoveredForum {
+      id: number
+      course: number
+      type: string
+      name: string
+    }
+    const forums: DiscoveredForum[] = []
+
+    // 1. Versuch: mod_forum_get_forums_by_courses für alle Kurse im Sammelaufruf
+    try {
+      const raw = await client.forums(courseIds)
+      if (Array.isArray(raw)) {
+        for (const f of raw) {
+          if (f && typeof f.id === 'number') {
+            forums.push({
+              id: f.id,
+              course: f.course,
+              type: f.type || 'general',
+              name: f.name || 'Forum',
+            })
+          }
+        }
+      }
+    } catch {
+      // Sammelaufruf fehlgeschlagen – versuche kursspezifisch
+    }
+
+    // 2. Versuch: Für nicht abgedeckte Kurse einzeln aufrufen
+    const coveredCourses = new Set(forums.map((f) => f.course))
+    for (const courseId of courseIds) {
+      if (!coveredCourses.has(courseId)) {
+        try {
+          const raw = await client.forums([courseId])
+          if (Array.isArray(raw) && raw.length > 0) {
+            for (const f of raw) {
+              if (f && typeof f.id === 'number' && !forums.some((ex) => ex.id === f.id)) {
+                forums.push({
+                  id: f.id,
+                  course: f.course ?? courseId,
+                  type: f.type || 'general',
+                  name: f.name || 'Forum',
+                })
+              }
+            }
+            coveredCourses.add(courseId)
+          }
+        } catch {
+          // Einzelforenaufruf für diesen Kurs fehlgeschlagen
+        }
+      }
+
+      // 3. Fallback: core_course_get_contents für diesen Kurs auslesen (Standard in Moodle)
+      try {
+        const sections = await client.contents(courseId)
+        for (const section of sections ?? []) {
+          for (const mod of section.modules ?? []) {
+            if (mod.modname === 'forum') {
+              const forumId = mod.instance ?? mod.id
+              if (forumId && !forums.some((f) => f.id === forumId)) {
+                const isNews = /ankündigung|nachricht|news|announcement/i.test(mod.name)
+                forums.push({
+                  id: forumId,
+                  course: courseId,
+                  type: isNews ? 'news' : 'general',
+                  name: mod.name || 'Forum',
+                })
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignoriere Fehler beim Laden der Kursinhalte
+      }
+    }
+
     const allDiscussions: MoodleDiscussion[] = []
+    const existingDiscussions = db.moodleDiscussions ?? []
+
     for (const forum of forums) {
       try {
         const discussionsRaw = await client.discussions(forum.id).catch(() => [])
         const discussions = Array.isArray(discussionsRaw) ? discussionsRaw : []
         const isNews = forum.type === 'news' || /ankündigung|nachricht|news|announcement/i.test(forum.name)
+
         for (const d of discussions) {
-          const discId = d.discussion ?? d.id
-          const rootPostId = d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId)
+          const discId = Number(d.discussion ?? d.id)
+          const rootPostId = Number(d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId))
+          const existingDisc = existingDiscussions.find((ex) => ex.id === discId || ex.discussionId === discId)
+          const effectiveCourseId = forum.course || Number((d as any).course)
+          const effectiveModuleId = moduleFor(effectiveCourseId)
+
+          const author =
+            d.userfullname ||
+            (d as any).firstuserfullname ||
+            (d as any).author ||
+            existingDisc?.userFullName ||
+            'Moodle'
+          const picture =
+            d.userpictureurl ||
+            (d as any).firstuserimageurl ||
+            existingDisc?.userPictureUrl
+
+          const createdUnix = Number(
+            d.created ||
+              (d as any).timecreated ||
+              d.timemodified ||
+              (d as any).modified ||
+              Math.floor(Date.now() / 1000),
+          )
+          const modifiedUnix = Number(
+            d.timemodified ||
+              d.modified ||
+              (d as any).timecreated ||
+              d.created ||
+              createdUnix,
+          )
+
           allDiscussions.push({
             id: discId,
             discussionId: discId,
             firstPostId: rootPostId,
             forumId: forum.id,
-            courseId: forum.course,
-            moduleId: moduleFor(forum.course),
+            courseId: effectiveCourseId,
+            moduleId: effectiveModuleId,
             forumName: forum.name,
             subject: d.name || d.subject || '(Ohne Betreff)',
-            message: d.message || '',
-            userFullName: d.userfullname || 'Moodle',
-            userPictureUrl: d.userpictureurl,
-            timeCreated: toIso(d.created || Math.floor(Date.now() / 1000)),
-            timeModified: toIso(d.timemodified || d.modified || d.created || Math.floor(Date.now() / 1000)),
-            numReplies: d.numreplies ?? 0,
+            message: d.message || existingDisc?.message || '',
+            userFullName: author,
+            userPictureUrl: picture,
+            timeCreated: toIso(createdUnix),
+            timeModified: toIso(modifiedUnix),
+            numReplies: d.numreplies ?? (d as any).numreplies ?? 0,
             pinned: Boolean(d.pinned),
             isAnnouncement: isNews,
           })
@@ -551,6 +649,7 @@ export async function syncMoodle(
         // Ignoriere Fehler einzelner Foren
       }
     }
+
     allDiscussions.sort(
       (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
     )

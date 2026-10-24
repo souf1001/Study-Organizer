@@ -31,7 +31,7 @@ import {
 import DOMPurify from 'dompurify'
 import { isoDateOf, today } from '@shared/dates'
 import { moduleOccurrences, SESSION_LABELS, type Occurrence } from '@shared/schedule'
-import type { Module, MoodleDiscussion, MoodlePost, SessionKind } from '@shared/types'
+import type { CalendarEvent, Module, MoodleDiscussion, MoodlePost, SessionKind } from '@shared/types'
 import { api } from '@/lib/api'
 import {
   childFolders,
@@ -59,19 +59,30 @@ import { FolderContents } from '../folder/FolderView'
 import { TaskList } from '../tasks/TasksView'
 import { WEEKDAYS } from './ScheduleEditor'
 import { ModuleDialog } from './ModuleDialog'
+import { EventDialog } from '../calendar/EventDialog'
 import './module.css'
 
 const LAB_KINDS: SessionKind[] = ['lab']
 const isLab = (kind: SessionKind) => LAB_KINDS.includes(kind)
 
-function SessionList({ module, occurrences, kinds }: { module: Module; occurrences: Occurrence[]; kinds: 'lab' | 'other' }) {
+function SessionList({
+  module,
+  occurrences,
+  kinds,
+  onEditEvent,
+}: {
+  module: Module
+  occurrences: (Occurrence & { event?: CalendarEvent; title?: string })[]
+  kinds: 'lab' | 'other'
+  onEditEvent?: (event: CalendarEvent) => void
+}) {
   const db = useDb()
   const day = today()
   // Manuell angelegte Termin-Ordner ohne passenden Stundenplan-Termin
   const extra = db.folders
     .filter((f) => f.moduleId === module.id && f.kind === 'session' && f.sessionKind && (kinds === 'lab') === isLab(f.sessionKind))
     .filter((f) => !occurrences.some((o) => o.date === f.date && o.kind === f.sessionKind))
-    .map<Occurrence>((f) => ({ slotId: f.id, moduleId: module.id, kind: f.sessionKind!, date: f.date!, start: '', end: '', room: f.room, index: 0 }))
+    .map<Occurrence & { event?: CalendarEvent; title?: string }>((f) => ({ slotId: f.id, moduleId: module.id, kind: f.sessionKind!, date: f.date!, start: '', end: '', room: f.room, index: 0 }))
   const all = [...occurrences, ...extra].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
 
   if (all.length === 0) {
@@ -80,14 +91,19 @@ function SessionList({ module, occurrences, kinds }: { module: Module; occurrenc
         icon={<CalendarDays />}
         title={kinds === 'lab' ? 'Keine Praktikumstermine' : 'Keine Termine'}
         action={
-          <Button icon={<Plus />} onClick={() => void createManualSession(module, kinds === 'lab' ? 'lab' : 'lecture')}>
-            Termin hinzufügen
-          </Button>
+          <div className="row" style={{ gap: 8 }}>
+            <Button icon={<Plus />} onClick={() => void createManualSession(module, kinds === 'lab' ? 'lab' : 'lecture')}>
+              Termin hinzufügen
+            </Button>
+            <Button variant="ghost" onClick={(ev) => openView({ type: 'calendar' }, ev)}>
+              Zum Kalender
+            </Button>
+          </div>
         }
       >
         {kinds === 'lab'
-          ? 'Trag im Modul wöchentliche Praktikumstermine ein oder leg einzelne Termine an.'
-          : 'Trag im Modul die wöchentlichen Termine ein – dann erscheinen sie hier und im Kalender.'}
+          ? 'Trag im Modul Termine ein oder importiere deinen Stundenplan aus TUCaN – dann erscheinen sie hier und im Kalender.'
+          : 'Trag im Modul Termine ein oder importiere deinen Stundenplan aus TUCaN – dann erscheinen sie hier und im Kalender.'}
       </Empty>
     )
   }
@@ -108,7 +124,7 @@ function SessionList({ module, occurrences, kinds }: { module: Module; occurrenc
             </span>
             <span className="small muted tabular hide-narrow">{occ.start ? `${occ.start}–${occ.end}` : ''}</span>
             <span className="small muted truncate">
-              {SESSION_LABELS[occ.kind]}
+              {occ.title && occ.title !== module.name ? occ.title : SESSION_LABELS[occ.kind]}
               {occ.room && ` · ${occ.room}`}
             </span>
             <span className="folder-state small">
@@ -122,6 +138,18 @@ function SessionList({ module, occurrences, kinds }: { module: Module; occurrenc
                   }}
                 >
                   {folder.done ? <CheckCircle2 color="var(--success)" /> : <Circle />}
+                </IconButton>
+              )}
+              {occ.event && onEditEvent && (
+                <IconButton
+                  small
+                  label="Termin bearbeiten / Modulzuweisung"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEditEvent(occ.event!)
+                  }}
+                >
+                  <Pencil size={13} />
                 </IconButton>
               )}
               {folder ? (
@@ -748,8 +776,70 @@ function ModuleAnnouncements({ module }: { module: Module }) {
 export function ModuleView({ module, tab, paneId }: { module: Module; tab: ModuleTab; paneId: string }) {
   const db = useDb()
   const [editing, setEditing] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const semester = semesterOf(db, module)
-  const occurrences = semester ? moduleOccurrences(module, semester) : []
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const timeOf = (iso: string) => {
+    const d = new Date(iso)
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const scheduleOccs = semester ? moduleOccurrences(module, semester) : []
+
+  // Termine aus dem Kalender (z. B. aus TUCaN oder Kalender-Abo importiert)
+  const calendarEvents = db.events.filter(
+    (e) => e.moduleId === module.id && e.kind !== 'exam' && e.kind !== 'deadline',
+  )
+
+  const eventOccs: (Occurrence & { event?: CalendarEvent; title?: string })[] = calendarEvents.map((e) => {
+    const sessionKind: SessionKind =
+      e.kind === 'lab' ? 'lab' : e.kind === 'exercise' ? 'exercise' : 'lecture'
+    return {
+      slotId: e.id,
+      moduleId: module.id,
+      kind: sessionKind,
+      date: isoDateOf(e.start),
+      start: e.allDay ? '' : timeOf(e.start),
+      end: e.allDay ? '' : timeOf(e.end),
+      room: e.location || '',
+      index: 0,
+      title: e.title,
+      event: e,
+    }
+  })
+
+  // Zusammenführen von Stundenplan und Kalender-Terminen (Deduplizierung nach Datum und Startzeit)
+  const combinedMap = new Map<string, Occurrence & { event?: CalendarEvent; title?: string }>()
+  for (const occ of scheduleOccs) {
+    const key = `${occ.date}#${occ.start}#${occ.kind}`
+    combinedMap.set(key, occ)
+  }
+  for (const evOcc of eventOccs) {
+    const key = `${evOcc.date}#${evOcc.start}#${evOcc.kind}`
+    const existing = combinedMap.get(key)
+    if (existing) {
+      combinedMap.set(key, { ...existing, event: evOcc.event, title: evOcc.title || existing.room })
+    } else {
+      combinedMap.set(key, evOcc)
+    }
+  }
+
+  const occurrences = Array.from(combinedMap.values()).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
+
+  // Fortlaufende Nummerierung nach Datum
+  let lecIdx = 0
+  let labIdx = 0
+  for (const o of occurrences) {
+    if (isLab(o.kind)) {
+      labIdx++
+      o.index = labIdx
+    } else {
+      lecIdx++
+      o.index = lecIdx
+    }
+  }
+
   const lectures = occurrences.filter((o) => !isLab(o.kind))
   const labs = occurrences.filter((o) => isLab(o.kind))
   const setTab = (next: ModuleTab) => useWorkspace.getState().replace(paneId, { type: 'module', id: module.id, tab: next })
@@ -822,10 +912,10 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
         </div>
 
         {tab === 'overview' && <Overview module={module} occurrences={occurrences} />}
-        {tab === 'sessions' && <SessionList module={module} occurrences={lectures} kinds="other" />}
+        {tab === 'sessions' && <SessionList module={module} occurrences={lectures} kinds="other" onEditEvent={setEditingEvent} />}
         {tab === 'lab' && (
           <div className="stack" style={{ gap: 28 }}>
-            <SessionList module={module} occurrences={labs} kinds="lab" />
+            <SessionList module={module} occurrences={labs} kinds="lab" onEditEvent={setEditingEvent} />
             <div>
               <div className="section-title">Testate & Abgaben im Praktikum</div>
               <TaskList tasks={labTasks} newTask={{ moduleId: module.id, kind: 'lab' }} />
@@ -849,6 +939,7 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
         {tab === 'announcements' && <ModuleAnnouncements module={module} />}
       </div>
       {editing && semester && <ModuleDialog semester={semester} module={module} onClose={() => setEditing(false)} />}
+      {editingEvent && <EventDialog event={editingEvent} onClose={() => setEditingEvent(null)} />}
     </div>
   )
 }

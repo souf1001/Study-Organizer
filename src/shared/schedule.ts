@@ -1,7 +1,7 @@
 // Wöchentliche Modultermine (Vorlesung, Übung, Praktikum …) in konkrete Termine umrechnen.
 import { addDays, nextWeekday, shortDate } from './dates'
 import { isInBreak } from './semester'
-import type { ID, ISODate, Module, ScheduleSlot, Semester, SessionKind } from './types'
+import type { CalendarEvent, ID, ISODate, Module, ScheduleSlot, Semester, SessionKind } from './types'
 
 export const SESSION_LABELS: Record<SessionKind, string> = {
   lecture: 'Vorlesung',
@@ -66,3 +66,22 @@ export function sessionFolderName(template: string, occ: Pick<Occurrence, 'kind'
     .replaceAll('{date}', shortDate(occ.date))
     .trim()
 }
+
+export function findSeriesEvents(allEvents: CalendarEvent[], target: CalendarEvent): CalendarEvent[] {
+  if (!target.id && !target.externalId) return []
+  const baseUid = target.externalId?.includes('#') ? target.externalId.split('#')[0] : null
+  const targetTitleNorm = target.title.trim().toLowerCase()
+  return allEvents.filter((e) => {
+    if (e.id === target.id) return true
+    if (baseUid && e.externalId && e.externalId.split('#')[0] === baseUid) return true
+    if (
+      target.subscriptionId &&
+      e.subscriptionId === target.subscriptionId &&
+      e.title.trim().toLowerCase() === targetTitleNorm
+    ) {
+      return true
+    }
+    return false
+  })
+}
+

@@ -684,6 +684,7 @@ export interface EventsFromIcsOptions {
   autoCreateModules?: boolean
   onModuleCreated?: (mod: Module) => void
   now?: Date
+  existingEvents?: CalendarEvent[]
 }
 
 /** Wandelt eine iCal-Datei in Termine des Abos um. */
@@ -701,12 +702,32 @@ export function eventsFromIcs(
   const activeSemesterId = options.activeSemesterId ?? null
   const autoCreate = Boolean(options.autoCreateModules && activeSemesterId)
   const currentModules = [...modules]
+  const existingEvents = options.existingEvents ?? []
 
   return parseIcs(text, from, to).map((e) => {
     const kind = classifyEvent(e.title, e.description, e.categories)
     const finalKind = kind === 'other' && e.start.getTime() === e.end.getTime() ? 'deadline' : kind
 
-    let matchedId = matchModule(e, currentModules, activeSemesterId)
+    // 1. Prüfe, ob dieser Termin oder seine Terminserie bereits manuell einem Modul zugewiesen wurde
+    let existingModuleId: ID | null = null
+    const exact = existingEvents.find((ex) => ex.externalId === e.uid)
+    if (exact?.moduleId && currentModules.some((m) => m.id === exact.moduleId)) {
+      existingModuleId = exact.moduleId
+    } else if (existingEvents.length > 0) {
+      const baseUid = e.uid.includes('#') ? e.uid.split('#')[0] : null
+      const eTitleNorm = e.title.trim().toLowerCase()
+      const seriesMatch = existingEvents.find((ex) => {
+        if (!ex.moduleId || !currentModules.some((m) => m.id === ex.moduleId)) return false
+        if (baseUid && ex.externalId && ex.externalId.split('#')[0] === baseUid) return true
+        if (ex.subscriptionId === subscription.id && ex.title.trim().toLowerCase() === eTitleNorm) return true
+        return false
+      })
+      if (seriesMatch?.moduleId) {
+        existingModuleId = seriesMatch.moduleId
+      }
+    }
+
+    let matchedId = existingModuleId ?? matchModule(e, currentModules, activeSemesterId)
 
     if (!matchedId && autoCreate && activeSemesterId) {
       const courseInfo = extractCourseInfo(e)
@@ -721,7 +742,7 @@ export function eventsFromIcs(
     }
 
     return {
-      id: newId(),
+      id: exact?.id ?? newId(),
       title: e.title.slice(0, 300),
       kind: finalKind,
       start: e.start.toISOString(),

@@ -128,12 +128,31 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
     return updatedCount
   }
 
+  function rematchMoodleDiscussions(): number {
+    const db = store.get()
+    const courseMap = db.settings.moodle?.courseMap ?? {}
+    let updatedCount = 0
+    const updated = db.moodleDiscussions.map((d) => {
+      const expectedModuleId = d.courseId ? courseMap[d.courseId] ?? null : null
+      if (expectedModuleId && d.moduleId !== expectedModuleId && db.modules.some((m) => m.id === expectedModuleId)) {
+        updatedCount++
+        return { ...d, moduleId: expectedModuleId }
+      }
+      return d
+    })
+    if (updatedCount > 0) {
+      store.update({ moodleDiscussions: updated })
+    }
+    return updatedCount
+  }
+
   const service = {
     loadDb: () => store.get(),
     put: <C extends CollectionName>(collection: C, record: RecordOf<C>) => {
       const res = store.put(collection, record)
       if (collection === 'modules') {
         rematchEvents()
+        rematchMoodleDiscussions()
       }
       return res
     },
@@ -142,6 +161,9 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       const res = store.update(patch)
       if (patch.activeSemesterId) {
         rematchEvents()
+      }
+      if (patch.settings?.moodle?.courseMap) {
+        rematchMoodleDiscussions()
       }
       return res
     },
@@ -199,8 +221,11 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
         const text = await fetchCalendar(url, fetchImpl)
         // Während des Abrufs gelöscht? Dann nichts zurückschreiben.
         if (!store.get().subscriptions.some((s) => s.id === id)) return { count: 0, error: null }
-        const incoming = eventsFromIcs(text, subscription, store.get().modules)
         const existing = store.get().events.filter((e) => e.subscriptionId === id)
+        const incoming = eventsFromIcs(text, subscription, store.get().modules, {
+          existingEvents: existing,
+          activeSemesterId: store.get().activeSemesterId,
+        })
         const merged = mergeSubscriptionEvents(existing, incoming)
         const release = await reserveSpace(jsonSize(merged))
         store.replaceMany('events', (e) => e.subscriptionId === id, merged)
@@ -223,15 +248,15 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       const cleanName = normalizeIcsFilename(name)
       const cleanLower = cleanName.toLowerCase()
       const rawLower = name.trim().toLowerCase()
-      const existing = store.get().subscriptions.find(
+      const existingSub = store.get().subscriptions.find(
         (s) =>
           s.kind === 'file' &&
           (s.name.toLowerCase() === cleanLower ||
             s.name.toLowerCase() === rawLower ||
             normalizeIcsFilename(s.name).toLowerCase() === cleanLower),
       )
-      const subscription: Subscription = existing
-        ? { ...existing, name: cleanName }
+      const subscription: Subscription = existingSub
+        ? { ...existingSub, name: cleanName }
         : {
             id: newId(),
             name: cleanName,
@@ -245,10 +270,12 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       const db = store.get()
       const activeSemesterId = db.activeSemesterId ?? db.semesters[0]?.id ?? null
       const createdModules: Module[] = []
+      const existingEvents = store.get().events.filter((e) => e.subscriptionId === subscription.id)
 
       const events = eventsFromIcs(text, subscription, db.modules, {
         activeSemesterId,
         autoCreateModules: true,
+        existingEvents,
         onModuleCreated: (mod) => {
           createdModules.push(mod)
           store.put('modules', mod)
