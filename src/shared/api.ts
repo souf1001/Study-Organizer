@@ -8,6 +8,7 @@ import type {
   Item,
   MoodleConnectInput,
   MoodleCourse,
+  MoodlePost,
   MoodleSiteInfo,
   MoodleSyncResult,
   NoteDoc,
@@ -62,6 +63,8 @@ export interface Api {
     connectSso?(url: string): Promise<MoodleCourse[]>
     courses(): Promise<MoodleCourse[]>
     sync(): Promise<MoodleSyncResult>
+    posts(discussionId: number): Promise<MoodlePost[]>
+    reply(postId: number, subject: string, message: string): Promise<{ postId: number }>
     disconnect(): Promise<void>
   }
 

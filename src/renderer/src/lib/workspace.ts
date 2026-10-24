@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware'
 import type { ID } from '@shared/types'
 import { toast } from '@/ui/Toast'
 
-export type ModuleTab = 'overview' | 'sessions' | 'lab' | 'files' | 'tasks'
+export type ModuleTab = 'overview' | 'sessions' | 'lab' | 'files' | 'tasks' | 'announcements'
 
 export type View =
   | { type: 'home' }

@@ -79,19 +79,42 @@ function setupMenu(): void {
 }
 
 function startBackgroundSync(service: Service, store: Store): void {
-  const run = async (): Promise<void> => {
-    await service.syncAll().catch(() => undefined)
+  const notifyRenderer = () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('db:changed')
   }
-  setTimeout(() => void run(), 5_000)
-  let lastRun = Date.now()
-  setInterval(() => {
-    const hours = store.get().settings.calendar.syncIntervalHours
-    if (hours > 0 && Date.now() - lastRun >= hours * HOUR) {
-      lastRun = Date.now()
-      void run()
+
+  const runAll = async (): Promise<void> => {
+    await service.syncAll().catch(() => undefined)
+    notifyRenderer()
+  }
+
+  const runMoodle = async (): Promise<void> => {
+    if (store.get().settings.moodle.url) {
+      await service.moodleSync().catch(() => undefined)
+      notifyRenderer()
     }
-  }, 10 * 60 * 1000)
+  }
+
+  setTimeout(() => void runAll(), 5_000)
+
+  let lastCalendarRun = Date.now()
+  let lastMoodleRun = Date.now()
+
+  // Regelmäßige Prüfung im Hintergrund (minütlicher Takt)
+  setInterval(() => {
+    const settings = store.get().settings
+    const moodleInterval = settings.moodle.syncIntervalMinutes ?? 10
+    if (moodleInterval > 0 && Date.now() - lastMoodleRun >= moodleInterval * 60 * 1000) {
+      lastMoodleRun = Date.now()
+      void runMoodle()
+    }
+
+    const hours = settings.calendar.syncIntervalHours
+    if (hours > 0 && Date.now() - lastCalendarRun >= hours * HOUR) {
+      lastCalendarRun = Date.now()
+      void runAll()
+    }
+  }, 60 * 1000)
 }
 
 async function main(): Promise<void> {

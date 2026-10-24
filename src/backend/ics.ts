@@ -76,6 +76,38 @@ function decodeIcsBytes(bytes: Uint8Array): string {
   return text.replace(/^[\uFEFF\uFFFD]+/, '')
 }
 
+/**
+ * Kombiniert mehrere separate monatliche oder wöchentliche iCal-Exporte (z. B. aus TUCaN / CampusNet)
+ * zu einem einzigen vollständigen Semester-Kalender.
+ * Entfernt doppelte VEVENTs anhand ihrer UID oder des Inhalts.
+ */
+export function combineIcs(icsList: (string | Buffer | Uint8Array)[]): string {
+  const events: string[] = []
+  const seenUids = new Set<string>()
+
+  for (const item of icsList) {
+    const text = decodeIcsText(item)
+    const matches = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gi) ?? []
+    for (const block of matches) {
+      const uidMatch = block.match(/UID:(.+?)[\r\n]/i)
+      const uid = uidMatch ? uidMatch[1].trim() : block.trim()
+      if (!seenUids.has(uid)) {
+        seenUids.add(uid)
+        events.push(block.trim())
+      }
+    }
+  }
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Study Organizer//TUCaN Semester Schedule//DE',
+    'CALSCALE:GREGORIAN',
+    ...events,
+    'END:VCALENDAR',
+  ].join('\r\n')
+}
+
 export interface ParsedEvent {
   uid: string
   title: string
@@ -103,6 +135,8 @@ export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
   const result: ParsedEvent[] = []
 
   for (const component of vevents.filter((v) => !v.hasProperty('recurrence-id'))) {
+    const status = String(component.getFirstPropertyValue('status') || '').toUpperCase()
+    if (status === 'CANCELLED') continue
     const event = new ICAL.Event(component)
     for (const ex of exceptions) {
       if (ex.getFirstPropertyValue('uid') === event.uid) event.relateException(ex)
@@ -117,6 +151,13 @@ export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
       end: InstanceType<typeof ICAL.Time>,
       uid: string,
     ): void => {
+      const title = item.summary || '(ohne Titel)'
+      if (
+        /\b(?:entfällt|abgesagt|fällt\s+aus)\b|\((?:entfällt|abgesagt|ausfall)\)|\[(?:entfällt|abgesagt|ausfall)\]/i.test(
+          title,
+        )
+      )
+        return
       const startDate = start.toJSDate()
       const endDate = end ? end.toJSDate() : startDate
       if (endDate < from || startDate > to || result.length >= MAX_EVENTS) return

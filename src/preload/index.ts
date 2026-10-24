@@ -79,6 +79,8 @@ const api: Api = {
     connectSso: (url) => invoke('moodle:connectSso', url),
     courses: () => invoke('moodle:courses'),
     sync: () => invoke('moodle:sync'),
+    posts: (discussionId) => invoke('moodle:posts', discussionId),
+    reply: (postId, subject, message) => invoke('moodle:reply', postId, subject, message),
     disconnect: () => invoke('moodle:disconnect'),
   },
 

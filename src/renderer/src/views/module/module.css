@@ -206,3 +206,100 @@
 .clickable {
   cursor: default;
 }
+
+/* ---- Foren & Ankündigungen ---- */
+.discussion-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease;
+}
+
+.discussion-card.pinned {
+  border-color: var(--accent-subtle);
+  background: var(--accent-subtle-bg, var(--bg-surface));
+}
+
+.discussion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.discussion-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 650;
+  color: var(--text-1);
+}
+
+.discussion-body {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.discussion-body p {
+  margin: 4px 0;
+}
+
+.discussion-body a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.discussion-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.discussion-reply-box {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.discussion-thread {
+  margin-top: 12px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.post-reply {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+.post-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.post-author {
+  font-weight: 600;
+  font-size: var(--text-xs);
+  color: var(--text-1);
+}
+
+.post-body {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: 1.45;
+}

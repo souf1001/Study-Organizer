@@ -161,6 +161,23 @@ function MoodleSection() {
           <SettingRow label="Kursdateien herunterladen" description="Folien und Dateien aus Moodle-Kursen landen im Modul unter „Moodle“.">
             <Switch checked={moodle.syncFiles} onChange={(syncFiles) => updateSettings('moodle', { syncFiles })} label="Kursdateien herunterladen" />
           </SettingRow>
+          <SettingRow
+            label="Automatische Synchronisierung"
+            description="Intervall für den Hintergrund-Abgleich von Ankündigungen, Foren, Aufgaben und Terminen."
+          >
+            <Select
+              value={String(moodle.syncIntervalMinutes ?? 10)}
+              options={[
+                { value: '5', label: 'Alle 5 Minuten' },
+                { value: '10', label: 'Alle 10 Minuten (Standard)' },
+                { value: '15', label: 'Alle 15 Minuten' },
+                { value: '30', label: 'Alle 30 Minuten' },
+                { value: '60', label: 'Jede Stunde' },
+                { value: '0', label: 'Nur manuell' },
+              ]}
+              onChange={(val) => updateSettings('moodle', { syncIntervalMinutes: Number(val) })}
+            />
+          </SettingRow>
           <SettingRow label="Kurse zuordnen" description="Abgaben, Termine und Dateien eines Kurses landen im gewählten Modul." stacked>
             <div className="inline-form">
               {courses.length === 0 && <span className="small muted">Kurse werden geladen …</span>}

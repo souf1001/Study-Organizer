@@ -217,8 +217,39 @@ export interface Settings {
     userId: number | null
     courseMap: Record<string, ID>
     syncFiles: boolean
+    syncIntervalMinutes?: number
     lastSync: string | null
   }
+}
+
+export interface MoodleDiscussion {
+  id: number
+  discussionId: number
+  forumId: number
+  courseId: number
+  moduleId: string | null
+  forumName: string
+  subject: string
+  message: string
+  userFullName: string
+  userPictureUrl?: string
+  timeCreated: string
+  timeModified: string
+  numReplies: number
+  pinned: boolean
+  isAnnouncement: boolean
+}
+
+export interface MoodlePost {
+  id: number
+  discussionId: number
+  parentId: number
+  subject: string
+  message: string
+  userFullName: string
+  userPictureUrl?: string
+  timeCreated: string
+  canReply?: boolean
 }
 
 export interface Db {
@@ -234,6 +265,7 @@ export interface Db {
   events: CalendarEvent[]
   tasks: Task[]
   subscriptions: Subscription[]
+  moodleDiscussions: MoodleDiscussion[]
 }
 
 export const COLLECTIONS = [
@@ -250,7 +282,7 @@ export type CollectionName = (typeof COLLECTIONS)[number]
 export type RecordOf<C extends CollectionName> = Db[C][number]
 
 /** Felder der Wurzel, die direkt überschrieben werden dürfen */
-export type DbPatch = Partial<Pick<Db, 'onboarded' | 'activeSemesterId' | 'profile' | 'settings'>>
+export type DbPatch = Partial<Pick<Db, 'onboarded' | 'activeSemesterId' | 'profile' | 'settings' | 'moodleDiscussions'>>
 
 // ---- Notizen ----
 
@@ -330,6 +362,7 @@ export interface MoodleSyncResult {
   tasks: number
   events: number
   files: number
+  discussions?: number
   errors: string[]
 }
 

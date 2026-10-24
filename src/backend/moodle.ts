@@ -1,6 +1,6 @@
 // Moodle-Anbindung über die offiziellen Web-Services (dieselben, die auch die Moodle-App nutzt).
 // Holt Abgaben (als Aufgaben), weitere Termine (Tests, Fristen) und optional Kursdateien.
-import type { MoodleCourse, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
+import type { MoodleCourse, MoodleDiscussion, MoodlePost, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
 import { newFolder, newTask, newEvent } from '../shared/defaults'
 import { classifyEvent } from './ics'
 import { markAsDownloaded } from './files'
@@ -197,6 +197,115 @@ export class MoodleClient {
     return this.call('core_course_get_contents', { courseid })
   }
 
+  forums(courseids: number[]): Promise<{
+    id: number
+    course: number
+    type: string
+    name: string
+    intro?: string
+    numdiscussions?: number
+  }[]> {
+    return this.call('mod_forum_get_forums_by_courses', { courseids })
+  }
+
+  async discussions(forumid: number): Promise<{
+    id: number
+    name: string
+    forumid?: number
+    course?: number
+    subject?: string
+    message: string
+    userfullname: string
+    userpictureurl?: string
+    created: number
+    modified?: number
+    timemodified?: number
+    numreplies?: number
+    pinned?: boolean
+  }[]> {
+    try {
+      const res = await this.call<{
+        discussions?: {
+          id: number
+          name: string
+          forumid?: number
+          course?: number
+          subject?: string
+          message: string
+          userfullname: string
+          userpictureurl?: string
+          created: number
+          modified?: number
+          timemodified?: number
+          numreplies?: number
+          pinned?: boolean
+        }[]
+      }>('mod_forum_get_forum_discussions_paginated', {
+        forumid,
+        page: 0,
+        perpage: 50,
+        sortorder: 1,
+      })
+      if (res && Array.isArray(res.discussions)) return res.discussions
+    } catch {
+      // Ältere Moodle-Versionen unterstützen evtl. kein paginated
+    }
+    const fallback = await this.call<{
+      discussions?: {
+        id: number
+        name: string
+        forumid?: number
+        course?: number
+        subject?: string
+        message: string
+        userfullname: string
+        userpictureurl?: string
+        created: number
+        modified?: number
+        timemodified?: number
+        numreplies?: number
+        pinned?: boolean
+      }[]
+    }>('mod_forum_get_forum_discussions', { forumid }).catch(() => ({ discussions: [] }))
+    return fallback?.discussions ?? []
+  }
+
+  async discussionPosts(discussionid: number): Promise<MoodlePost[]> {
+    const res = await this.call<{
+      posts?: {
+        id: number
+        discussionid: number
+        parentid: number
+        subject: string
+        message: string
+        userfullname: string
+        userpictureurl?: string
+        timecreated: number
+        timemodified?: number
+        canreply?: boolean
+      }[]
+    }>('mod_forum_get_forum_discussion_posts', { discussionid })
+    return (res?.posts ?? []).map((p) => ({
+      id: p.id,
+      discussionId: p.discussionid,
+      parentId: p.parentid,
+      subject: p.subject,
+      message: p.message,
+      userFullName: p.userfullname,
+      userPictureUrl: p.userpictureurl,
+      timeCreated: toIso(p.timecreated),
+      canReply: p.canreply,
+    }))
+  }
+
+  async replyPost(postid: number, subject: string, message: string): Promise<{ postid: number }> {
+    return this.call<{ postid: number }>('mod_forum_add_discussion_post', {
+      postid,
+      subject,
+      message,
+    })
+  }
+
   async download(fileurl: string): Promise<Uint8Array> {
     const url = new URL(fileurl)
     if (url.origin !== new URL(this.site).origin)
@@ -314,6 +423,50 @@ export async function syncMoodle(
         result.errors.push(`Dateien: ${(error as Error).message}`)
       }
     }
+  }
+
+  // Foren & Ankündigungen
+  try {
+    const forumsRaw = await client.forums(courseIds).catch(() => [])
+    const forums = Array.isArray(forumsRaw) ? forumsRaw : []
+    const allDiscussions: MoodleDiscussion[] = []
+    for (const forum of forums) {
+      try {
+        const discussionsRaw = await client.discussions(forum.id).catch(() => [])
+        const discussions = Array.isArray(discussionsRaw) ? discussionsRaw : []
+        const isNews = forum.type === 'news' || /ankündigung|nachricht|news|announcement/i.test(forum.name)
+        for (const d of discussions) {
+          allDiscussions.push({
+            id: d.id,
+            discussionId: d.id,
+            forumId: forum.id,
+            courseId: forum.course,
+            moduleId: moduleFor(forum.course),
+            forumName: forum.name,
+            subject: d.name || d.subject || '(Ohne Betreff)',
+            message: d.message || '',
+            userFullName: d.userfullname || 'Moodle',
+            userPictureUrl: d.userpictureurl,
+            timeCreated: toIso(d.created || Math.floor(Date.now() / 1000)),
+            timeModified: toIso(d.timemodified || d.modified || d.created || Math.floor(Date.now() / 1000)),
+            numReplies: d.numreplies ?? 0,
+            pinned: Boolean(d.pinned),
+            isAnnouncement: isNews,
+          })
+        }
+      } catch {
+        // Ignoriere Fehler einzelner Foren
+      }
+    }
+    allDiscussions.sort(
+      (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
+    )
+    store.update({ moodleDiscussions: allDiscussions })
+    if (allDiscussions.length > 0) {
+      result.discussions = allDiscussions.length
+    }
+  } catch {
+    // Falls das Hochschul-Moodle Foren-Webservices nicht freigeschaltet hat
   }
 
   store.update({

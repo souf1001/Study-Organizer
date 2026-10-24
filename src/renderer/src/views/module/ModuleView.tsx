@@ -5,23 +5,30 @@ import {
   CalendarDays,
   CheckCircle2,
   Circle,
+  CornerDownRight,
   FilePlus,
   FolderOpen,
   FolderPlus,
   GraduationCap,
   MapPin,
   MessageCircle,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
+  Pin,
   Plus,
+  RefreshCw,
   ScrollText,
+  Send,
   Trash2,
   Upload,
   User,
 } from 'lucide-react'
+import DOMPurify from 'dompurify'
 import { isoDateOf, today } from '@shared/dates'
 import { moduleOccurrences, SESSION_LABELS, type Occurrence } from '@shared/schedule'
-import type { Module, SessionKind } from '@shared/types'
+import type { Module, MoodleDiscussion, MoodlePost, SessionKind } from '@shared/types'
+import { api } from '@/lib/api'
 import {
   childFolders,
   createFolder,
@@ -36,12 +43,14 @@ import {
   visibleItems,
 } from '@/lib/actions'
 import { summarizePastSessions } from '@/lib/ai'
-import { putRecord, useDb } from '@/lib/db'
-import { formatDay, relativeDay } from '@/lib/format'
+import { loadDb, putRecord, useDb } from '@/lib/db'
+import { formatDateTime, formatDay, relativeDay } from '@/lib/format'
 import { openView, useWorkspace, type ModuleTab } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
+import { Input, Textarea } from '@/ui/Field'
 import { showMenu } from '@/ui/Menu'
+import { toast, toastError } from '@/ui/Toast'
 import { FolderContents } from '../folder/FolderView'
 import { TaskList } from '../tasks/TasksView'
 import { WEEKDAYS } from './ScheduleEditor'
@@ -213,6 +222,224 @@ function Overview({ module, occurrences }: { module: Module; occurrences: Occurr
   )
 }
 
+function DiscussionCard({ discussion }: { discussion: MoodleDiscussion }) {
+  const [expanded, setExpanded] = useState(false)
+  const [posts, setPosts] = useState<MoodlePost[] | null>(null)
+  const [loadingPosts, setLoadingPosts] = useState(false)
+  const [showReplyBox, setShowReplyBox] = useState(false)
+  const [replySubject, setReplySubject] = useState(`Re: ${discussion.subject}`)
+  const [replyMessage, setReplyMessage] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
+
+  const toggleReplies = async () => {
+    if (expanded) {
+      setExpanded(false)
+      return
+    }
+    setExpanded(true)
+    if (!posts) {
+      setLoadingPosts(true)
+      try {
+        const fetched = await api.moodle.posts(discussion.discussionId)
+        setPosts(fetched)
+      } catch (err) {
+        toastError(err)
+      } finally {
+        setLoadingPosts(false)
+      }
+    }
+  }
+
+  const handleSendReply = async () => {
+    if (!replyMessage.trim()) return
+    setSendingReply(true)
+    try {
+      await api.moodle.reply(
+        discussion.discussionId,
+        replySubject.trim() || `Re: ${discussion.subject}`,
+        replyMessage.trim(),
+      )
+      toast('Antwort erfolgreich gesendet!')
+      setReplyMessage('')
+      setShowReplyBox(false)
+      // Reload posts
+      const updated = await api.moodle.posts(discussion.discussionId)
+      setPosts(updated)
+      setExpanded(true)
+    } catch (err) {
+      toastError(err)
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
+  const sanitizedBody = DOMPurify.sanitize(discussion.message || '')
+
+  return (
+    <div className={`discussion-card ${discussion.pinned ? 'pinned' : ''}`}>
+      <div className="discussion-header">
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {discussion.pinned && (
+            <span className="badge color-orange row" style={{ gap: 4 }}>
+              <Pin size={12} /> Angepinnt
+            </span>
+          )}
+          {discussion.isAnnouncement ? (
+            <span className="badge color-red">📢 Ankündigung</span>
+          ) : (
+            <span className="badge color-blue">Forum: {discussion.forumName}</span>
+          )}
+          <span className="row muted small">
+            <User size={13} /> {discussion.userFullName}
+          </span>
+          <span className="meta small">· {formatDateTime(discussion.timeCreated)}</span>
+        </div>
+      </div>
+
+      <h3 className="discussion-title">{discussion.subject}</h3>
+
+      <div
+        className="discussion-body"
+        dangerouslySetInnerHTML={{ __html: sanitizedBody }}
+      />
+
+      <div className="discussion-actions">
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<MessageSquare />}
+          onClick={() => void toggleReplies()}
+        >
+          {discussion.numReplies} {discussion.numReplies === 1 ? 'Antwort' : 'Antworten'}
+        </Button>
+        <Button
+          size="sm"
+          variant="default"
+          icon={<CornerDownRight />}
+          onClick={() => setShowReplyBox((v) => !v)}
+        >
+          Antworten
+        </Button>
+      </div>
+
+      {showReplyBox && (
+        <div className="discussion-reply-box">
+          <Input
+            value={replySubject}
+            placeholder="Betreff"
+            onChange={(e) => setReplySubject(e.target.value)}
+          />
+          <Textarea
+            value={replyMessage}
+            placeholder="Deine Antwort verfassen…"
+            rows={3}
+            onChange={(e) => setReplyMessage(e.target.value)}
+          />
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <Button size="sm" variant="ghost" onClick={() => setShowReplyBox(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<Send />}
+              disabled={!replyMessage.trim() || sendingReply}
+              onClick={() => void handleSendReply()}
+            >
+              {sendingReply ? 'Sendet…' : 'Abschicken'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {expanded && (
+        <div className="discussion-thread">
+          {loadingPosts && <div className="small muted">Lade Antworten…</div>}
+          {posts && posts.length <= 1 && (
+            <div className="small muted">Keine weiteren Antworten in diesem Strang.</div>
+          )}
+          {posts &&
+            posts
+              .filter((p) => p.id !== discussion.id && p.parentId !== 0)
+              .map((post) => (
+                <div key={post.id} className="post-reply">
+                  <div className="post-header">
+                    <span className="post-author">{post.userFullName}</span>
+                    <span className="meta small">{formatDateTime(post.timeCreated)}</span>
+                  </div>
+                  <div
+                    className="post-body"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.message || '') }}
+                  />
+                </div>
+              ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ModuleAnnouncements({ module }: { module: Module }) {
+  const db = useDb()
+  const [syncing, setSyncing] = useState(false)
+  const discussions = db.moodleDiscussions.filter((d) => d.moduleId === module.id)
+
+  const handleSync = async () => {
+    setSyncing(true)
+    try {
+      const res = await api.moodle.sync()
+      await loadDb()
+      if (res.errors.length > 0) {
+        toastError(new Error(res.errors.join(' · ')))
+      } else {
+        toast('Foren und Termine erfolgreich aktualisiert')
+      }
+    } catch (err) {
+      toastError(err)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="section-title" style={{ margin: 0 }}>
+          Moodle Foren & Ankündigungen ({discussions.length})
+        </div>
+        <Button
+          size="sm"
+          icon={<RefreshCw className={syncing ? 'spin' : ''} />}
+          disabled={syncing}
+          onClick={() => void handleSync()}
+        >
+          {syncing ? 'Gleiche ab…' : 'Jetzt abgleichen'}
+        </Button>
+      </div>
+
+      {discussions.length === 0 ? (
+        <Empty
+          icon={<MessageSquare />}
+          title="Keine Forenbeiträge"
+          action={
+            <Button icon={<RefreshCw />} disabled={syncing} onClick={() => void handleSync()}>
+              Mit Moodle abgleichen
+            </Button>
+          }
+        >
+          Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge synchronisiert.
+        </Empty>
+      ) : (
+        <div className="stack" style={{ gap: 14 }}>
+          {discussions.map((d) => (
+            <DiscussionCard key={d.id} discussion={d} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ModuleView({ module, tab, paneId }: { module: Module; tab: ModuleTab; paneId: string }) {
   const db = useDb()
   const [editing, setEditing] = useState(false)
@@ -224,6 +451,7 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
   const rootItems = visibleItems(db, null, module.id)
   const moduleTasks = db.tasks.filter((t) => t.moduleId === module.id)
   const labTasks = moduleTasks.filter((t) => t.kind === 'lab')
+  const moduleDiscussions = db.moodleDiscussions.filter((d) => d.moduleId === module.id)
 
   const tabs: { id: ModuleTab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Übersicht' },
@@ -231,6 +459,7 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
     { id: 'lab', label: 'Praktikum', count: labs.length || undefined },
     { id: 'files', label: 'Dateien' },
     { id: 'tasks', label: 'Aufgaben', count: moduleTasks.filter((t) => !t.done).length || undefined },
+    { id: 'announcements', label: 'Ankündigungen & Forum', count: moduleDiscussions.length || undefined },
   ]
 
   const moreMenu = (e: React.MouseEvent<HTMLButtonElement>) =>
@@ -312,6 +541,7 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
           </div>
         )}
         {tab === 'tasks' && <TaskList tasks={moduleTasks} newTask={{ moduleId: module.id, kind: 'assignment' }} showDone />}
+        {tab === 'announcements' && <ModuleAnnouncements module={module} />}
       </div>
       {editing && semester && <ModuleDialog semester={semester} module={module} onClose={() => setEditing(false)} />}
     </div>

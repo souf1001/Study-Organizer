@@ -84,6 +84,9 @@ export function registerIpc(service: Service, store: Store): void {
     },
     'moodle:courses': service.moodleCourses,
     'moodle:sync': service.moodleSync,
+    'moodle:posts': (_e: unknown, discussionId: number) => service.moodlePosts(discussionId),
+    'moodle:reply': (_e: unknown, postId: number, subject: string, message: string) =>
+      service.moodleReply(postId, subject, message),
     'moodle:disconnect': service.moodleDisconnect,
     'app:openExternal': openExternalSafely,
     'app:dataDir': () => store.dir,

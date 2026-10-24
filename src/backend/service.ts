@@ -10,6 +10,7 @@ import type {
   Module,
   MoodleConnectInput,
   MoodleCourse,
+  MoodlePost,
   MoodleSyncResult,
   NoteDoc,
   RecordOf,
@@ -241,6 +242,13 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       return (await moodleClient()).courses(userId)
     },
     moodleSync: async (): Promise<MoodleSyncResult> => syncMoodle(store, await moodleClient(), reserveSpace),
+    moodlePosts: async (discussionId: number): Promise<MoodlePost[]> => {
+      return (await moodleClient()).discussionPosts(discussionId)
+    },
+    moodleReply: async (postId: number, subject: string, message: string): Promise<{ postId: number }> => {
+      const res = await (await moodleClient()).replyPost(postId, subject, message)
+      return { postId: res.postid }
+    },
     moodleDisconnect: async () => {
       await secrets.remove('moodle')
       const settings = store.get().settings

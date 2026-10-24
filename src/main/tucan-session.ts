@@ -5,6 +5,7 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { BrowserWindow, session, type DownloadItem, type Event, type WebContents } from 'electron'
 import type { Service } from '../backend/service'
+import { combineIcs } from '../backend/ics'
 
 export interface TucanWizardResult {
   success: boolean
@@ -108,7 +109,12 @@ export function startTucanWizard(
       event.preventDefault()
     })
 
+    const accumulatedIcsBuffers: Buffer[] = []
+    let totalImportedCount = 0
+
     // Inject visual banner at top of loaded pages to guide the student
+    // Using position: relative ensures the TUCaN login button and header
+    // are physically rendered BELOW this tutorial header and never obscured.
     window.webContents.on('dom-ready', () => {
       window.webContents
         .executeJavaScript(`
@@ -116,9 +122,101 @@ export function startTucanWizard(
             if (document.getElementById('study-organizer-tucan-banner')) return;
             const banner = document.createElement('div');
             banner.id = 'study-organizer-tucan-banner';
-            banner.textContent = "ℹ️ TUCaN: Melde dich an, navigiere zu 'Stundenplan' ➔ 'Exportieren' ➔ 'Kalenderdatei (.ics)'";
-            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#1e40af;color:#ffffff;padding:8px 16px;font-family:system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);pointer-events:none;';
+            banner.style.cssText = 'position:relative;z-index:999999;background:#1e3a8a;color:#ffffff;padding:12px 18px;font-family:system-ui,-apple-system,sans-serif;font-size:13px;font-weight:500;box-shadow:0 3px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:space-between;gap:14px;box-sizing:border-box;width:100%;pointer-events:auto;';
+            banner.innerHTML = \`
+              <div style="display:flex;align-items:center;gap:12px;text-align:left;flex-wrap:wrap;">
+                <span style="background:#2563eb;color:#fff;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">TUCaN Assistent</span>
+                <span>1. Anmelden &gt; 2. „Mein Studium“ ➔ „Stundenplan“ &gt; 3. Klicke auf „Semester einlesen“</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                <button id="study-organizer-crawl-btn" style="background:#16a34a;color:#ffffff;border:none;padding:7px 15px;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">
+                  ⚡ Semester-Termine einlesen (Crawlen)
+                </button>
+                <span id="study-organizer-crawl-status" style="font-size:12px;font-weight:500;opacity:0.95;"></span>
+              </div>
+            \`;
             document.body.prepend(banner);
+
+            const btn = document.getElementById('study-organizer-crawl-btn');
+            const status = document.getElementById('study-organizer-crawl-status');
+            if (btn && status) {
+              btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                status.textContent = 'Prüfe TUCaN-Seite…';
+
+                const bodyText = document.body.innerText || '';
+                if ((bodyText.includes('Anmelden') || bodyText.includes('Login')) && !bodyText.includes('Abmelden') && !bodyText.includes('Logout')) {
+                  status.textContent = '⚠️ Bitte melde dich zuerst an!';
+                  btn.disabled = false;
+                  btn.style.opacity = '1';
+                  return;
+                }
+
+                // Suche nach Monats-Auswahl im Export-Bereich
+                const select = document.querySelector('select[name*="month"], select[name*="monat"], select[name*="zeitraum"], #month, #monat')
+                  || Array.from(document.querySelectorAll('select')).find(s => 
+                       Array.from(s.options).some(o => /Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember/i.test(o.text))
+                     );
+
+                if (select) {
+                  const options = Array.from(select.options).filter(o => 
+                    /Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember/i.test(o.text)
+                  );
+                  if (options.length > 0) {
+                    status.textContent = 'Gefunden: ' + options.length + ' Monate. Starte Crawl…';
+                    for (let i = 0; i < options.length; i++) {
+                      status.textContent = 'Lese Monat ' + (i + 1) + '/' + options.length + ' (' + options[i].text.trim() + ') ein…';
+                      select.value = options[i].value;
+                      select.dispatchEvent(new Event('change', { bubbles: true }));
+                      await new Promise(r => setTimeout(r, 600));
+
+                      const submitBtn = document.querySelector('input[type="submit"][value*="Export"], input[type="submit"][value*="export"], button[type="submit"]')
+                        || select.form?.querySelector('input[type="submit"]');
+                      if (submitBtn) {
+                        submitBtn.click();
+                        await new Promise(r => setTimeout(r, 1200));
+                        const calLink = Array.from(document.querySelectorAll('a')).find(a => 
+                          a.textContent?.includes('Kalenderdatei') || a.href.includes('.ics') || a.textContent?.includes('.ics')
+                        );
+                        if (calLink) {
+                          calLink.click();
+                          await new Promise(r => setTimeout(r, 800));
+                        }
+                      }
+                    }
+                    status.textContent = '✓ Semester erfolgreich importiert!';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    return;
+                  }
+                }
+
+                // Falls nicht auf Export-Seite: Zur Export-Seite navigieren
+                const exportLink = Array.from(document.querySelectorAll('a')).find(a => 
+                  a.textContent?.trim() === 'Export' || a.textContent?.trim() === 'Exportieren'
+                );
+                if (exportLink) {
+                  status.textContent = 'Wechsle zur Export-Seite…';
+                  exportLink.click();
+                  return;
+                }
+
+                // Zur Stundenplan-Seite navigieren
+                const timetableLink = Array.from(document.querySelectorAll('a')).find(a => 
+                  a.textContent?.includes('Stundenplan')
+                );
+                if (timetableLink) {
+                  status.textContent = 'Wechsle zum Stundenplan…';
+                  timetableLink.click();
+                  return;
+                }
+
+                status.textContent = 'Navigiere zu „Mein Studium“ ➔ „Stundenplan“ ➔ „Export“';
+                btn.disabled = false;
+                btn.style.opacity = '1';
+              });
+            }
           })();
         `)
         .catch(() => undefined)
@@ -158,9 +256,16 @@ export function startTucanWizard(
         if (state === 'completed') {
           try {
             const buffer = await fs.readFile(tempFile)
+            accumulatedIcsBuffers.push(buffer)
+
             if (service) {
-              const res = await service.calendarImportFile(originalFilename, buffer)
-              await finish({ success: true, count: res.count })
+              const contentToImport =
+                accumulatedIcsBuffers.length > 1
+                  ? combineIcs(accumulatedIcsBuffers)
+                  : buffer
+              const res = await service.calendarImportFile(originalFilename, contentToImport)
+              totalImportedCount = res.count ?? 0
+              await finish({ success: true, count: totalImportedCount })
             } else {
               await finish({ success: true, count: 0 })
             }

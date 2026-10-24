@@ -6,6 +6,7 @@ import path from 'node:path'
 import {
   autoCreateModule,
   classifyEvent,
+  combineIcs,
   decodeIcsText,
   eventsFromIcs,
   extractCourseInfo,
@@ -698,5 +699,99 @@ describe('classifyEvent: Deadline keywords boundaries and inflections', () => {
     expect(classifyEvent('Hausarbeit bitte pünktlich einreichen')).toBe('deadline')
     expect(classifyEvent('Bewerbungsfrist')).toBe('deadline')
     expect(classifyEvent('Portal schließt um 23:59 Uhr')).toBe('deadline')
+  })
+})
+
+describe('combineIcs: TUCaN Multi-Month Merge & Cancellation Filtering', () => {
+  it('combines multiple monthly exports into a single valid calendar', () => {
+    const oct = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:oct1@tucan
+SUMMARY:Mathematik 1 Vorlesung
+DTSTART:20261015T095000Z
+DTEND:20261015T113000Z
+END:VEVENT
+END:VCALENDAR`
+
+    const nov = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:nov1@tucan
+SUMMARY:Mathematik 1 Übung
+DTSTART:20261105T133000Z
+DTEND:20261105T151000Z
+END:VEVENT
+END:VCALENDAR`
+
+    const combined = combineIcs([oct, nov])
+    expect(combined).toContain('BEGIN:VCALENDAR')
+    expect(combined).toContain('END:VCALENDAR')
+    expect(combined).toContain('UID:oct1@tucan')
+    expect(combined).toContain('UID:nov1@tucan')
+
+    const from = new Date('2026-10-01T00:00:00Z')
+    const to = new Date('2026-12-01T00:00:00Z')
+    const events = parseIcs(combined, from, to)
+    expect(events).toHaveLength(2)
+  })
+
+  it('deduplicates recurring or identical events across monthly files', () => {
+    const oct = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:same-event@tucan
+SUMMARY:Informatik 1
+DTSTART:20261020T100000Z
+DTEND:20261020T113000Z
+END:VEVENT
+END:VCALENDAR`
+
+    const nov = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:same-event@tucan
+SUMMARY:Informatik 1
+DTSTART:20261020T100000Z
+DTEND:20261020T113000Z
+END:VEVENT
+END:VCALENDAR`
+
+    const combined = combineIcs([oct, nov])
+    const from = new Date('2026-10-01T00:00:00Z')
+    const to = new Date('2026-12-01T00:00:00Z')
+    const events = parseIcs(combined, from, to)
+    expect(events).toHaveLength(1)
+  })
+
+  it('filters out cancelled events with STATUS:CANCELLED or entfällt in title', () => {
+    const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:active@tucan
+SUMMARY:Physik 1
+DTSTART:20261021T100000Z
+DTEND:20261021T113000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:cancelled1@tucan
+SUMMARY:Physik 1 (entfällt)
+DTSTART:20261022T100000Z
+DTEND:20261022T113000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:cancelled2@tucan
+SUMMARY:Physik 1 Übung
+STATUS:CANCELLED
+DTSTART:20261023T100000Z
+DTEND:20261023T113000Z
+END:VEVENT
+END:VCALENDAR`
+
+    const from = new Date('2026-10-01T00:00:00Z')
+    const to = new Date('2026-10-30T00:00:00Z')
+    const events = parseIcs(ics, from, to)
+    expect(events).toHaveLength(1)
+    expect(events[0].title).toBe('Physik 1')
   })
 })

@@ -48,7 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   calendar: { startHour: 8, endHour: 20, showWeekends: false, defaultView: 'week', syncIntervalHours: 6 },
   ai: { enabled: false, provider: 'groq', model: '', baseUrl: '', language: 'de', maxContextChars: 60_000 },
-  moodle: { url: '', siteName: '', userId: null, courseMap: {}, syncFiles: false, lastSync: null },
+  moodle: { url: '', siteName: '', userId: null, courseMap: {}, syncFiles: false, syncIntervalMinutes: 10, lastSync: null },
 }
 
 export function createDefaultDb(): Db {
@@ -72,6 +72,7 @@ export function createDefaultDb(): Db {
     events: [],
     tasks: [],
     subscriptions: [],
+    moodleDiscussions: [],
   }
 }
 
@@ -96,6 +97,7 @@ export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
     events: raw.events ?? [],
     tasks: raw.tasks ?? [],
     subscriptions: (raw.subscriptions ?? []).map((sub) => ({ ...sub, kind: sub.kind ?? 'url' })),
+    moodleDiscussions: raw.moodleDiscussions ?? [],
   }
 }
 

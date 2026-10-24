@@ -12,7 +12,7 @@ import { createDefaultDb, newId, normalizeDb } from '../shared/defaults'
 import { assertFileName, assertId, detectFile, titleFromFileName } from './files'
 
 const SAVE_DELAY_MS = 250
-const PATCH_KEYS: (keyof DbPatch)[] = ['onboarded', 'activeSemesterId', 'profile', 'settings']
+const PATCH_KEYS: (keyof DbPatch)[] = ['onboarded', 'activeSemesterId', 'profile', 'settings', 'moodleDiscussions']
 
 const isObject = (value: unknown): value is object =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -134,6 +134,7 @@ export class Store {
       const valid =
         key === 'onboarded' ? typeof value === 'boolean'
         : key === 'activeSemesterId' ? value === null || typeof value === 'string'
+        : key === 'moodleDiscussions' ? Array.isArray(value)
         : isObject(value)
       if (!valid) throw new Error(`Ungültiger Wert für ${key}`)
     }
