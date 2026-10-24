@@ -29,7 +29,7 @@ import {
   normalizeCalendarUrl,
   normalizeIcsFilename,
 } from './ics'
-import { MoodleClient, connectMoodle, moodleSiteInfo, syncMoodle } from './moodle'
+import { MoodleClient, connectMoodle, matchCourseToModules, moodleSiteInfo, syncMoodle } from './moodle'
 import type { Store } from './store'
 
 /** Ablage für geheime Werte (API-Keys, Moodle-Token) – verschlüsselt, getrennt von db.json */
@@ -301,12 +301,29 @@ export function createService(store: Store, secrets: Secrets, options: ServiceOp
       const result = await connectMoodle(input, fetchImpl)
       await writeBound(secrets, 'moodle', result.token, result.site)
       const settings = store.get().settings
+      const modules = store.get().modules
+      const courseMap: Record<string, string> = { ...(settings.moodle.courseMap ?? {}) }
+      for (const course of result.courses) {
+        const key = String(course.id)
+        if (!courseMap[key] && !courseMap[course.id]) {
+          const matched = matchCourseToModules(course, modules)
+          if (matched) courseMap[key] = matched.id
+        }
+      }
       store.update({
         settings: {
           ...settings,
-          moodle: { ...settings.moodle, url: result.site, siteName: result.siteName, userId: result.userId },
+          moodle: {
+            ...settings.moodle,
+            url: result.site,
+            siteName: result.siteName,
+            userId: result.userId,
+            courseMap,
+          },
         },
       })
+      // Nach erfolgreicher Verbindung direkt im Hintergrund synchronisieren
+      service.moodleSync().catch(() => undefined)
       return result.courses
     },
     moodleCourses: async (): Promise<MoodleCourse[]> => {

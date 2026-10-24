@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { MoodleClient, syncMoodle } from '../src/backend/moodle'
+import { MoodleClient, matchCourseToModules, syncMoodle } from '../src/backend/moodle'
 import { Store } from '../src/backend/store'
 import { createService } from '../src/backend/service'
 import { newModule } from '../src/shared/defaults'
@@ -349,6 +349,158 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
       expect(discussions).toHaveLength(2)
       expect(discussions.some((d) => d.id === 1111)).toBe(true)
       expect(discussions.some((d) => d.id === 1234)).toBe(true)
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('matchCourseToModules ordnet Moodle-Kurse nach Code, Name und Substring robust Modulen zu', () => {
+    const modAlgo = newModule('sem1', { id: 'm1', name: 'Algorithmen und Datenstrukturen', code: 'CS-101' })
+    const modMathe = newModule('sem1', { id: 'm2', name: 'Mathematik 1', code: 'MA-01' })
+    const modEnglisch = newModule('sem1', { id: 'm3', name: 'Technisches Englisch' })
+    const modules = [modAlgo, modMathe, modEnglisch]
+
+    // 1. Match über Modulcode im shortname
+    const c1 = { id: 1, fullname: 'AuD WiSe 2026/27', shortname: 'CS-101' }
+    expect(matchCourseToModules(c1, modules)?.id).toBe('m1')
+
+    // 2. Match über Modulcode im fullname
+    const c2 = { id: 2, fullname: 'Vorlesung MA-01 (Prof. Gauss)', shortname: 'V-MA' }
+    expect(matchCourseToModules(c2, modules)?.id).toBe('m2')
+
+    // 3. Match über Substring des Modulnamens
+    const c3 = { id: 3, fullname: 'Technisches Englisch für Ingenieure (B.Sc.)', shortname: 'ENG' }
+    expect(matchCourseToModules(c3, modules)?.id).toBe('m3')
+
+    // 4. Keine Übereinstimmung
+    const c4 = { id: 4, fullname: 'Physikalisches Praktikum', shortname: 'PHY' }
+    expect(matchCourseToModules(c4, modules)).toBeNull()
+  })
+
+  it('syncMoodle ordnet ungemappte Kurse automatisch zu, wenn courseMap leer ist', async () => {
+    const fetchImpl = fakeFetch((fn) => {
+      if (fn === 'core_enrol_get_users_courses') {
+        return [
+          { id: 201, fullname: 'Lineare Algebra I', shortname: 'LA1' },
+        ]
+      }
+      if (fn === 'mod_forum_get_forums_by_courses') {
+        return [{ id: 42, course: 201, type: 'general', name: 'Ankündigungen LA1' }]
+      }
+      if (fn === 'mod_forum_get_forum_discussions') {
+        return {
+          discussions: [
+            { id: 777, name: 'Willkommen zu LA1', firstpost: 1, userfullname: 'Prof. X', timemodified: 1_700_000_000 },
+          ],
+        }
+      }
+      if (fn === 'mod_assign_get_assignments') return { courses: [] }
+      if (fn === 'core_calendar_get_calendar_events') return { events: [] }
+      return {}
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-automap-test-'))
+    const store = await Store.open(dir)
+    try {
+      const mod = newModule('sem1', { id: 'm-la', name: 'Lineare Algebra I' })
+      store.put('modules', mod)
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            userId: 99,
+            courseMap: {},
+          },
+        },
+      })
+
+      const res = await syncMoodle(store, client)
+      expect(res.discussions).toBe(1)
+      expect(store.get().settings.moodle.courseMap['201']).toBe('m-la')
+      expect(store.get().moodleDiscussions).toHaveLength(1)
+      expect(store.get().moodleDiscussions[0].moduleId).toBe('m-la')
+    } finally {
+      await store.flush()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('syncMoodle überschreibt bei erneutem Sync keine benutzerdefinierten Modulzuweisungen oder Notizen von Terminen', async () => {
+    const fetchImpl = fakeFetch((fn) => {
+      if (fn === 'core_calendar_get_calendar_events') {
+        return {
+          events: [
+            {
+              id: 888,
+              name: 'Übung Mathematik Termin 1',
+              courseid: 301,
+              timestart: 1_700_000_000,
+              timeduration: 5400,
+            },
+            {
+              id: 889,
+              name: 'Übung Mathematik Termin 1',
+              courseid: 301,
+              timestart: 1_700_604_800,
+              timeduration: 5400,
+            },
+          ],
+        }
+      }
+      if (fn === 'mod_forum_get_forums_by_courses') return []
+      if (fn === 'mod_assign_get_assignments') return { courses: [] }
+      return {}
+    })
+
+    const client = new MoodleClient('https://moodle.hochschule.de', 'token123', fetchImpl)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-event-preserve-'))
+    const store = await Store.open(dir)
+    try {
+      const defaultMod = newModule('sem1', { id: 'mod-default', name: 'Standard Kurs' })
+      const customMod = newModule('sem1', { id: 'mod-custom', name: 'Mein Spezielles Modul' })
+      store.put('modules', defaultMod)
+      store.put('modules', customMod)
+
+      store.update({
+        settings: {
+          ...store.get().settings,
+          moodle: {
+            ...store.get().settings.moodle,
+            courseMap: { '301': defaultMod.id },
+          },
+        },
+      })
+      store.put('events', {
+        id: 'local-event-id-888',
+        title: 'Übung Mathematik Termin 1',
+        kind: 'exercise',
+        start: new Date(1_700_000_000 * 1000).toISOString(),
+        end: new Date((1_700_000_000 + 5400) * 1000).toISOString(),
+        allDay: false,
+        moduleId: customMod.id,
+        location: 'Raum C10/01',
+        notes: 'Wichtige Vorbereitung für Hausaufgabe',
+        subscriptionId: null,
+        externalId: 'moodle:event:888',
+      })
+
+      const res = await syncMoodle(store, client)
+      expect(res.events).toBe(2)
+
+      const events = store.get().events
+      const event888 = events.find((e) => e.externalId === 'moodle:event:888')
+      expect(event888).toBeDefined()
+      expect(event888?.id).toBe('local-event-id-888')
+      expect(event888?.moduleId).toBe(customMod.id)
+      expect(event888?.notes).toBe('Wichtige Vorbereitung für Hausaufgabe')
+      expect(event888?.location).toBe('Raum C10/01')
+
+      const event889 = events.find((e) => e.externalId === 'moodle:event:889')
+      expect(event889).toBeDefined()
+      expect(event889?.moduleId).toBe(customMod.id)
     } finally {
       await store.flush()
       await rm(dir, { recursive: true, force: true })

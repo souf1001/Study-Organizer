@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { CalendarClock, FileText, FolderOpen, MapPin } from 'lucide-react'
 import { addDays, diffDays, isoDateOf, today } from '@shared/dates'
 import { SESSION_LABELS, type Occurrence } from '@shared/schedule'
+import type { SessionKind } from '@shared/types'
 import { findSemesterAt, lectureWeek, semesterForDate } from '@shared/semester'
 import { activeSemester, findSessionFolder, openSession, semesterOccurrences } from '@/lib/actions'
 import { useDb } from '@/lib/db'
@@ -61,7 +62,40 @@ export function HomeView() {
   const expected = semesterForDate(db.settings.study.semesterModel, day)
   const showBanner = db.settings.study.askForNewSemester && !findSemesterAt(db.semesters, day) && dismissed !== expected.name
 
-  const occurrences = semesterOccurrences(db, semester)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const timeOf = (iso: string) => {
+    const d = new Date(iso)
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const scheduleOccs = semester ? semesterOccurrences(db, semester) : []
+  const calendarEvents = db.events.filter((e) => {
+    if (e.kind === 'exam' || e.kind === 'deadline') return false
+    if (!e.moduleId) return false
+    const mod = db.modules.find((m) => m.id === e.moduleId)
+    return mod && (!semester || mod.semesterId === semester.id)
+  })
+  const eventOccs: Occurrence[] = calendarEvents.map((e) => {
+    const sessionKind: SessionKind =
+      e.kind === 'lab' ? 'lab' : e.kind === 'exercise' ? 'exercise' : 'lecture'
+    return {
+      slotId: e.id,
+      moduleId: e.moduleId!,
+      kind: sessionKind,
+      date: isoDateOf(e.start),
+      start: e.allDay ? '' : timeOf(e.start),
+      end: e.allDay ? '' : timeOf(e.end),
+      room: e.location || '',
+      index: 0,
+    }
+  })
+  const occMap = new Map<string, Occurrence>()
+  for (const o of scheduleOccs) occMap.set(`${o.date}#${o.start}#${o.kind}`, o)
+  for (const o of eventOccs) {
+    const key = `${o.date}#${o.start}#${o.kind}`
+    if (!occMap.has(key)) occMap.set(key, o)
+  }
+  const occurrences = Array.from(occMap.values()).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
   const todays = occurrences.filter((o) => o.date === day)
   const upcoming = occurrences.filter((o) => o.date > day).slice(0, 5)
 

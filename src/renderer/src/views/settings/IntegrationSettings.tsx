@@ -13,7 +13,7 @@ import {
 import { newModule } from '@shared/defaults'
 import type { MoodleCourse, MoodleSiteInfo, Subscription } from '@shared/types'
 import { api } from '@/lib/api'
-import { activeSemester, pickFiles, semesterModules } from '@/lib/actions'
+import { activeSemester, pickFiles } from '@/lib/actions'
 import { loadDb, putRecord, updateSettings, useDb } from '@/lib/db'
 import { formatDateTime } from '@/lib/format'
 import { Button, IconButton } from '@/ui/Button'
@@ -110,10 +110,39 @@ function MoodleSection() {
   const [courses, setCourses] = useState<MoodleCourse[]>([])
   const [syncing, setSyncing] = useState(false)
   const semester = activeSemester(db)
-  const modules = semesterModules(db, semester?.id)
+  const modules = [...db.modules].sort((a, b) => {
+    const aCurrent = a.semesterId === semester?.id
+    const bCurrent = b.semesterId === semester?.id
+    if (aCurrent && !bCurrent) return -1
+    if (!aCurrent && bCurrent) return 1
+    return a.name.localeCompare(b.name)
+  })
 
   useEffect(() => {
-    if (connected) api.moodle.courses().then(setCourses).catch(toastError)
+    if (connected) {
+      api.moodle.courses().then((loaded) => {
+        setCourses(loaded)
+        const courseMap = { ...moodle.courseMap }
+        let updated = false
+        for (const c of loaded) {
+          if (!courseMap[c.id]) {
+            const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, ' ').trim()
+            const cFull = clean(c.fullname)
+            const cShort = clean(c.shortname || '')
+            const matched = db.modules.find((m) => {
+              if (m.code && (cShort === clean(m.code) || cFull.includes(clean(m.code)))) return true
+              const mName = clean(m.name)
+              return mName.length >= 3 && (cFull.includes(mName) || (cShort && cShort.includes(mName)))
+            })
+            if (matched) {
+              courseMap[c.id] = matched.id
+              updated = true
+            }
+          }
+        }
+        if (updated) updateSettings('moodle', { courseMap })
+      }).catch(toastError)
+    }
   }, [connected])
 
   const map = (courseId: number, moduleId: string) => {
@@ -190,7 +219,11 @@ function MoodleSection() {
                     value={moodle.courseMap[c.id] ?? ''}
                     options={[
                       { value: '', label: 'Nicht übernehmen' },
-                      ...modules.map((m) => ({ value: m.id, label: m.name })),
+                      ...modules.map((m) => {
+                        const sem = db.semesters.find((s) => s.id === m.semesterId)
+                        const label = sem && db.semesters.length > 1 ? `${m.name} (${sem.name})` : m.name
+                        return { value: m.id, label }
+                      }),
                       { value: 'new', label: '+ Als neues Modul anlegen' },
                     ]}
                     onChange={(v) => map(c.id, v)}

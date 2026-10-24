@@ -1,5 +1,5 @@
 // Modulseite: Übersicht, Termine (mit Ordner pro Termin), Praktikum, Dateien, Aufgaben.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BookOpen,
   CalendarDays,
@@ -31,7 +31,7 @@ import {
 import DOMPurify from 'dompurify'
 import { isoDateOf, today } from '@shared/dates'
 import { moduleOccurrences, SESSION_LABELS, type Occurrence } from '@shared/schedule'
-import type { CalendarEvent, Module, MoodleDiscussion, MoodlePost, SessionKind } from '@shared/types'
+import type { CalendarEvent, Module, MoodleCourse, MoodleDiscussion, MoodlePost, SessionKind } from '@shared/types'
 import { api } from '@/lib/api'
 import {
   childFolders,
@@ -47,12 +47,12 @@ import {
   visibleItems,
 } from '@/lib/actions'
 import { summarizePastSessions } from '@/lib/ai'
-import { loadDb, putRecord, useDb } from '@/lib/db'
+import { loadDb, putRecord, updateSettings, useDb } from '@/lib/db'
 import { formatDateTime, formatDay, relativeDay } from '@/lib/format'
 import { openView, useWorkspace, type ModuleTab } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
-import { Input, Textarea } from '@/ui/Field'
+import { Input, Select, Textarea } from '@/ui/Field'
 import { showMenu } from '@/ui/Menu'
 import { toast, toastError } from '@/ui/Toast'
 import { FolderContents } from '../folder/FolderView'
@@ -217,7 +217,8 @@ function Overview({
           <div>
             <div className="small muted">Nächster Termin · {relativeDay(next.date)}</div>
             <div style={{ fontWeight: 600 }}>
-              {SESSION_LABELS[next.kind]} {next.index} · {next.start}–{next.end}
+              {next.title && next.title !== module.name ? next.title : `${SESSION_LABELS[next.kind]} ${next.index}`}
+              {next.start ? ` · ${next.start}${next.end ? `–${next.end}` : ''}` : ''}
             </div>
             {next.room && (
               <div className="row small muted">
@@ -647,21 +648,71 @@ function ModuleAnnouncements({ module }: { module: Module }) {
   const [syncing, setSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [forumFilter, setForumFilter] = useState<'all' | 'announcements' | number>('all')
+  const [availableCourses, setAvailableCourses] = useState<MoodleCourse[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState<number | ''>('')
+  const [linking, setLinking] = useState(false)
+
   const courseMap = db.settings.moodle?.courseMap ?? {}
-  const mappedCourseIds = useMemo(
+  const moodleConnected = Boolean(db.settings.moodle?.url)
+
+  const mappedCourseKeys = useMemo(
     () =>
       Object.entries(courseMap)
         .filter(([_, modId]) => modId === module.id)
-        .map(([cId]) => Number(cId)),
+        .map(([cId]) => cId),
     [courseMap, module.id],
   )
   const discussions = useMemo(
     () =>
       db.moodleDiscussions.filter(
-        (d) => d.moduleId === module.id || (d.courseId && mappedCourseIds.includes(d.courseId)),
+        (d) =>
+          d.moduleId === module.id ||
+          (d.courseId && mappedCourseKeys.some((k) => k === String(d.courseId))),
       ),
-    [db.moodleDiscussions, module.id, mappedCourseIds],
+    [db.moodleDiscussions, module.id, mappedCourseKeys],
   )
+
+  useEffect(() => {
+    if (moodleConnected && mappedCourseKeys.length === 0) {
+      api.moodle
+        .courses()
+        .then((loaded) => {
+          setAvailableCourses(loaded)
+          const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, ' ').trim()
+          const mName = clean(module.name)
+          const mCode = module.code ? clean(module.code) : ''
+          const matched = loaded.find((c) => {
+            if (mCode && (clean(c.shortname || '') === mCode || clean(c.fullname).includes(mCode))) return true
+            return mName.length >= 3 && (clean(c.fullname).includes(mName) || clean(c.shortname || '').includes(mName))
+          })
+          if (matched) {
+            setSelectedCourseId(matched.id)
+          }
+        })
+        .catch(() => undefined)
+    }
+  }, [moodleConnected, mappedCourseKeys.length, module.id, module.name, module.code])
+
+  const handleLinkAndSync = async () => {
+    if (!selectedCourseId) return
+    setLinking(true)
+    try {
+      const currentMap = { ...(db.settings.moodle?.courseMap ?? {}) }
+      currentMap[String(selectedCourseId)] = module.id
+      await updateSettings('moodle', { courseMap: currentMap })
+      const res = await api.moodle.sync()
+      await loadDb()
+      if (res.errors.length > 0) {
+        toastError(new Error(res.errors.join(' · ')))
+      } else {
+        toast('Moodle-Kurs erfolgreich verknüpft und abgeglichen')
+      }
+    } catch (err) {
+      toastError(err)
+    } finally {
+      setLinking(false)
+    }
+  }
 
   const forums = useMemo(() => {
     const map = new Map<number, { id: number; name: string; count: number }>()
@@ -795,23 +846,55 @@ function ModuleAnnouncements({ module }: { module: Module }) {
       {discussions.length === 0 ? (
         <Empty
           icon={<MessageSquare />}
-          title="Keine Forenbeiträge"
+          title={mappedCourseKeys.length === 0 ? 'Kein Moodle-Kurs zugeordnet' : 'Keine Forenbeiträge'}
           action={
-            <div className="row" style={{ gap: 8 }}>
-              <Button icon={<RefreshCw size={14} />} disabled={syncing} onClick={() => void handleSync()}>
-                Mit Moodle abgleichen
-              </Button>
-              {mappedCourseIds.length === 0 && (
-                <Button variant="ghost" onClick={(ev) => openView({ type: 'settings', section: 'integrations' }, ev)}>
-                  Zu den Moodle-Einstellungen
-                </Button>
+            <div className="stack" style={{ gap: 12, alignItems: 'center' }}>
+              {mappedCourseKeys.length === 0 && moodleConnected && availableCourses.length > 0 ? (
+                <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Select
+                    value={selectedCourseId}
+                    options={[
+                      { value: '', label: '– Moodle-Kurs wählen –' },
+                      ...availableCourses.map((c) => ({
+                        value: c.id,
+                        label: c.fullname.length > 50 ? c.fullname.slice(0, 48) + '…' : c.fullname,
+                      })),
+                    ]}
+                    onChange={(v) => setSelectedCourseId(v ? Number(v) : '')}
+                    style={{ maxWidth: 320 }}
+                  />
+                  <Button
+                    icon={<RefreshCw size={14} className={linking || syncing ? 'spin' : ''} />}
+                    disabled={!selectedCourseId || linking || syncing}
+                    onClick={() => void handleLinkAndSync()}
+                  >
+                    {linking ? 'Verknüpfe…' : 'Verknüpfen & Abgleichen'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="row" style={{ gap: 8 }}>
+                  <Button
+                    icon={<RefreshCw size={14} className={syncing ? 'spin' : ''} />}
+                    disabled={syncing}
+                    onClick={() => void handleSync()}
+                  >
+                    {syncing ? 'Gleiche ab…' : 'Mit Moodle abgleichen'}
+                  </Button>
+                  {mappedCourseKeys.length === 0 && (
+                    <Button variant="ghost" onClick={(ev) => openView({ type: 'settings', section: 'integrations' }, ev)}>
+                      Zu den Moodle-Einstellungen
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           }
         >
-          {mappedCourseIds.length === 0
-            ? 'Diesem Modul ist noch kein Moodle-Kurs zugeordnet. Du kannst in den Einstellungen unter „Moodle“ einen Kurs zuordnen.'
-            : 'Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge synchronisiert.'}
+          {mappedCourseKeys.length === 0
+            ? moodleConnected
+              ? 'Wähle deinen Moodle-Kurs für dieses Modul aus, um Ankündigungen und Forenbeiträge anzuzeigen.'
+              : 'Moodle ist noch nicht eingerichtet. Verbinde Moodle in den Einstellungen, um Foren zu synchronisieren.'
+            : 'Für dieses Modul sind aktuell keine Ankündigungen oder Forenbeiträge vorhanden.'}
         </Empty>
       ) : filteredDiscussions.length === 0 ? (
         <Empty icon={<MessageSquare />} title="Keine Beiträge gefunden">
@@ -918,11 +1001,11 @@ export function ModuleView({ module, tab, paneId }: { module: Module; tab: Modul
   const moduleTasks = db.tasks.filter((t) => t.moduleId === module.id)
   const labTasks = moduleTasks.filter((t) => t.kind === 'lab')
   const courseMap = db.settings.moodle?.courseMap ?? {}
-  const mappedCourseIds = Object.entries(courseMap)
+  const mappedCourseKeys = Object.entries(courseMap)
     .filter(([_, modId]) => modId === module.id)
-    .map(([cId]) => Number(cId))
+    .map(([cId]) => cId)
   const moduleDiscussions = db.moodleDiscussions.filter(
-    (d) => d.moduleId === module.id || (d.courseId && mappedCourseIds.includes(d.courseId)),
+    (d) => d.moduleId === module.id || (d.courseId && mappedCourseKeys.some((k) => k === String(d.courseId))),
   )
 
   const tabs: { id: ModuleTab; label: string; count?: number }[] = [

@@ -1,7 +1,7 @@
 // Moodle-Anbindung über die offiziellen Web-Services (dieselben, die auch die Moodle-App nutzt).
 // Holt Abgaben (als Aufgaben), weitere Termine (Tests, Fristen) und optional Kursdateien.
-import type { MoodleCourse, MoodleDiscussion, MoodlePost, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
-import { newFolder, newTask, newEvent } from '../shared/defaults'
+import type { Module, MoodleCourse, MoodleDiscussion, MoodlePost, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
+import { newFolder, newTask, newId } from '../shared/defaults'
 import { classifyEvent } from './ics'
 import { markAsDownloaded } from './files'
 import { readLimited } from './http'
@@ -232,16 +232,16 @@ export class MoodleClient {
     numreplies?: number
     pinned?: boolean
   }[]> {
-    // 1. Versuche mod_forum_get_forum_discussions mit Array { forumids: [forumid] }
+    // 1. Versuche mod_forum_get_forum_discussions mit { forumid, forumids: [forumid] }
     try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumids: [forumid] })
+      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid, forumids: [forumid] })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
       if (list && list.length > 0) return list
     } catch {
       // Weiter mit nächstem Versuch
     }
 
-    // 1b. Versuche mod_forum_get_forum_discussions mit { forumid } (einige Moodle-Builds)
+    // 1b. Versuche mod_forum_get_forum_discussions mit nur { forumid }
     try {
       const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid })
       const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
@@ -437,6 +437,68 @@ export async function connectMoodle(
 
 const toIso = (unix: number): string => new Date(unix * 1000).toISOString()
 
+export function matchCourseToModules(
+  course: { id: number; fullname: string; shortname?: string },
+  modules: Module[],
+): Module | null {
+  if (modules.length === 0) return null
+  const clean = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\b(?:ws|wise|sose|ss)\s*\d{2}(?:\/\d{2})?\b/gi, '')
+      .replace(/\b(?:vorlesung|übung|uebung|praktikum|integrierte veranstaltung|vl|ue|pr|iv)\b/gi, '')
+      .replace(/[^a-z0-9äöüß]+/gi, ' ')
+      .trim()
+
+  const cFullNorm = clean(course.fullname)
+  const cShortNorm = clean(course.shortname || '')
+
+  // 1. Exakter Match nach Modul-Code
+  for (const m of modules) {
+    if (m.code && m.code.trim().length >= 2) {
+      const codeClean = clean(m.code)
+      if (
+        (codeClean && cShortNorm === codeClean) ||
+        (codeClean && cFullNorm.includes(codeClean)) ||
+        (course.shortname && course.shortname.toLowerCase().includes(m.code.trim().toLowerCase()))
+      ) {
+        return m
+      }
+    }
+  }
+
+  // 2. Exakter Match nach Modul-Name
+  for (const m of modules) {
+    const mNameClean = clean(m.name)
+    if (mNameClean && (cFullNorm === mNameClean || cShortNorm === mNameClean)) {
+      return m
+    }
+  }
+
+  // 3. Substring-Match: Modulname ist signifikant im Kursnamen enthalten (oder umgekehrt)
+  let bestMatch: Module | null = null
+  let bestMatchLength = 0
+
+  for (const m of modules) {
+    const mNameClean = clean(m.name)
+    if (mNameClean.length >= 4) {
+      if (cFullNorm.includes(mNameClean) || (cShortNorm && cShortNorm.includes(mNameClean))) {
+        if (mNameClean.length > bestMatchLength) {
+          bestMatch = m
+          bestMatchLength = mNameClean.length
+        }
+      } else if (mNameClean.length >= 6 && cFullNorm.length >= 6 && mNameClean.includes(cFullNorm)) {
+        if (cFullNorm.length > bestMatchLength) {
+          bestMatch = m
+          bestMatchLength = cFullNorm.length
+        }
+      }
+    }
+  }
+
+  return bestMatch
+}
+
 /** Holt Abgaben, Termine und (optional) Dateien der zugeordneten Kurse */
 export async function syncMoodle(
   store: Store,
@@ -445,14 +507,49 @@ export async function syncMoodle(
 ): Promise<MoodleSyncResult> {
   const result: MoodleSyncResult = { tasks: 0, events: 0, files: 0, errors: [] }
   const db = store.get()
-  const courseMap = db.settings.moodle.courseMap
-  const moduleFor = (courseId: number | undefined): string | null =>
-    courseId !== undefined && db.modules.some((m) => m.id === courseMap[courseId])
-      ? courseMap[courseId]
-      : null
+  const courseMap: Record<string, string> = { ...(db.settings.moodle.courseMap ?? {}) }
+
+  // Automatische Kurszuordnung: Falls Kurse noch nicht zugeordnet sind, versuche sie anhand des Modulnamens oder -codes zuzuordnen
+  if (db.settings.moodle.userId) {
+    try {
+      const userCourses = await client.courses(db.settings.moodle.userId)
+      let courseMapUpdated = false
+      for (const course of userCourses) {
+        const key = String(course.id)
+        if (!courseMap[key] && !courseMap[course.id]) {
+          const matched = matchCourseToModules(course, db.modules)
+          if (matched) {
+            courseMap[key] = matched.id
+            courseMapUpdated = true
+          }
+        }
+      }
+      if (courseMapUpdated) {
+        store.update({
+          settings: {
+            ...db.settings,
+            moodle: {
+              ...db.settings.moodle,
+              courseMap,
+            },
+          },
+        })
+      }
+    } catch {
+      // Ignoriere Netzwerk-/Berechtigungsfehler beim Laden der Kursliste
+    }
+  }
+
+  const moduleFor = (courseId: number | string | undefined): string | null => {
+    if (courseId === undefined || courseId === null) return null
+    const targetModId = courseMap[courseId] ?? courseMap[String(courseId)]
+    return targetModId && db.modules.some((m) => m.id === targetModId) ? targetModId : null
+  }
+
   const courseIds = Object.keys(courseMap)
     .map(Number)
-    .filter((id) => moduleFor(id))
+    .filter((id) => !isNaN(id) && Boolean(moduleFor(id)))
+
   if (courseIds.length === 0) {
     result.errors.push('Noch keine Moodle-Kurse einem Modul zugeordnet.')
     return result
@@ -490,18 +587,44 @@ export async function syncMoodle(
   try {
     const now = Math.floor(Date.now() / 1000)
     const { events } = await client.calendarEvents(courseIds, now - 30 * 86_400, now + 365 * 86_400)
+    const existingMoodleEvents = db.events.filter((e) => Boolean(e.externalId?.startsWith('moodle:event:')))
     const records = events
       .filter((e) => e.modulename !== 'assign')
       .map((e) => {
+        const externalId = `moodle:event:${e.id}`
+        const exact = existingMoodleEvents.find((ex) => ex.externalId === externalId)
         const kind = classifyEvent(e.name)
-        return newEvent({
+
+        let targetModuleId =
+          exact?.moduleId && db.modules.some((m) => m.id === exact.moduleId)
+            ? exact.moduleId
+            : moduleFor(e.courseid)
+
+        // Prüfe, ob die Serie dieses Termins bereits manuell einem Modul zugewiesen wurde
+        if (!exact && existingMoodleEvents.length > 0) {
+          const eTitleNorm = e.name.trim().toLowerCase()
+          const seriesMatch = existingMoodleEvents.find((ex) => {
+            if (!ex.moduleId || !db.modules.some((m) => m.id === ex.moduleId)) return false
+            return ex.title.trim().toLowerCase() === eTitleNorm
+          })
+          if (seriesMatch?.moduleId) {
+            targetModuleId = seriesMatch.moduleId
+          }
+        }
+
+        return {
+          id: exact?.id ?? newId(),
           title: e.name,
-          kind: kind === 'other' && !e.timeduration ? 'deadline' : kind,
+          kind: exact?.kind ?? (kind === 'other' && !e.timeduration ? 'deadline' : kind),
           start: toIso(e.timestart),
           end: toIso(e.timestart + (e.timeduration || 0)),
-          moduleId: moduleFor(e.courseid),
-          externalId: `moodle:event:${e.id}`,
-        })
+          allDay: false,
+          moduleId: targetModuleId,
+          location: exact?.location ?? '',
+          notes: exact?.notes ?? '',
+          subscriptionId: null,
+          externalId,
+        }
       })
     store.replaceMany('events', (e) => Boolean(e.externalId?.startsWith('moodle:event:')), records)
     result.events = records.length
@@ -639,13 +762,15 @@ export async function syncMoodle(
             d.userfullname ||
             (d as any).firstpostfullname ||
             (d as any).firstuserfullname ||
-            (d as any).author ||
+            (d as any).author?.fullname ||
+            (typeof (d as any).author === 'string' ? (d as any).author : '') ||
             existingDisc?.userFullName ||
             'Moodle'
           const picture =
             d.userpictureurl ||
             (d as any).firstpostuserimageurl ||
             (d as any).firstuserimageurl ||
+            (d as any).author?.urls?.profileimage ||
             existingDisc?.userPictureUrl
 
           const createdUnix = Number(
@@ -703,7 +828,12 @@ export async function syncMoodle(
       }
     }
 
-    const otherDiscussions = existingDiscussions.filter((d) => !courseIds.includes(d.courseId))
+    const updatedDiscIds = new Set(allDiscussions.map((d) => d.id))
+    const otherDiscussions = existingDiscussions.filter(
+      (d) =>
+        !updatedDiscIds.has(d.id) &&
+        !courseIds.some((cid) => String(cid) === String(d.courseId)),
+    )
     const mergedDiscussions = [...otherDiscussions, ...allDiscussions].sort(
       (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
     )
