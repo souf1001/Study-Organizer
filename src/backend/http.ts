@@ -12,5 +12,14 @@ export async function readLimited(response: Response, maxBytes: number, what: st
     if (total > maxBytes) throw tooBig()
     chunks.push(chunk)
   }
-  return Buffer.concat(chunks)
+  if (typeof Buffer !== 'undefined' && typeof Buffer.concat === 'function') {
+    return Buffer.concat(chunks)
+  }
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.length
+  }
+  return result
 }

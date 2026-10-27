@@ -25,7 +25,7 @@ import type {
  * Web: Umsetzung per HTTP gegen den Server.
  */
 export interface Api {
-  platform: 'desktop' | 'web'
+  platform: 'desktop' | 'web' | 'android'
 
   loadDb(): Promise<Db>
   put<C extends CollectionName>(collection: C, record: RecordOf<C>): Promise<void>

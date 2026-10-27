@@ -94,7 +94,7 @@ export function isSafeToOpen(fileName: string): boolean {
 
 /** Windows: Datei als „aus dem Internet“ markieren, damit SmartScreen & Co. greifen */
 export async function markAsDownloaded(file: string): Promise<void> {
-  if (process.platform !== 'win32') return
+  if (typeof process === 'undefined' || process.platform !== 'win32') return
   const { promises: fs } = await import('node:fs')
   await fs.writeFile(`${file}:Zone.Identifier`, '[ZoneTransfer]\r\nZoneId=3\r\n').catch(() => undefined)
 }

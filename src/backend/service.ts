@@ -48,7 +48,10 @@ export interface ServiceOptions {
 
 export type ReserveSpace = (bytes: number) => Promise<() => void>
 const noLimit: ReserveSpace = async () => () => undefined
-const jsonSize = (value: unknown) => Buffer.byteLength(JSON.stringify(value))
+const jsonSize = (value: unknown) =>
+  typeof Buffer !== 'undefined' && typeof Buffer.byteLength === 'function'
+    ? Buffer.byteLength(JSON.stringify(value))
+    : new TextEncoder().encode(JSON.stringify(value)).length
 
 const aiSecret = (provider: string): string => {
   if (!AI_PROVIDERS.some((p) => p.id === provider)) throw new Error('Unbekannter Anbieter')

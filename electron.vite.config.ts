@@ -4,7 +4,7 @@ import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const alias = { '@shared': resolve('src/shared') }
+const alias = { '@shared': resolve('src/shared'), '@backend': resolve('src/backend') }
 const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
 
 // Die Content-Security-Policy blockiert im Dev-Modus das Hot-Reload-Skript von Vite.

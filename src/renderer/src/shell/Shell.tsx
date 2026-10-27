@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { useWorkspace } from '@/lib/workspace'
 import { toast } from '@/ui/Toast'
 import { CommandPalette, usePalette } from './CommandPalette'
+import { MobileNav } from './MobileNav'
 import { Sidebar } from './Sidebar'
 import { Workspace } from './Workspace'
 
@@ -63,11 +64,14 @@ function useShortcuts(): void {
 
 export function Shell() {
   const sidebarOpen = useWorkspace((s) => s.sidebarOpen)
+  const toggleSidebar = useWorkspace((s) => s.toggleSidebar)
   useShortcuts()
   return (
     <div className={`shell ${sidebarOpen ? '' : 'sidebar-closed'}`}>
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={toggleSidebar} />}
       {sidebarOpen && <Sidebar />}
       <Workspace />
+      <MobileNav />
       <CommandPalette />
     </div>
   )

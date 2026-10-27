@@ -4,7 +4,7 @@ import type { AiRequest } from '../shared/types'
 
 function client(baseURL: string, apiKey: string, fetchImpl?: typeof fetch): OpenAI {
   // Lokale Server (Ollama, LM Studio) brauchen keinen Key, das SDK aber einen Wert.
-  return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', fetch: fetchImpl })
+  return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', fetch: fetchImpl, dangerouslyAllowBrowser: true })
 }
 
 export function extractValidTokenLimit(errorMessage: string, requestedTokens: number): number | null {

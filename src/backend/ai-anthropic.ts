@@ -13,7 +13,7 @@ export async function streamAnthropic(
   signal: AbortSignal,
   fetchImpl?: typeof fetch,
 ): Promise<string> {
-  const client = new Anthropic({ apiKey, fetch: fetchImpl })
+  const client = new Anthropic({ apiKey, fetch: fetchImpl, dangerouslyAllowBrowser: true })
   const useFallback = FALLBACK_MODELS.has(model)
   const stream = client.beta.messages.stream(
     {
@@ -38,7 +38,7 @@ export async function streamAnthropic(
 }
 
 export async function listAnthropicModels(apiKey: string, fetchImpl?: typeof fetch): Promise<string[]> {
-  const client = new Anthropic({ apiKey, fetch: fetchImpl })
+  const client = new Anthropic({ apiKey, fetch: fetchImpl, dangerouslyAllowBrowser: true })
   const ids: string[] = []
   for await (const model of client.models.list()) ids.push(model.id)
   return ids

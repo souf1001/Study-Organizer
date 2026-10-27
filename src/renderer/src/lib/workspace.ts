@@ -74,7 +74,8 @@ export const useWorkspace = create<WorkspaceState>()(
               ? p
               : { ...p, view, back: [...p.back, p.view].slice(-HISTORY_LIMIT), forward: [] },
           )
-          set({ activeId: target })
+          const isPhone = typeof document !== 'undefined' && document.documentElement.dataset.device === 'phone'
+          set({ activeId: target, ...(isPhone ? { sidebarOpen: false } : {}) })
         },
 
         replace(paneId, view) {

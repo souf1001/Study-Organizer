@@ -209,7 +209,19 @@ function Row({ panes, count }: { panes: Pane[]; count: number }): ReactNode {
 
 export function Workspace() {
   const panes = useWorkspace((s) => s.panes)
+  const activeId = useWorkspace((s) => s.activeId)
   const count = panes.length
+
+  const isPhone = typeof document !== 'undefined' && document.documentElement.dataset.device === 'phone'
+  if (isPhone && count > 1) {
+    const activePane = panes.find((p) => p.id === activeId) ?? panes[0]
+    return (
+      <main className="workspace mobile-workspace">
+        <PaneView pane={activePane} count={count} />
+      </main>
+    )
+  }
+
   return (
     <main className="workspace">
       {count < 4 ? (
