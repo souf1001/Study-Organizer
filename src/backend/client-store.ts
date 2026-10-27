@@ -111,7 +111,10 @@ export class ClientStore {
         store.idb = await openIdb()
         const savedDb = await idbGet<Db>(store.idb, 'meta', 'db')
         store.db = normalizeDb(savedDb)
-        void store.precacheFileUrls()
+        await store.precacheFileUrls()
+        if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+          navigator.storage.persist().catch(() => undefined)
+        }
       } catch (e) {
         console.warn('IndexedDB konnte nicht geöffnet werden, verwende In-Memory-Speicher:', e)
         store.db = createDefaultDb()

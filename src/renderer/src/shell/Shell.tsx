@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { createNote } from '@/lib/actions'
 import { getDb } from '@/lib/db'
 import { useWorkspace } from '@/lib/workspace'
+import { useDevice } from '@/lib/device'
 import { toast } from '@/ui/Toast'
 import { CommandPalette, usePalette } from './CommandPalette'
 import { MobileNav } from './MobileNav'
@@ -65,13 +66,14 @@ function useShortcuts(): void {
 export function Shell() {
   const sidebarOpen = useWorkspace((s) => s.sidebarOpen)
   const toggleSidebar = useWorkspace((s) => s.toggleSidebar)
+  const isPhone = useDevice((s) => s.isPhone)
   useShortcuts()
   return (
     <div className={`shell ${sidebarOpen ? '' : 'sidebar-closed'}`}>
-      {sidebarOpen && <div className="sidebar-backdrop" onClick={toggleSidebar} />}
+      {sidebarOpen && isPhone && <div className="sidebar-backdrop" onClick={toggleSidebar} />}
       {sidebarOpen && <Sidebar />}
       <Workspace />
-      <MobileNav />
+      {isPhone && <MobileNav />}
       <CommandPalette />
     </div>
   )

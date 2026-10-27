@@ -7,10 +7,30 @@ export async function readLimited(response: Response, maxBytes: number, what: st
   const chunks: Uint8Array[] = []
   let total = 0
   // Abbruch mitten in der Schleife beendet auch den Download
-  for await (const chunk of response.body) {
-    total += chunk.length
-    if (total > maxBytes) throw tooBig()
-    chunks.push(chunk)
+  if (typeof (response.body as unknown as { getReader?: () => unknown }).getReader === 'function') {
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) {
+          total += value.length
+          if (total > maxBytes) {
+            void reader.cancel()
+            throw tooBig()
+          }
+          chunks.push(value)
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  } else {
+    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+      total += chunk.length
+      if (total > maxBytes) throw tooBig()
+      chunks.push(chunk)
+    }
   }
   if (typeof Buffer !== 'undefined' && typeof Buffer.concat === 'function') {
     return Buffer.concat(chunks)

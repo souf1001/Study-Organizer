@@ -26,6 +26,23 @@ type Dialog =
 
 const useDialog = create<{ dialog: Dialog | null }>(() => ({ dialog: null }))
 
+if (typeof window !== 'undefined') {
+  useDialog.subscribe((state) => {
+    if (state.dialog) {
+      window.__dialogClose = () => {
+        const d = useDialog.getState().dialog
+        if (d) {
+          if (d.kind === 'confirm') d.resolve(false)
+          else d.resolve(null)
+          useDialog.setState({ dialog: null })
+        }
+      }
+    } else {
+      delete window.__dialogClose
+    }
+  })
+}
+
 export function confirm(options: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => useDialog.setState({ dialog: { kind: 'confirm', options, resolve } }))
 }

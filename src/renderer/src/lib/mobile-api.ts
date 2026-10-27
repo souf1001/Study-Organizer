@@ -85,7 +85,14 @@ export async function createMobileApi(): Promise<Api> {
     openFile: async (item) => {
       const url = clientStore.fileUrl(item)
       if (url) {
-        window.open(url, '_blank')
+        const a = document.createElement('a')
+        a.href = url
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+        a.download = item.title || item.fileName || 'file'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
       }
     },
 

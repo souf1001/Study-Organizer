@@ -112,3 +112,50 @@ describe('ClientStore mit createService', () => {
     expect(db.settings).toBeDefined()
   })
 })
+
+describe('Mobile Web & Device Detection', () => {
+  it('erzeugt und liefert fileUrl für gespeicherte Dateien', async () => {
+    const store = await ClientStore.open()
+    const sem = makeSemester('winter', 2026)
+    store.put('semesters', sem)
+    const mod = newModule(sem.id, { name: 'Chemie', code: 'CH1', color: 'purple' })
+    store.put('modules', mod)
+
+    const fileItem = await store.addFile({ moduleId: mod.id, folderId: null }, {
+      name: 'Labor_Protokoll.pdf',
+      type: 'application/pdf',
+      bytes: new Uint8Array([37, 80, 68, 70, 49, 46, 52]),
+    })
+
+    const url = store.fileUrl(fileItem)
+    expect(typeof url).toBe('string')
+    expect(url.length).toBeGreaterThan(0)
+  })
+
+  it('readLimited unterstützt ReadableStream mit getReader() nahtlos', async () => {
+    const { readLimited } = await import('../src/backend/http')
+
+    const data = new Uint8Array([10, 20, 30, 40, 50])
+    let readDone = false
+    const mockResponse = {
+      headers: { get: () => '5' },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (!readDone) {
+              readDone = true
+              return { done: false, value: data }
+            }
+            return { done: true, value: undefined }
+          },
+          releaseLock: () => {},
+          cancel: () => {},
+        }),
+      },
+    } as unknown as Response
+
+    const result = await readLimited(mockResponse, 1024, 'Test-Payload')
+    expect(new Uint8Array(result)).toEqual(data)
+  })
+})
+

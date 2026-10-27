@@ -22,6 +22,16 @@ const useMenuStore = create<MenuState>((set) => ({
   close: () => set({ position: null, entries: [] }),
 }))
 
+if (typeof window !== 'undefined') {
+  useMenuStore.subscribe((state) => {
+    if (state.position) {
+      window.__menuClose = () => useMenuStore.getState().close()
+    } else {
+      delete window.__menuClose
+    }
+  })
+}
+
 /** Öffnet ein Menü an der Mausposition oder unter einem Element */
 export function showMenu(anchor: { clientX: number; clientY: number } | HTMLElement, entries: MenuEntry[]): void {
   if (anchor instanceof HTMLElement) {

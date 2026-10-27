@@ -7,6 +7,7 @@ import { folderPath } from '@/lib/actions'
 import { useDb } from '@/lib/db'
 import { modKey } from '@/lib/format'
 import { DRAG_VIEW_TYPE, MAX_PANES, useWorkspace, type Pane, type View } from '@/lib/workspace'
+import { useDevice } from '@/lib/device'
 import { IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
@@ -111,6 +112,7 @@ function PaneHeader({ pane, count }: { pane: Pane; count: number }) {
   const db = useDb()
   const { back, forward, close, open, sidebarOpen, toggleSidebar } = useWorkspace()
   const isFirst = useWorkspace((s) => s.panes[0]?.id === pane.id)
+  const isPhone = useDevice((s) => s.isPhone)
   const crumbs = crumbsFor(db, pane.view)
 
   return (
@@ -137,14 +139,16 @@ function PaneHeader({ pane, count }: { pane: Pane; count: number }) {
           </Fragment>
         ))}
       </nav>
-      <IconButton
-        label="Neuen Bereich daneben öffnen"
-        disabled={count >= MAX_PANES}
-        onClick={() => open({ type: 'launcher' }, { newPane: true })}
-      >
-        <Columns2 />
-      </IconButton>
-      {count > 1 && (
+      {!isPhone && (
+        <IconButton
+          label="Neuen Bereich daneben öffnen"
+          disabled={count >= MAX_PANES}
+          onClick={() => open({ type: 'launcher' }, { newPane: true })}
+        >
+          <Columns2 />
+        </IconButton>
+      )}
+      {!isPhone && count > 1 && (
         <IconButton label="Bereich schließen" onClick={() => close(pane.id)}>
           <X />
         </IconButton>
@@ -211,13 +215,13 @@ export function Workspace() {
   const panes = useWorkspace((s) => s.panes)
   const activeId = useWorkspace((s) => s.activeId)
   const count = panes.length
+  const isPhone = useDevice((s) => s.isPhone)
 
-  const isPhone = typeof document !== 'undefined' && document.documentElement.dataset.device === 'phone'
-  if (isPhone && count > 1) {
+  if (isPhone) {
     const activePane = panes.find((p) => p.id === activeId) ?? panes[0]
     return (
       <main className="workspace mobile-workspace">
-        <PaneView pane={activePane} count={count} />
+        <PaneView pane={activePane} count={1} />
       </main>
     )
   }
