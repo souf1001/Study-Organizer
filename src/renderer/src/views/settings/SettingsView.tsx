@@ -419,8 +419,10 @@ function CalendarSection() {
 
 function DataSection() {
   const [dir, setDir] = useState('')
+  const [documentsDir, setDocumentsDir] = useState('')
   useEffect(() => {
     void api.dataDir().then(setDir)
+    void api.documentsDir().then(setDocumentsDir)
   }, [])
   const reset = async () => {
     const ok = await confirm({
@@ -435,12 +437,54 @@ function DataSection() {
     localStorage.clear()
     window.location.reload()
   }
+  const moveDocuments = async () => {
+    try {
+      const moved = await api.chooseDocumentsDir?.()
+      if (!moved) return
+      setDocumentsDir(moved)
+      toast(`Unterlagen verschoben nach ${moved}`)
+    } catch (error) {
+      toastError(error)
+    }
+  }
   return (
     <>
       <SettingGroup title="Speicherort">
         <SettingRow
-          label="Daten liegen hier"
-          description={<span className="selectable mono-path">{dir}</span>}
+          label="Deine Unterlagen"
+          description={
+            <>
+              Jedes Semester, Modul und jeder Ordner ist hier ein echter Ordner, Dateien tragen
+              ihren Namen und Notizen liegen als Markdown daneben. So kannst du den Ordner direkt
+              als Arbeitsordner für KI-Agents wie Claude Cowork oder Codex nutzen.
+              <br />
+              <span className="selectable mono-path">{documentsDir}</span>
+            </>
+          }
+        >
+          {api.revealDocuments && (
+            <div className="row">
+              {api.chooseDocumentsDir && (
+                <Button onClick={() => void moveDocuments()}>Ändern …</Button>
+              )}
+              <Button
+                icon={<FolderOpen />}
+                onClick={() => void api.revealDocuments?.().catch(toastError)}
+              >
+                Öffnen
+              </Button>
+            </div>
+          )}
+        </SettingRow>
+        <SettingRow
+          label="App-Daten"
+          description={
+            <>
+              Datenbank, Einstellungen und Notizen im App-Format.
+              <br />
+              <span className="selectable mono-path">{dir}</span>
+            </>
+          }
         >
           {api.platform === 'desktop' && (
             <Button icon={<FolderOpen />} onClick={() => void api.revealDataDir()}>

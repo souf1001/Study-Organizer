@@ -10,7 +10,7 @@ import { Empty } from '@/ui/Empty'
 import { Select } from '@/ui/Field'
 import { toast, toastError } from '@/ui/Toast'
 import { DiscussionCard } from './DiscussionCard'
-import { mappedCourseIds, moduleDiscussions } from './moduleData'
+import { mappedCourseIds, moduleDiscussions } from '@shared/module-sessions'
 
 /** Normalizes a course or module name for fuzzy matching */
 const normalizeName = (s: string) =>

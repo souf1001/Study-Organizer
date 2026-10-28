@@ -9,7 +9,7 @@ import { formatDateTime, formatDay, relativeDay } from '@/lib/format'
 import { openView } from '@/lib/workspace'
 import { Button } from '@/ui/Button'
 import { TaskList } from '../tasks/TasksView'
-import type { SessionOccurrence } from './moduleData'
+import type { SessionOccurrence } from '@shared/module-sessions'
 import { WEEKDAYS } from './ScheduleEditor'
 
 export function ModuleOverview({

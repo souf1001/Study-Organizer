@@ -92,7 +92,12 @@ async function main(): Promise<void> {
   await app.whenReady()
 
   const userData = app.getPath('userData')
-  const store = await Store.open(customDataDir ?? path.join(userData, 'data'))
+  // Documents in a readable structure in the user's Documents folder (inside a custom data
+  // folder for tests and portable installations)
+  const store = await Store.open(
+    customDataDir ?? path.join(userData, 'data'),
+    customDataDir ? undefined : path.join(app.getPath('documents'), 'Study Organizer'),
+  )
   const service = createService(store, createSecrets(path.join(userData, 'secrets.json')))
 
   handleFileProtocol(store)

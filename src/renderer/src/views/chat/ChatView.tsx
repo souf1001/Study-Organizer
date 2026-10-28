@@ -17,7 +17,7 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
-import type { AiMessage, ChatSession, Db, ID, Item } from '@shared/types'
+import type { AiMessage, ChatSession, Db, ID, Item, Module } from '@shared/types'
 import { toISODate, today, diffDays } from '@shared/dates'
 import { api } from '@/lib/api'
 import { activeSemester, deleteChat, renameChat, semesterModules } from '@/lib/actions'
@@ -31,6 +31,7 @@ import {
   systemPrompt,
 } from '@/lib/ai'
 import { getDb, putRecord, useDb } from '@/lib/db'
+import { moduleFacts, nowFacts, studyOverview } from '@shared/module-facts'
 import { formatDay, formatTime } from '@/lib/format'
 import { openView, useWorkspace, type View } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
@@ -48,6 +49,7 @@ type Context =
   | { kind: 'none' }
 
 const SUGGESTIONS = [
+  'Wann und wo ist meine nächste Vorlesung?',
   'Fasse die wichtigsten Punkte zusammen.',
   'Erstelle 5 Prüfungsfragen mit Musterlösungen.',
   'Erkläre den schwierigsten Begriff so einfach wie möglich.',
@@ -89,6 +91,43 @@ function contextItems(db: Db, context: Context, paneId: string): Item[] {
       return [...db.items.filter((i) => itemIds.has(i.id)), ...inFolders(folderIds)]
     }
   }
+}
+
+/** Modules whose data (timetable, rooms, dates, tasks, folders) the AI gets for this context */
+function contextModules(
+  db: Db,
+  context: Context,
+  items: Item[],
+  chatModuleId: ID | null,
+): Module[] {
+  const ids = new Set<ID>(items.map((i) => i.moduleId))
+  if (context.kind === 'module') ids.add(context.id)
+  if (context.kind === 'folder') {
+    const folder = db.folders.find((f) => f.id === context.id)
+    if (folder) ids.add(folder.moduleId)
+  }
+  if (context.kind === 'panes') {
+    for (const pane of useWorkspace.getState().panes) {
+      const view = pane.view
+      if (view.type === 'module') ids.add(view.id)
+      if (view.type === 'folder') {
+        const folder = db.folders.find((f) => f.id === view.id)
+        if (folder) ids.add(folder.moduleId)
+      }
+    }
+  }
+  if (chatModuleId) ids.add(chatModuleId)
+  return db.modules.filter((m) => ids.has(m.id))
+}
+
+/** Everything the app knows about the modules in context, plus the semester overview */
+function buildFacts(db: Db, modules: Module[]): string {
+  const now = new Date()
+  return [
+    nowFacts(now),
+    ...modules.slice(0, 4).map((m) => moduleFacts(db, m, now)),
+    studyOverview(db, now),
+  ].join('\n\n')
 }
 
 function contextKey(context: Context): string {
@@ -424,9 +463,10 @@ export default function ChatView({
 
     try {
       const ctx = await loadContext()
+      const facts = buildFacts(db, contextModules(db, context, items, currentChat.moduleId))
       const sysPrompt = isAgent
-        ? `${systemPrompt(ctx.text)}\n\n${agentSystemPrompt(db)}`
-        : systemPrompt(ctx.text)
+        ? `${systemPrompt(ctx.text, facts)}\n\n${agentSystemPrompt(db)}`
+        : systemPrompt(ctx.text, facts)
 
       let answer = ''
       const stream = api.ai.stream(

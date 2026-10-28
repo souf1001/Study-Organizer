@@ -125,6 +125,35 @@ export function registerIpc(service: Service, store: Store): void {
     'app:revealDataDir': async () => {
       await shell.openPath(store.dir)
     },
+    'app:documentsDir': () => store.documentsDir,
+    'app:revealDocuments': async (target?: { moduleId: string; folderId?: string | null }) => {
+      const dir = target ? await store.directoryOf(target) : store.documentsDir
+      await fs.mkdir(dir, { recursive: true })
+      const error = await shell.openPath(dir)
+      if (error) throw new Error(error)
+    },
+    'app:revealDocument': async (itemId: string) => {
+      const file = store.documentPath(itemId)
+      if (!file) throw new Error('Die Datei liegt noch nicht im Dokumente-Ordner.')
+      shell.showItemInFolder(file)
+    },
+    'app:chooseDocumentsDir': async () => {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = {
+        title: 'Neuen Ordner für deine Unterlagen wählen',
+        defaultPath: path.dirname(store.documentsDir),
+        properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[],
+      }
+      const result = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled || !result.filePaths[0]) return null
+      const picked = result.filePaths[0]
+      await store.setDocumentsDir(
+        path.basename(picked) === 'Study Organizer' ? picked : path.join(picked, 'Study Organizer'),
+      )
+      return store.documentsDir
+    },
     'app:backup': async () => {
       const window = BrowserWindow.getFocusedWindow()
       const options = {
@@ -140,7 +169,9 @@ export function registerIpc(service: Service, store: Store): void {
         result.filePaths[0],
         `Study-Organizer-Backup-${toISODate(new Date())}`,
       )
-      await fs.cp(store.dir, target, { recursive: true })
+      await store.syncDocuments()
+      await fs.cp(store.dir, path.join(target, 'App-Daten'), { recursive: true })
+      await fs.cp(store.documentsDir, path.join(target, 'Dokumente'), { recursive: true })
       return target
     },
     'app:reset': () => store.reset(),

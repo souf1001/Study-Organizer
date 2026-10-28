@@ -93,13 +93,27 @@ Differences to the desktop app:
 
 ### Where is my data?
 
+**Your documents** are in a readable folder structure in your Documents folder:
+
+```
+Documents/Study Organizer/
+  WiSe 2026-27/
+    Rechnernetze/
+      Moodle/Woche 1/Folien Kapitel 1.pdf
+      Vorlesung 3 · 14.10/Mitschrift.md
+```
+
+Every semester, module and folder of the app is a real folder, files keep their title as file name and notes are written next to them as Markdown. That makes the folder a good workspace for AI agents (Claude Cowork, Codex and the like) or any other program. The app moves the files when you rename or move something, and it never changes or deletes files it did not create. In **Einstellungen → Daten & Backup** (Settings → Data & backup) you can open the folder or move it, e.g. into a cloud folder; modules, folders and files have „Im Dateiordner öffnen“ (show in file manager) in their menus. Notes are edited in the app: changes to the Markdown copies are not read back.
+
+**The app's own data** (database, settings, notes in the app format) stays in the app data folder:
+
 | System | Folder |
 |---|---|
 | Windows | `%APPDATA%\Study Organizer\data` |
 | macOS | `~/Library/Application Support/Study Organizer/data` |
 | Linux | `~/.config/Study Organizer/data` |
 
-In **Einstellungen → Daten & Backup** (Settings → Data & backup) you can open the folder and create a backup (e.g. on a USB stick). API keys and Moodle access are stored encrypted in the system keychain and are not part of the backup.
+A backup (**Einstellungen → Daten & Backup**) copies both, e.g. onto a USB stick. API keys and Moodle access are stored encrypted in the system keychain and are not part of the backup.
 
 ## Moving your setup to another device
 

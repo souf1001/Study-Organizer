@@ -73,8 +73,17 @@ export interface Api {
   onChange(listener: () => void): () => void
 
   openExternal(url: string): Promise<void>
+  /** Where the app keeps its own data (database, settings) */
   dataDir(): Promise<string>
   revealDataDir(): Promise<void>
+  /** Folder with all documents in a readable structure: semester / module / folder / file */
+  documentsDir(): Promise<string>
+  /** Opens the documents folder, or the folder of a module or folder, in the file manager */
+  revealDocuments?(target?: { moduleId: ID; folderId?: ID | null }): Promise<void>
+  /** Shows a single document in the file manager */
+  revealDocument?(itemId: ID): Promise<void>
+  /** Lets the user move the documents folder; resolves to the new location, or null */
+  chooseDocumentsDir?(): Promise<string | null>
   backup(): Promise<string | null>
   resetAll(): Promise<void>
 

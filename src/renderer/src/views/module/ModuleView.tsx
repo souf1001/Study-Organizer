@@ -3,6 +3,7 @@ import { useState } from 'react'
 import {
   BookOpen,
   FilePlus,
+  FolderOpen,
   FolderPlus,
   MessageCircle,
   MoreHorizontal,
@@ -25,10 +26,12 @@ import {
   visibleItems,
 } from '@/lib/actions'
 import { summarizePastSessions } from '@/lib/ai'
+import { api } from '@/lib/api'
 import { useDb } from '@/lib/db'
 import { openView, useWorkspace, type ModuleTab } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { showMenu } from '@/ui/Menu'
+import { toastError } from '@/ui/Toast'
 import { FolderContents } from '../folder/FolderView'
 import { TaskList } from '../tasks/TasksView'
 import { EventDialog } from '../calendar/EventDialog'
@@ -36,7 +39,7 @@ import { ModuleAnnouncements } from './ModuleAnnouncements'
 import { ModuleChats } from './ModuleChats'
 import { ModuleDialog } from './ModuleDialog'
 import { ModuleOverview } from './ModuleOverview'
-import { isLab, mappedCourseIds, moduleDiscussions, moduleSessions } from './moduleData'
+import { isLab, mappedCourseIds, moduleDiscussions, moduleSessions } from '@shared/module-sessions'
 import { SessionList } from './SessionList'
 import './module.css'
 
@@ -89,6 +92,15 @@ export function ModuleView({
   const moreMenu = (e: React.MouseEvent<HTMLButtonElement>) =>
     showMenu(e.currentTarget, [
       { label: 'Modul bearbeiten', icon: <Pencil />, onClick: () => setEditing(true) },
+      ...(api.revealDocuments
+        ? [
+            {
+              label: 'Im Dateiordner öffnen',
+              icon: <FolderOpen />,
+              onClick: () => void api.revealDocuments?.({ moduleId: module.id }).catch(toastError),
+            },
+          ]
+        : []),
       ...(db.settings.ai.enabled
         ? [
             {
