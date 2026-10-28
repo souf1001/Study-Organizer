@@ -1,7 +1,8 @@
-// Android integration of the UI shell: the hardware back button.
+// Android integration of the UI shell: the hardware back button and native HTTP fixes.
 import { App } from '@capacitor/app'
 import { closeTopLayer } from '@/lib/back-stack'
 import { useWorkspace } from '@/lib/workspace'
+import { passXhrUrlsAsStrings } from '@shared/xhr-url-fix'
 
 /** Back closes the topmost layer, then navigates back in the active pane, then leaves the app */
 function goBack(): void {
@@ -16,5 +17,6 @@ function goBack(): void {
 }
 
 export function setupAndroid(): void {
+  passXhrUrlsAsStrings(XMLHttpRequest.prototype)
   void App.addListener('backButton', goBack)
 }
