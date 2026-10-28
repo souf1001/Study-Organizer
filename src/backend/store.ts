@@ -16,6 +16,7 @@ import {
   clearLayout,
   emptyLayoutState,
   planLayout,
+  serialized,
   syncLayout,
   type LayoutFs,
   type LayoutState,
@@ -86,8 +87,20 @@ interface LayoutFile extends LayoutState {
 
 export class Store extends RecordStore {
   private layout: LayoutState = emptyLayoutState()
-  private syncing: Promise<void> | null = null
-  private syncAgain = false
+  /** Moves documents to where they belong (one run at a time) */
+  readonly syncDocuments = serialized(async () => {
+    try {
+      await fs.mkdir(this.root, { recursive: true })
+      this.layout = await syncLayout(this.db, this.layout, this.layoutFs(), {
+        noteMarkdown: async (item) => noteToMarkdown(item.title, await this.loadNote(item.id)),
+        onError: (error, item) =>
+          console.warn(`Could not place ${item?.title ?? 'a folder'} in the documents:`, error),
+      })
+      await this.saveLayout()
+    } catch (error) {
+      console.error('Could not update the documents folder:', error)
+    }
+  })
 
   private constructor(
     readonly dir: string,
@@ -146,32 +159,6 @@ export class Store extends RecordStore {
       },
       writeText: (rel, text) => writeAtomic(this.inRoot(rel), text),
     }
-  }
-
-  /** Moves documents to where they belong; runs one at a time and again if requested meanwhile */
-  syncDocuments(): Promise<void> {
-    if (this.syncing) {
-      this.syncAgain = true
-      return this.syncing
-    }
-    const run = async () => {
-      do {
-        this.syncAgain = false
-        await fs.mkdir(this.root, { recursive: true })
-        this.layout = await syncLayout(this.db, this.layout, this.layoutFs(), {
-          noteMarkdown: async (item) => noteToMarkdown(item.title, await this.loadNote(item.id)),
-          onError: (error, item) =>
-            console.warn(`Could not place ${item?.title ?? 'a folder'} in the documents:`, error),
-        })
-        await this.saveLayout()
-      } while (this.syncAgain)
-    }
-    this.syncing = run()
-      .catch((error) => console.error('Could not update the documents folder:', error))
-      .finally(() => {
-        this.syncing = null
-      })
-    return this.syncing
   }
 
   private saveLayout(): Promise<void> {
@@ -237,7 +224,7 @@ export class Store extends RecordStore {
     if (inside(target, this.root) || inside(this.root, target) || inside(target, this.dir)) {
       throw new Error('Bitte einen Ordner außerhalb des bisherigen Speicherorts wählen.')
     }
-    await this.syncing
+    await this.syncDocuments()
     await fs.mkdir(target, { recursive: true })
     const entries: Record<ID, string> = {}
     for (const [id, rel] of Object.entries(this.layout.entries)) {
@@ -348,7 +335,7 @@ export class Store extends RecordStore {
   protected async clearContent(): Promise<void> {
     // Let a pending database write finish first so it cannot recreate old data
     await (fileQueues.get(this.dbFile) ?? Promise.resolve())
-    await this.syncing
+    await this.syncDocuments()
     await clearLayout(this.layout, this.layoutFs())
     this.layout = emptyLayoutState()
     await this.saveLayout()
