@@ -1,6 +1,7 @@
 # Builds the installer packages on real Windows, macOS and Linux runners.
 # - On every push the files are available for download under "Actions -> run -> Artifacts".
 # - For a tag like v0.1.0 a GitHub release with all files is created as well.
+# - Started by hand with a release tag, it creates that tag and release for the chosen branch.
 name: Installer packages
 
 on:
@@ -8,6 +9,11 @@ on:
     branches: [main, webapp, 'feature/**']
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Create a release with this tag (e.g. v0.3.0); leave empty for a plain build'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -48,9 +54,11 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: build
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -58,7 +66,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: dist/*
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          make_latest: ${{ !contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.TAG, '-') }}
+          make_latest: ${{ !contains(env.TAG, '-') }}
