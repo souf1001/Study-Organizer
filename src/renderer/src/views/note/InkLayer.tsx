@@ -1,4 +1,4 @@
-// Zeichenebene über Notizen und PDF-Seiten. Unterstützt Stift mit Druckstufen, Maus und Touch.
+// Drawing layer on top of notes and PDF pages. Supports pressure-sensitive pens, mouse and touch.
 import { memo, useRef, useState, type PointerEvent } from 'react'
 import type { Stroke } from '@shared/types'
 import { hitStrokes, strokePath, type InkTool } from './ink'
@@ -18,28 +18,45 @@ const StrokePath = memo(function StrokePath({ stroke }: { stroke: Stroke }) {
 const round = (n: number, digits = 1) => Math.round(n * 10 ** digits) / 10 ** digits
 
 interface InkLayerProps {
-  /** Größe im Koordinatensystem der Striche */
+  /** Size in the stroke coordinate system */
   width: number
   height: number
-  /** Anzeigegröße = width × displayScale (z. B. PDF-Zoom) */
+  /** Rendered size = width × displayScale (e.g. PDF zoom) */
   displayScale?: number
   strokes: Stroke[]
-  /** null = nicht im Zeichenmodus (Klicks gehen an den Inhalt darunter) */
+  /** null = not in drawing mode (clicks pass through to the content below) */
   tool: InkTool | null
   penOnly: boolean
   onChange: (strokes: Stroke[]) => void
 }
 
-export function InkLayer({ width, height, displayScale = 1, strokes, tool, penOnly, onChange }: InkLayerProps) {
+export function InkLayer({
+  width,
+  height,
+  displayScale = 1,
+  strokes,
+  tool,
+  penOnly,
+  onChange,
+}: InkLayerProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [current, setCurrent] = useState<Stroke | null>(null)
   const erasing = useRef(false)
 
-  const toPoint = (e: { clientX: number; clientY: number; pressure: number; pointerType: string }) => {
+  const toPoint = (e: {
+    clientX: number
+    clientY: number
+    pressure: number
+    pointerType: string
+  }) => {
     const rect = svgRef.current!.getBoundingClientRect()
     const scale = rect.width / width
     const pressure = e.pointerType === 'pen' ? e.pressure || 0.5 : 0.5
-    return [round((e.clientX - rect.left) / scale), round((e.clientY - rect.top) / scale), round(pressure, 2)]
+    return [
+      round((e.clientX - rect.left) / scale),
+      round((e.clientY - rect.top) / scale),
+      round(pressure, 2),
+    ]
   }
 
   const erase = (e: PointerEvent) => {
@@ -49,18 +66,23 @@ export function InkLayer({ width, height, displayScale = 1, strokes, tool, penOn
   }
 
   const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
-    // Nur Hauptknopf – oder der Radierer eines Stifts (buttons === 32)
+    // Primary button only, or a pen's eraser button (buttons === 32), which always erases
     if (!tool || (e.button > 0 && e.buttons !== 32)) return
     if (penOnly && e.pointerType === 'touch') return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    // Der Radierknopf eines Stifts (buttons === 32) radiert immer
     if (tool.tool === 'eraser' || e.buttons === 32) {
       erasing.current = true
       erase(e)
       return
     }
-    setCurrent({ id: crypto.randomUUID(), tool: tool.tool, color: tool.color, size: tool.size, points: toPoint(e) })
+    setCurrent({
+      id: crypto.randomUUID(),
+      tool: tool.tool,
+      color: tool.color,
+      size: tool.size,
+      points: toPoint(e),
+    })
   }
 
   const onPointerMove = (e: PointerEvent<SVGSVGElement>) => {

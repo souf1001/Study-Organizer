@@ -1,8 +1,8 @@
-// Bis zu 4 Bereiche nebeneinander (1–3: Spalten, 4: Raster 2×2), frei in der Größe veränderbar.
+// Up to 4 resizable panes (1–3: columns, 4: a 2×2 grid).
 import { Fragment, lazy, Suspense, useState, type DragEvent, type ReactNode } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { ArrowLeft, ArrowRight, ChevronsRight, Columns2, X } from 'lucide-react'
-import type { Db } from '@shared/types'
+import type { Db, Folder } from '@shared/types'
 import { folderPath } from '@/lib/actions'
 import { useDb } from '@/lib/db'
 import { modKey } from '@/lib/format'
@@ -16,7 +16,6 @@ import { FolderView } from '@/views/folder/FolderView'
 import { TasksView } from '@/views/tasks/TasksView'
 import { CalendarView } from '@/views/calendar/CalendarView'
 import { SettingsView } from '@/views/settings/SettingsView'
-
 import { LauncherView } from '@/views/launcher/LauncherView'
 
 const ItemView = lazy(() => import('@/views/item/ItemView'))
@@ -30,9 +29,13 @@ interface Crumb {
 
 function crumbsFor(db: Db, view: View): Crumb[] {
   const moduleCrumb = (id: string): Crumb[] => {
-    const m = db.modules.find((x) => x.id === id)
-    return m ? [{ label: m.name, view: { type: 'module', id: m.id }, dot: m.color }] : []
+    const module = db.modules.find((m) => m.id === id)
+    return module
+      ? [{ label: module.name, view: { type: 'module', id: module.id }, dot: module.color }]
+      : []
   }
+  const folderCrumbs = (folder: Folder): Crumb[] =>
+    folderPath(db, folder).map((f) => ({ label: f.name, view: { type: 'folder', id: f.id } }))
   switch (view.type) {
     case 'home':
       return [{ label: 'Heute', view }]
@@ -42,12 +45,9 @@ function crumbsFor(db: Db, view: View): Crumb[] {
       return [{ label: 'Aufgaben', view }]
     case 'chat': {
       const chat = view.chatId ? (db.chats ?? []).find((c) => c.id === view.chatId) : null
-      const modId = view.moduleId ?? chat?.moduleId
+      const moduleId = view.moduleId ?? chat?.moduleId
       const label = chat ? `KI-Chat: ${chat.title}` : 'KI-Chat'
-      return [
-        ...(modId ? moduleCrumb(modId) : []),
-        { label, view },
-      ]
+      return [...(moduleId ? moduleCrumb(moduleId) : []), { label, view }]
     }
     case 'settings':
       return [{ label: 'Einstellungen', view }]
@@ -58,10 +58,7 @@ function crumbsFor(db: Db, view: View): Crumb[] {
     case 'folder': {
       const folder = db.folders.find((f) => f.id === view.id)
       if (!folder) return []
-      return [
-        ...moduleCrumb(folder.moduleId),
-        ...folderPath(db, folder).map((f) => ({ label: f.name, view: { type: 'folder', id: f.id } as View })),
-      ]
+      return [...moduleCrumb(folder.moduleId), ...folderCrumbs(folder)]
     }
     case 'item': {
       const item = db.items.find((i) => i.id === view.id)
@@ -69,7 +66,7 @@ function crumbsFor(db: Db, view: View): Crumb[] {
       const folder = db.folders.find((f) => f.id === item.folderId)
       return [
         ...moduleCrumb(item.moduleId),
-        ...(folder ? folderPath(db, folder).map((f) => ({ label: f.name, view: { type: 'folder', id: f.id } as View })) : []),
+        ...(folder ? folderCrumbs(folder) : []),
         { label: item.title, view },
       ]
     }
@@ -78,7 +75,9 @@ function crumbsFor(db: Db, view: View): Crumb[] {
 
 function ViewContent({ view, paneId }: { view: View; paneId: string }) {
   const db = useDb()
-  const missing = <Empty title="Nicht gefunden">Dieser Eintrag wurde gelöscht oder verschoben.</Empty>
+  const missing = (
+    <Empty title="Nicht gefunden">Dieser Eintrag wurde gelöscht oder verschoben.</Empty>
+  )
   switch (view.type) {
     case 'home':
       return <HomeView />
@@ -94,7 +93,11 @@ function ViewContent({ view, paneId }: { view: View; paneId: string }) {
       return <LauncherView paneId={paneId} />
     case 'module': {
       const module = db.modules.find((m) => m.id === view.id)
-      return module ? <ModuleView key={module.id} module={module} tab={view.tab ?? 'overview'} paneId={paneId} /> : missing
+      return module ? (
+        <ModuleView key={module.id} module={module} tab={view.tab ?? 'overview'} paneId={paneId} />
+      ) : (
+        missing
+      )
     }
     case 'folder': {
       const folder = db.folders.find((f) => f.id === view.id)

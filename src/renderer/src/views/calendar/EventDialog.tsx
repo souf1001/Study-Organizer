@@ -1,4 +1,4 @@
-// Termin anlegen/bearbeiten (Prüfung, Frist, Praktikum …) und Details zu Kalendereinträgen.
+// Create/edit calendar events (exam, deadline, lab, ...) and show details of other calendar entries.
 import { useState } from 'react'
 import { Ban, CheckSquare, FolderOpen, MapPin, Trash2 } from 'lucide-react'
 import { newEvent } from '@shared/defaults'
@@ -23,7 +23,13 @@ const timeOf = (iso: string) => {
 }
 const combine = (date: string, time: string) => new Date(`${date}T${time || '00:00'}`).toISOString()
 
-export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partial<CalendarEvent>; onClose: () => void }) {
+export function EventDialog({
+  event,
+  onClose,
+}: {
+  event?: CalendarEvent | Partial<CalendarEvent>
+  onClose: () => void
+}) {
   const db = useDb()
   const existing = event && 'id' in event && db.events.some((e) => e.id === event.id)
   const [draft, setDraft] = useState<CalendarEvent>(() => newEvent(event))
@@ -50,29 +56,39 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
     const startIso = draft.allDay ? combine(date, '00:00') : combine(date, start)
     const endIso = draft.allDay ? combine(date, '23:59') : combine(date, end < start ? start : end)
 
+    const updated: CalendarEvent = {
+      ...draft,
+      title: draft.title.trim(),
+      start: startIso,
+      end: endIso,
+    }
+
     if (existing && seriesEvents.length > 1 && seriesScope !== 'single') {
+      // Other events of the series only take over the module assignment
       const targets = seriesScope === 'all' ? seriesEvents : futureSeriesEvents
       for (const ev of targets) {
-        if (ev.id === draft.id) {
-          putRecord('events', { ...draft, title: draft.title.trim(), start: startIso, end: endIso })
-        } else {
-          putRecord('events', { ...ev, moduleId: draft.moduleId })
-        }
+        putRecord('events', ev.id === draft.id ? updated : { ...ev, moduleId: draft.moduleId })
       }
     } else {
-      putRecord('events', { ...draft, title: draft.title.trim(), start: startIso, end: endIso })
+      putRecord('events', updated)
     }
     onClose()
   }
 
   return (
     <Modal
-      title={existing ? (isSynced ? 'Termin (Synchronisiert)' : 'Termin bearbeiten') : 'Neuer Termin'}
+      title={
+        existing ? (isSynced ? 'Termin (Synchronisiert)' : 'Termin bearbeiten') : 'Neuer Termin'
+      }
       onClose={onClose}
       footer={
         <>
           {existing && !isSynced && (
-            <Button variant="ghost" icon={<Trash2 />} onClick={() => void removeRecord('events', draft.id).then(onClose)}>
+            <Button
+              variant="ghost"
+              icon={<Trash2 />}
+              onClick={() => void removeRecord('events', draft.id).then(onClose)}
+            >
               Löschen
             </Button>
           )}
@@ -87,18 +103,28 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
       <div className="stack">
         {isSynced && (
           <p className="small muted">
-            Dieser Termin stammt aus einem Kalender-Abo bzw. TUCaN/Moodle. Die Modulzuweisung und Notizen können frei angepasst werden.
+            Dieser Termin stammt aus einem Kalender-Abo bzw. TUCaN/Moodle. Die Modulzuweisung und
+            Notizen können frei angepasst werden.
           </p>
         )}
         <Field label="Titel">
-          <Input autoFocus value={draft.title} disabled={isSynced} placeholder="z. B. Klausur Analysis 1" onChange={(e) => set({ title: e.target.value })} />
+          <Input
+            autoFocus
+            value={draft.title}
+            disabled={isSynced}
+            placeholder="z. B. Klausur Analysis 1"
+            onChange={(e) => set({ title: e.target.value })}
+          />
         </Field>
         <div className="form-row">
           <Field label="Art">
             <Select
               value={draft.kind}
               disabled={isSynced}
-              options={(Object.keys(EVENT_KINDS) as EventKind[]).map((k) => ({ value: k, label: EVENT_KINDS[k] }))}
+              options={(Object.keys(EVENT_KINDS) as EventKind[]).map((k) => ({
+                value: k,
+                label: EVENT_KINDS[k],
+              }))}
               onChange={(kind) => set({ kind })}
             />
           </Field>
@@ -132,7 +158,10 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
                   checked={seriesScope === 'all'}
                   onChange={() => setSeriesScope('all')}
                 />
-                <span>Modul für <strong>alle {seriesEvents.length} Termine</strong> dieser Serie anwenden</span>
+                <span>
+                  Modul für <strong>alle {seriesEvents.length} Termine</strong> dieser Serie
+                  anwenden
+                </span>
               </label>
               <label className="row small" style={{ cursor: 'pointer', gap: 8 }}>
                 <input
@@ -142,7 +171,11 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
                   checked={seriesScope === 'future'}
                   onChange={() => setSeriesScope('future')}
                 />
-                <span>Modul für <strong>diesen und alle {futureSeriesEvents.length} zukünftigen Termine</strong> anwenden</span>
+                <span>
+                  Modul für{' '}
+                  <strong>diesen und alle {futureSeriesEvents.length} zukünftigen Termine</strong>{' '}
+                  anwenden
+                </span>
               </label>
               <label className="row small" style={{ cursor: 'pointer', gap: 8 }}>
                 <input
@@ -152,7 +185,9 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
                   checked={seriesScope === 'single'}
                   onChange={() => setSeriesScope('single')}
                 />
-                <span>Nur für <strong>diesen einzelnen Termin</strong> ändern</span>
+                <span>
+                  Nur für <strong>diesen einzelnen Termin</strong> ändern
+                </span>
               </label>
             </div>
           </div>
@@ -160,25 +195,52 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
 
         <div className="form-row">
           <Field label="Datum">
-            <input className="input" type="date" value={date} disabled={isSynced} onChange={(e) => setDate(e.target.value)} />
+            <input
+              className="input"
+              type="date"
+              value={date}
+              disabled={isSynced}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </Field>
           {!draft.allDay && (
             <>
               <Field label="Von">
-                <input className="input" type="time" value={start} disabled={isSynced} onChange={(e) => setStart(e.target.value)} />
+                <input
+                  className="input"
+                  type="time"
+                  value={start}
+                  disabled={isSynced}
+                  onChange={(e) => setStart(e.target.value)}
+                />
               </Field>
               <Field label="Bis">
-                <input className="input" type="time" value={end} disabled={isSynced} onChange={(e) => setEnd(e.target.value)} />
+                <input
+                  className="input"
+                  type="time"
+                  value={end}
+                  disabled={isSynced}
+                  onChange={(e) => setEnd(e.target.value)}
+                />
               </Field>
             </>
           )}
         </div>
         <label className="row small">
-          <Switch checked={draft.allDay} onChange={(allDay) => !isSynced && set({ allDay })} label="Ganztägig" />
+          <Switch
+            checked={draft.allDay}
+            onChange={(allDay) => !isSynced && set({ allDay })}
+            label="Ganztägig"
+          />
           Ganztägig
         </label>
         <Field label="Ort / Raum">
-          <Input value={draft.location} disabled={isSynced} placeholder="z. B. D14/0.04" onChange={(e) => set({ location: e.target.value })} />
+          <Input
+            value={draft.location}
+            disabled={isSynced}
+            placeholder="z. B. D14/0.04"
+            onChange={(e) => set({ location: e.target.value })}
+          />
         </Field>
         <Field label="Notizen">
           <Textarea value={draft.notes} rows={3} onChange={(e) => set({ notes: e.target.value })} />
@@ -188,8 +250,14 @@ export function EventDialog({ event, onClose }: { event?: CalendarEvent | Partia
   )
 }
 
-/** Details zu einem Stundenplan-Termin oder einer Aufgabe */
-export function EntryDialog({ entry, onClose }: { entry: Exclude<Entry, { source: 'event' }>; onClose: () => void }) {
+/** Details of a timetable session or a task */
+export function EntryDialog({
+  entry,
+  onClose,
+}: {
+  entry: Exclude<Entry, { source: 'event' }>
+  onClose: () => void
+}) {
   const db = useDb()
   if (entry.source === 'task') {
     return (
@@ -198,15 +266,30 @@ export function EntryDialog({ entry, onClose }: { entry: Exclude<Entry, { source
         onClose={onClose}
         footer={
           <>
-            <Button onClick={() => { onClose(); openView({ type: 'tasks' }) }}>Zu den Aufgaben</Button>
-            <Button variant="primary" icon={<CheckSquare />} onClick={() => { putRecord('tasks', { ...entry.task, done: true }); onClose() }}>
+            <Button
+              onClick={() => {
+                onClose()
+                openView({ type: 'tasks' })
+              }}
+            >
+              Zu den Aufgaben
+            </Button>
+            <Button
+              variant="primary"
+              icon={<CheckSquare />}
+              onClick={() => {
+                putRecord('tasks', { ...entry.task, done: true })
+                onClose()
+              }}
+            >
               Erledigt
             </Button>
           </>
         }
       >
         <p className="muted">
-          {entry.subtitle} · fällig {formatLongDay(toISODate(entry.start))}, {formatTime(entry.start.toISOString())}
+          {entry.subtitle} · fällig {formatLongDay(toISODate(entry.start))},{' '}
+          {formatTime(entry.start.toISOString())}
         </p>
       </Modal>
     )
@@ -219,7 +302,9 @@ export function EntryDialog({ entry, onClose }: { entry: Exclude<Entry, { source
     if (!module) return
     putRecord('modules', {
       ...module,
-      schedule: module.schedule.map((s) => (s.id === occ.slotId ? { ...s, skip: [...s.skip, occ.date] } : s)),
+      schedule: module.schedule.map((s) =>
+        s.id === occ.slotId ? { ...s, skip: [...s.skip, occ.date] } : s,
+      ),
     })
     onClose()
   }
@@ -239,8 +324,22 @@ export function EntryDialog({ entry, onClose }: { entry: Exclude<Entry, { source
             Fällt aus
           </Button>
           <span className="spacer" />
-          <Button onClick={() => { onClose(); if (module) openView({ type: 'module', id: module.id, tab: 'sessions' }) }}>Modul</Button>
-          <Button variant="primary" icon={<FolderOpen />} onClick={() => { onClose(); openSession(occ) }}>
+          <Button
+            onClick={() => {
+              onClose()
+              if (module) openView({ type: 'module', id: module.id, tab: 'sessions' })
+            }}
+          >
+            Modul
+          </Button>
+          <Button
+            variant="primary"
+            icon={<FolderOpen />}
+            onClick={() => {
+              onClose()
+              openSession(occ)
+            }}
+          >
             {folder ? 'Ordner öffnen' : 'Ordner anlegen'}
           </Button>
         </>

@@ -4,7 +4,7 @@
   background: var(--bg);
 }
 
-/* ---- Seitenleiste ---- */
+/* ---- Sidebar ---- */
 .sidebar {
   width: var(--sidebar-width);
   flex: none;
@@ -254,7 +254,7 @@
   border-top: 1px solid var(--border);
 }
 
-/* ---- Arbeitsfläche mit Bereichen ---- */
+/* ---- Workspace with panes ---- */
 .workspace {
   flex: 1;
   min-width: 0;
@@ -379,7 +379,7 @@
   background: var(--accent);
 }
 
-/* ---- Befehlspalette ---- */
+/* ---- Command palette ---- */
 .palette {
   width: min(620px, 100%);
   border-radius: 12px;

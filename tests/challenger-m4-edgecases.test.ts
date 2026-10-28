@@ -117,7 +117,8 @@ const { MockBrowserWindow, MockSession, MockDownloadItem, mockShell } = vi.hoist
   class MockSession {
     public static sessions: Map<string, MockSession> = new Map()
     public partition: string
-    public permissionHandler: ((wc: unknown, perm: string, cb: (grant: boolean) => void) => void) | null = null
+    public permissionHandler:
+      ((wc: unknown, perm: string, cb: (grant: boolean) => void) => void) | null = null
     public listeners: Record<string, Listener[]> = {}
 
     constructor(partition: string) {
@@ -131,7 +132,9 @@ const { MockBrowserWindow, MockSession, MockDownloadItem, mockShell } = vi.hoist
       return MockSession.sessions.get(partition)!
     }
 
-    setPermissionRequestHandler(fn: (wc: unknown, perm: string, cb: (grant: boolean) => void) => void) {
+    setPermissionRequestHandler(
+      fn: (wc: unknown, perm: string, cb: (grant: boolean) => void) => void,
+    ) {
       this.permissionHandler = fn
     }
 
@@ -345,7 +348,9 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
       const db = store.get()
 
       // Normalized filenames all resolve to stundenplan-ws26.ics, ensuring clean subscription replacement
-      const subscriptions = db.subscriptions.filter((s) => s.name.toLowerCase().includes('stundenplan-ws26'))
+      const subscriptions = db.subscriptions.filter((s) =>
+        s.name.toLowerCase().includes('stundenplan-ws26'),
+      )
       expect(subscriptions.length).toBeGreaterThanOrEqual(1)
 
       // Events should exist and be associated with a valid subscription
@@ -395,7 +400,9 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
       expect(db.subscriptions.filter((s) => s.kind === 'file').length).toBe(5)
       for (const c of courses) {
         expect(db.events.some((e) => e.externalId === `uid-${c.code}@tu-darmstadt.de`)).toBe(true)
-        expect(db.modules.some((m) => m.code.toLowerCase().includes(c.code.slice(0, 10)))).toBe(true)
+        expect(db.modules.some((m) => m.code.toLowerCase().includes(c.code.slice(0, 10)))).toBe(
+          true,
+        )
       }
     })
 
@@ -428,10 +435,15 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
         )
       })
 
-      const slowService = createService(store, secrets, { fetchImpl: controlledFetch as unknown as typeof fetch })
+      const slowService = createService(store, secrets, {
+        fetchImpl: controlledFetch as unknown as typeof fetch,
+      })
 
       // Create subscription successfully
-      const sub = await slowService.calendarSubscribe('Moodle Delay Test', 'https://moodle.tu-darmstadt.de/cal.ics')
+      const sub = await slowService.calendarSubscribe(
+        'Moodle Delay Test',
+        'https://moodle.tu-darmstadt.de/cal.ics',
+      )
       expect(sub.id).toBeDefined()
 
       // Enable delayed fetch for the subsequent sync
@@ -744,7 +756,10 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
       const itemMime = new MockDownloadItem({ filename: 'export', mime: 'text/calendar' })
       expect(isIcsDownload(itemMime as unknown as import('electron').DownloadItem)).toBe(true)
 
-      const itemQuery = new MockDownloadItem({ filename: 'export.php', url: 'https://uni.de/cal?format=ics' })
+      const itemQuery = new MockDownloadItem({
+        filename: 'export.php',
+        url: 'https://uni.de/cal?format=ics',
+      })
       expect(isIcsDownload(itemQuery as unknown as import('electron').DownloadItem)).toBe(true)
 
       const itemPdf = new MockDownloadItem({ filename: 'script.pdf', mime: 'application/pdf' })
@@ -758,7 +773,10 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
   describe('5.3: Exotic Academic Event Formats, Bilingual Feeds & Complex Recurrences', () => {
     it('5.3.1: Bilingual German/English course titles classified correctly across all kinds', () => {
       const cases: [string, string][] = [
-        ['CS 101 - Einführung in die Informatik / Introduction to Computer Science (Vorlesung)', 'lecture'],
+        [
+          'CS 101 - Einführung in die Informatik / Introduction to Computer Science (Vorlesung)',
+          'lecture',
+        ],
         ['Autonomous Driving / Autonome Systeme (Lecture)', 'lecture'],
         ['Mathematik I / Mathematics I (Klausur / Written Examination)', 'exam'],
         ['Robotics Lab / Robotik Praktikum [PR]', 'lab'],
@@ -1113,7 +1131,9 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
         return new Response('Server Error', { status: 500 })
       })
 
-      const customService = createService(store, secrets, { fetchImpl: mockFetch as unknown as typeof fetch })
+      const customService = createService(store, secrets, {
+        fetchImpl: mockFetch as unknown as typeof fetch,
+      })
 
       const sub403 = await customService.calendarSubscribe('Feed 403', 'https://uni.de/403.ics')
       const res403 = await customService.calendarSync(sub403.id)
@@ -1130,21 +1150,31 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
     })
 
     it('5.4.2: fetchCalendar handles non-calendar HTML captive portal or error page gracefully', async () => {
-      const htmlResponse = '<!DOCTYPE html><html><body><h1>WLAN-Login erforderlich</h1></body></html>'
-      const mockFetch = vi.fn(async () =>
-        new Response(htmlResponse, { status: 200, headers: { 'content-type': 'text/html' } }),
+      const htmlResponse =
+        '<!DOCTYPE html><html><body><h1>WLAN-Login erforderlich</h1></body></html>'
+      const mockFetch = vi.fn(
+        async () =>
+          new Response(htmlResponse, { status: 200, headers: { 'content-type': 'text/html' } }),
       )
 
-      await expect(fetchCalendar('https://uni.de/wlan.ics', mockFetch as unknown as typeof fetch)).rejects.toThrow(
-        'keinen iCal-Kalender',
-      )
+      await expect(
+        fetchCalendar('https://uni.de/wlan.ics', mockFetch as unknown as typeof fetch),
+      ).rejects.toThrow('keinen iCal-Kalender')
     })
 
     it('5.4.3: normalizeCalendarUrl rejects dangerous or unsupported protocols', () => {
-      expect(() => normalizeCalendarUrl('javascript:alert(1)')).toThrow('Nur http(s)- oder webcal-Adressen')
-      expect(() => normalizeCalendarUrl('file:///etc/passwd')).toThrow('Nur http(s)- oder webcal-Adressen')
-      expect(() => normalizeCalendarUrl('data:text/calendar,BEGIN:VCALENDAR')).toThrow('Nur http(s)- oder webcal-Adressen')
-      expect(() => normalizeCalendarUrl('ftp://ftp.tu-darmstadt.de/cal.ics')).toThrow('Nur http(s)- oder webcal-Adressen')
+      expect(() => normalizeCalendarUrl('javascript:alert(1)')).toThrow(
+        'Nur http(s)- oder webcal-Adressen',
+      )
+      expect(() => normalizeCalendarUrl('file:///etc/passwd')).toThrow(
+        'Nur http(s)- oder webcal-Adressen',
+      )
+      expect(() => normalizeCalendarUrl('data:text/calendar,BEGIN:VCALENDAR')).toThrow(
+        'Nur http(s)- oder webcal-Adressen',
+      )
+      expect(() => normalizeCalendarUrl('ftp://ftp.tu-darmstadt.de/cal.ics')).toThrow(
+        'Nur http(s)- oder webcal-Adressen',
+      )
 
       expect(normalizeCalendarUrl('webcal://moodle.tu-darmstadt.de/feed.ics')).toBe(
         'https://moodle.tu-darmstadt.de/feed.ics',
@@ -1155,7 +1185,9 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
     })
 
     it('5.4.4: openExternalSafely prevents launch of dangerous non-web URI schemes', async () => {
-      expect(() => openExternalSafely('file:///C:/Windows/System32/cmd.exe')).toThrow('Link nicht erlaubt')
+      expect(() => openExternalSafely('file:///C:/Windows/System32/cmd.exe')).toThrow(
+        'Link nicht erlaubt',
+      )
       expect(() => openExternalSafely('javascript:alert(1)')).toThrow('Link nicht erlaubt')
       expect(() => openExternalSafely('powershell:dir')).toThrow('Link nicht erlaubt')
 
@@ -1164,7 +1196,9 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
     })
 
     it('5.4.5: maskCalendarUrl masks sensitive authentication tokens in query strings', () => {
-      const masked = maskCalendarUrl('https://moodle.tu-darmstadt.de/calendar/export.php?userid=12345&authtoken=secret987654')
+      const masked = maskCalendarUrl(
+        'https://moodle.tu-darmstadt.de/calendar/export.php?userid=12345&authtoken=secret987654',
+      )
       expect(masked).toBe('moodle.tu-darmstadt.de/calendar/export.php?…')
       expect(masked).not.toContain('secret987654')
       expect(masked).not.toContain('12345')
@@ -1173,11 +1207,22 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
     it('5.4.6: Long-line DoS resistance: calendar containing single 100,000 character line handled safely', () => {
       const giantLine = 'DESCRIPTION:' + 'A'.repeat(100_000)
       const ics = buildVCalendar(
-        ['BEGIN:VEVENT', 'UID:giant-line@tu-darmstadt.de', 'SUMMARY:Giant Event', giantLine, 'DTSTART:20261115T100000Z', 'END:VEVENT'].join('\r\n'),
+        [
+          'BEGIN:VEVENT',
+          'UID:giant-line@tu-darmstadt.de',
+          'SUMMARY:Giant Event',
+          giantLine,
+          'DTSTART:20261115T100000Z',
+          'END:VEVENT',
+        ].join('\r\n'),
       )
 
       const start = Date.now()
-      const events = parseIcs(ics, new Date('2026-11-01T00:00:00Z'), new Date('2026-11-30T00:00:00Z'))
+      const events = parseIcs(
+        ics,
+        new Date('2026-11-01T00:00:00Z'),
+        new Date('2026-11-30T00:00:00Z'),
+      )
       const duration = Date.now() - start
 
       expect(events.length).toBe(1)
@@ -1185,7 +1230,10 @@ describe('Tier 5 Adversarial Coverage Hardening Suite', () => {
     })
 
     it('5.4.7: Subscriptions with whitespace-only name safely fallback to parsed URL hostname', async () => {
-      const sub = await service.calendarSubscribe('   ', 'https://stundenplan.tu-darmstadt.de/export.ics')
+      const sub = await service.calendarSubscribe(
+        '   ',
+        'https://stundenplan.tu-darmstadt.de/export.ics',
+      )
       expect(sub.name).toBe('stundenplan.tu-darmstadt.de')
     })
 

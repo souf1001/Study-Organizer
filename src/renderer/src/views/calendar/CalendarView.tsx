@@ -1,4 +1,4 @@
-// Kalender: Woche, Monat oder Liste – Vorlesungen mit Raum, Prüfungen, Fristen, Praktika.
+// Calendar: week, month or agenda view of lectures (with room), exams, deadlines and labs.
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import {
   CalendarDays,
@@ -49,7 +49,17 @@ function Chip({ entry, onClick }: { entry: Entry; onClick: () => void }) {
   )
 }
 
-function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entries: Entry[]; onSelect: (e: Entry) => void; onCreate: (date: ISODate, hour: number) => void }) {
+function WeekGrid({
+  days,
+  entries,
+  onSelect,
+  onCreate,
+}: {
+  days: ISODate[]
+  entries: Entry[]
+  onSelect: (e: Entry) => void
+  onCreate: (date: ISODate, hour: number) => void
+}) {
   const { startHour, endHour } = useDb().settings.calendar
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -61,7 +71,8 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
     return () => clearInterval(timer)
   }, [])
 
-  const top = (date: Date) => ((date.getHours() - startHour) * 60 + date.getMinutes()) * (HOUR_HEIGHT / 60)
+  const top = (date: Date) =>
+    ((date.getHours() - startHour) * 60 + date.getMinutes()) * (HOUR_HEIGHT / 60)
   const columns = { '--days': days.length } as CSSProperties
 
   return (
@@ -70,7 +81,9 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
         <span />
         {days.map((d) => (
           <div key={d} className={`week-day ${d === day ? 'today' : ''}`}>
-            <span className="small muted">{WEEKDAY_LABELS[(parseISODate(d).getDay() + 6) % 7]}</span>
+            <span className="small muted">
+              {WEEKDAY_LABELS[(parseISODate(d).getDay() + 6) % 7]}
+            </span>
             <span className="week-date">{parseISODate(d).getDate()}</span>
           </div>
         ))}
@@ -109,7 +122,11 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
                 }}
               >
                 {hours.map((h) => (
-                  <span key={h} className="hour-line" style={{ top: (h - startHour) * HOUR_HEIGHT }} />
+                  <span
+                    key={h}
+                    className="hour-line"
+                    style={{ top: (h - startHour) * HOUR_HEIGHT }}
+                  />
                 ))}
                 {timed.map((e) => {
                   const { column, columns: count } = layout.get(e.key)!
@@ -120,7 +137,12 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
                       key={e.key}
                       type="button"
                       className={`cal-event color-${e.color} ${e.source} ${e.source === 'event' ? `kind-${e.event.kind}` : ''}`}
-                      style={{ top: y, height, left: `calc(${(column / count) * 100}% + 2px)`, width: `calc(${100 / count}% - 4px)` }}
+                      style={{
+                        top: y,
+                        height,
+                        left: `calc(${(column / count) * 100}% + 2px)`,
+                        width: `calc(${100 / count}% - 4px)`,
+                      }}
                       onClick={() => onSelect(e)}
                       onDoubleClick={(ev) => ev.stopPropagation()}
                     >
@@ -131,7 +153,9 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
                     </button>
                   )
                 })}
-                {d === day && now.getHours() >= startHour && now.getHours() < endHour && <span className="now-line" style={{ top: top(now) }} />}
+                {d === day && now.getHours() >= startHour && now.getHours() < endHour && (
+                  <span className="now-line" style={{ top: top(now) }} />
+                )}
               </div>
             )
           })}
@@ -141,7 +165,17 @@ function WeekGrid({ days, entries, onSelect, onCreate }: { days: ISODate[]; entr
   )
 }
 
-function MonthGrid({ month, entries, onSelect, onDay }: { month: ISODate; entries: Entry[]; onSelect: (e: Entry) => void; onDay: (d: ISODate) => void }) {
+function MonthGrid({
+  month,
+  entries,
+  onSelect,
+  onDay,
+}: {
+  month: ISODate
+  entries: Entry[]
+  onSelect: (e: Entry) => void
+  onDay: (d: ISODate) => void
+}) {
   const first = startOfWeek(month)
   const days = weekDays(first, 42)
   const currentMonth = month.slice(0, 7)
@@ -150,14 +184,20 @@ function MonthGrid({ month, entries, onSelect, onDay }: { month: ISODate; entrie
     <div className="month">
       <div className="month-head">
         {WEEKDAY_LABELS.map((l) => (
-          <span key={l} className="small muted">{l}</span>
+          <span key={l} className="small muted">
+            {l}
+          </span>
         ))}
       </div>
       <div className="month-grid">
         {days.map((d) => {
           const list = entriesOn(entries, d)
           return (
-            <div key={d} className={`month-cell ${d.slice(0, 7) !== currentMonth ? 'other' : ''} ${d === day ? 'today' : ''}`} onDoubleClick={() => onDay(d)}>
+            <div
+              key={d}
+              className={`month-cell ${d.slice(0, 7) !== currentMonth ? 'other' : ''} ${d === day ? 'today' : ''}`}
+              onDoubleClick={() => onDay(d)}
+            >
               <span className="month-date">{parseISODate(d).getDate()}</span>
               {list.slice(0, 3).map((e) => (
                 <Chip key={e.key} entry={e} onClick={() => onSelect(e)} />
@@ -171,9 +211,18 @@ function MonthGrid({ month, entries, onSelect, onDay }: { month: ISODate; entrie
   )
 }
 
-function Agenda({ from, entries, onSelect }: { from: ISODate; entries: Entry[]; onSelect: (e: Entry) => void }) {
+function Agenda({
+  from,
+  entries,
+  onSelect,
+}: {
+  from: ISODate
+  entries: Entry[]
+  onSelect: (e: Entry) => void
+}) {
   const days = weekDays(from, 60).filter((d) => entriesOn(entries, d).length > 0)
-  if (days.length === 0) return <p className="muted agenda-empty">In den nächsten 60 Tagen stehen keine Termine an.</p>
+  if (days.length === 0)
+    return <p className="muted agenda-empty">In den nächsten 60 Tagen stehen keine Termine an.</p>
   return (
     <div className="agenda">
       {days.map((d) => (
@@ -183,7 +232,9 @@ function Agenda({ from, entries, onSelect }: { from: ISODate; entries: Entry[]; 
             {entriesOn(entries, d).map((e) => (
               <div key={e.key} className="list-row clickable" onClick={() => onSelect(e)}>
                 <span className="home-time tabular small muted" style={{ width: 90 }}>
-                  {e.allDay ? 'ganztägig' : `${formatTime(e.start.toISOString())}–${formatTime(e.end.toISOString())}`}
+                  {e.allDay
+                    ? 'ganztägig'
+                    : `${formatTime(e.start.toISOString())}–${formatTime(e.end.toISOString())}`}
                 </span>
                 <span className={`dot color-${e.color}`} />
                 <span className="truncate">
@@ -273,7 +324,11 @@ function SubscriptionsDialog({ onClose }: { onClose: () => void }) {
                     <div className="cal-sub-meta">
                       {sub.kind === 'file' ? 'Datei-Import' : sub.url}
                       {sub.lastSync && (
-                        <> · {sub.kind === 'file' ? 'Importiert' : 'Abgeglichen'} {formatDateTime(sub.lastSync)}</>
+                        <>
+                          {' '}
+                          · {sub.kind === 'file' ? 'Importiert' : 'Abgeglichen'}{' '}
+                          {formatDateTime(sub.lastSync)}
+                        </>
                       )}
                       {` · ${eventCount} ${eventCount === 1 ? 'Termin' : 'Termine'}`}
                     </div>
@@ -290,10 +345,7 @@ function SubscriptionsDialog({ onClose }: { onClose: () => void }) {
                       <RefreshCw className={syncingId === sub.id ? 'spin' : ''} />
                     </IconButton>
                   )}
-                  <IconButton
-                    label="Entfernen"
-                    onClick={() => void handleUnsubscribe(sub)}
-                  >
+                  <IconButton label="Entfernen" onClick={() => void handleUnsubscribe(sub)}>
                     <Trash2 />
                   </IconButton>
                 </div>
@@ -320,9 +372,15 @@ export function CalendarView() {
   const weekStart = startOfWeek(anchor)
   const days = weekDays(weekStart, showWeekends ? 7 : 5)
   const monthStart = `${anchor.slice(0, 7)}-01`
-  const range: [ISODate, ISODate] =
-    view === 'week' ? [weekStart, addDays(weekStart, 6)] : view === 'month' ? [startOfWeek(monthStart), addDays(startOfWeek(monthStart), 41)] : [today(), addDays(today(), 60)]
-  const entries = entriesBetween(db, range[0], range[1])
+  // The month grid always shows 6 full weeks starting on the Monday on or before the 1st
+  const monthGridStart = startOfWeek(monthStart)
+  const [rangeStart, rangeEnd]: [ISODate, ISODate] =
+    view === 'week'
+      ? [weekStart, addDays(weekStart, 6)]
+      : view === 'month'
+        ? [monthGridStart, addDays(monthGridStart, 41)]
+        : [today(), addDays(today(), 60)]
+  const entries = entriesBetween(db, rangeStart, rangeEnd)
 
   const step = (direction: 1 | -1) => {
     if (view === 'month') {
@@ -341,7 +399,11 @@ export function CalendarView() {
 
   const create = (date: ISODate, hour = 10) => {
     const start = new Date(`${date}T${String(hour).padStart(2, '0')}:00`)
-    setCreating({ start: start.toISOString(), end: new Date(start.getTime() + 90 * 60_000).toISOString(), kind: 'other' })
+    setCreating({
+      start: start.toISOString(),
+      end: new Date(start.getTime() + 90 * 60_000).toISOString(),
+      kind: 'other',
+    })
   }
 
   const handleImportFiles = async (files: File[]) => {
@@ -417,11 +479,17 @@ export function CalendarView() {
       onDrop={onDrop}
     >
       <div className="cal-toolbar">
-        <Button size="sm" onClick={() => setAnchor(today())}>Heute</Button>
+        <Button size="sm" onClick={() => setAnchor(today())}>
+          Heute
+        </Button>
         {view !== 'agenda' && (
           <>
-            <IconButton label="Zurück" onClick={() => step(-1)}><ChevronLeft /></IconButton>
-            <IconButton label="Weiter" onClick={() => step(1)}><ChevronRight /></IconButton>
+            <IconButton label="Zurück" onClick={() => step(-1)}>
+              <ChevronLeft />
+            </IconButton>
+            <IconButton label="Weiter" onClick={() => step(1)}>
+              <ChevronRight />
+            </IconButton>
           </>
         )}
         <h2 className="cal-title">{title}</h2>
@@ -452,15 +520,26 @@ export function CalendarView() {
           title="Kalender-Abonnements & Importe verwalten"
         >
           Abos
-          {db.subscriptions.length > 0 && <span className="cal-sub-count">{db.subscriptions.length}</span>}
+          {db.subscriptions.length > 0 && (
+            <span className="cal-sub-count">{db.subscriptions.length}</span>
+          )}
         </Button>
         <Button size="sm" variant="primary" icon={<Plus />} onClick={() => create(anchor)}>
           Termin
         </Button>
       </div>
 
-      {view === 'week' && <WeekGrid days={days} entries={entries} onSelect={setSelected} onCreate={create} />}
-      {view === 'month' && <MonthGrid month={monthStart} entries={entries} onSelect={setSelected} onDay={(d) => create(d)} />}
+      {view === 'week' && (
+        <WeekGrid days={days} entries={entries} onSelect={setSelected} onCreate={create} />
+      )}
+      {view === 'month' && (
+        <MonthGrid
+          month={monthStart}
+          entries={entries}
+          onSelect={setSelected}
+          onDay={(d) => create(d)}
+        />
+      )}
       {view === 'agenda' && (
         <div className="page">
           <div className="page-inner">
@@ -478,15 +557,19 @@ export function CalendarView() {
         </div>
       )}
 
-      {selected?.source === 'event' && <EventDialog event={selected.event} onClose={() => setSelected(null)} />}
-      {selected && selected.source !== 'event' && <EntryDialog entry={selected} onClose={() => setSelected(null)} />}
+      {selected?.source === 'event' && (
+        <EventDialog event={selected.event} onClose={() => setSelected(null)} />
+      )}
+      {selected && selected.source !== 'event' && (
+        <EntryDialog entry={selected} onClose={() => setSelected(null)} />
+      )}
       {creating && <EventDialog event={creating} onClose={() => setCreating(null)} />}
       {subsOpen && <SubscriptionsDialog onClose={() => setSubsOpen(false)} />}
     </div>
   )
 }
 
-/** Kalenderwoche nach ISO 8601 */
+/** ISO 8601 week number */
 function isoWeek(monday: ISODate): number {
   const thursday = addDays(monday, 3)
   const yearStart = `${thursday.slice(0, 4)}-01-01`

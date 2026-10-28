@@ -178,7 +178,9 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
   // ==========================================================================
   describe('1. Non-ICS Files Rejection and Toast Validation', () => {
     it('rejects .pdf file and displays formatted error toast', async () => {
-      const pdf = new File(['%PDF-1.4 ... fake pdf content'], 'vorlesung_skript.pdf', { type: 'application/pdf' })
+      const pdf = new File(['%PDF-1.4 ... fake pdf content'], 'vorlesung_skript.pdf', {
+        type: 'application/pdf',
+      })
       await ctrl.handleImportFiles([pdf])
 
       expect(ctrl.busy).toBe(false)
@@ -219,17 +221,33 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
     })
 
     it('accepts file with uppercase .ICS extension', async () => {
-      const validText = vcal(vevent({ uid: 'uc1', summary: 'Uppercase ICS', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const validText = vcal(
+        vevent({
+          uid: 'uc1',
+          summary: 'Uppercase ICS',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       const icsUpper = new File([validText], 'SCHEDULE.ICS', { type: '' })
       await ctrl.handleImportFiles([icsUpper])
 
       expect(ctrl.getEvents()).toHaveLength(1)
       expect(ctrl.getEvents()[0].title).toBe('Uppercase ICS')
-      expect(ctrl.toasts.some((t) => !t.error && t.message.includes('1 Termin importiert'))).toBe(true)
+      expect(ctrl.toasts.some((t) => !t.error && t.message.includes('1 Termin importiert'))).toBe(
+        true,
+      )
     })
 
     it('accepts file without .ics extension if MIME type is text/calendar', async () => {
-      const validText = vcal(vevent({ uid: 'mime1', summary: 'MIME Calendar', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const validText = vcal(
+        vevent({
+          uid: 'mime1',
+          summary: 'MIME Calendar',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       const mimeFile = new File([validText], 'export_from_portal', { type: 'text/calendar' })
       await ctrl.handleImportFiles([mimeFile])
 
@@ -293,7 +311,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
     it('preserves existing events when subsequent import is corrupted', async () => {
       // Step 1: Import valid file
-      const validText = vcal(vevent({ uid: 'safe1', summary: 'Gültiger Termin', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const validText = vcal(
+        vevent({
+          uid: 'safe1',
+          summary: 'Gültiger Termin',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       await ctrl.handleImportFiles([new File([validText], 'valid.ics')])
       expect(ctrl.getEvents()).toHaveLength(1)
 
@@ -314,7 +339,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
     it('imports batch of 5 valid files sequentially with combined success toast', async () => {
       const files: File[] = []
       for (let i = 1; i <= 5; i++) {
-        const text = vcal(vevent({ uid: `batch-${i}`, summary: `Batch Termin ${i}`, start: `2026101${i}T080000Z`, end: `2026101${i}T090000Z` }))
+        const text = vcal(
+          vevent({
+            uid: `batch-${i}`,
+            summary: `Batch Termin ${i}`,
+            start: `2026101${i}T080000Z`,
+            end: `2026101${i}T090000Z`,
+          }),
+        )
         files.push(new File([text], `batch_${i}.ics`))
       }
 
@@ -329,14 +361,32 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
     it('handles mixed batch of valid, invalid extension, empty, and corrupt files', async () => {
       const validA = new File(
-        [vcal(vevent({ uid: 'mix-1', summary: 'Mix Valid A', start: '20261012T080000Z', end: '20261012T090000Z' }))],
+        [
+          vcal(
+            vevent({
+              uid: 'mix-1',
+              summary: 'Mix Valid A',
+              start: '20261012T080000Z',
+              end: '20261012T090000Z',
+            }),
+          ),
+        ],
         'valid_a.ics',
       )
       const invalidPdf = new File(['pdf data'], 'skript.pdf', { type: 'application/pdf' })
       const emptyFile = new File([''], 'empty.ics')
       const corruptFile = new File(['INVALID ICS CONTENT'], 'corrupt.ics')
       const validB = new File(
-        [vcal(vevent({ uid: 'mix-2', summary: 'Mix Valid B', start: '20261013T080000Z', end: '20261013T090000Z' }))],
+        [
+          vcal(
+            vevent({
+              uid: 'mix-2',
+              summary: 'Mix Valid B',
+              start: '20261013T080000Z',
+              end: '20261013T090000Z',
+            }),
+          ),
+        ],
         'valid_b.ics',
       )
 
@@ -416,7 +466,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
       ctrl.onDragOver(['Files'])
       expect(ctrl.dropping).toBe(true)
 
-      const text = vcal(vevent({ uid: 'drop-ok', summary: 'Dropped Event', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const text = vcal(
+        vevent({
+          uid: 'drop-ok',
+          summary: 'Dropped Event',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       const droppedFile = new File([text], 'dropped.ics')
       await ctrl.onDrop([droppedFile])
 
@@ -431,7 +488,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
   // ==========================================================================
   describe('6. Upload Button Behavior & Concurrency', () => {
     it('imports selected file via upload button simulator', async () => {
-      const text = vcal(vevent({ uid: 'btn-ok', summary: 'Button Event', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const text = vcal(
+        vevent({
+          uid: 'btn-ok',
+          summary: 'Button Event',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       await ctrl.handleUploadButton(async () => [new File([text], 'button_pick.ics')])
 
       expect(ctrl.getEvents()).toHaveLength(1)
@@ -466,7 +530,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
   // ==========================================================================
   describe('7. Security, Path Traversal and Special Characters', () => {
     it('safely handles filenames with path traversal characters without crashing store or escaping to filesystem', async () => {
-      const text = vcal(vevent({ uid: 'sec-1', summary: 'Security Check', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const text = vcal(
+        vevent({
+          uid: 'sec-1',
+          summary: 'Security Check',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       const traversalFile = new File([text], '../../../../etc/passwd.ics')
       await ctrl.handleImportFiles([traversalFile])
 
@@ -480,7 +551,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
     it('safely handles XSS scripts in event summary without failure', async () => {
       const xssSummary = '<script>alert("XSS")</script><img src=x onerror=alert(1)>'
-      const text = vcal(vevent({ uid: 'xss-1', summary: xssSummary, start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const text = vcal(
+        vevent({
+          uid: 'xss-1',
+          summary: xssSummary,
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       await ctrl.handleImportFiles([new File([text], 'xss.ics')])
 
       expect(ctrl.getEvents()).toHaveLength(1)
@@ -489,7 +567,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
     it('safely handles Unicode emojis and German umlauts in event titles', async () => {
       const richTitle = '🎓 TU Darmstadt — Vorlesung & Übung (S2|02) 🚀'
-      const text = vcal(vevent({ uid: 'uni-1', summary: richTitle, start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const text = vcal(
+        vevent({
+          uid: 'uni-1',
+          summary: richTitle,
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       await ctrl.handleImportFiles([new File([text], 'unicode.ics')])
 
       expect(ctrl.getEvents()).toHaveLength(1)
@@ -502,7 +587,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
   // ==========================================================================
   describe('8. Snapshot Deduplication, Cascade Deletion and UI Grammar', () => {
     it('uses singular "1 Termin importiert" when exactly 1 event is imported', async () => {
-      const text = vcal(vevent({ uid: 'one-1', summary: 'Einziger Termin', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const text = vcal(
+        vevent({
+          uid: 'one-1',
+          summary: 'Einziger Termin',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       await ctrl.handleImportFiles([new File([text], 'single.ics')])
 
       expect(ctrl.toasts).toContainEqual({ message: '1 Termin importiert', error: false })
@@ -510,8 +602,18 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
     it('uses plural "N Termine importiert" when multiple events are imported', async () => {
       const text = vcal(
-        vevent({ uid: 'p-1', summary: 'Termin 1', start: '20261012T080000Z', end: '20261012T090000Z' }) +
-        vevent({ uid: 'p-2', summary: 'Termin 2', start: '20261012T100000Z', end: '20261012T110000Z' }),
+        vevent({
+          uid: 'p-1',
+          summary: 'Termin 1',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }) +
+          vevent({
+            uid: 'p-2',
+            summary: 'Termin 2',
+            start: '20261012T100000Z',
+            end: '20261012T110000Z',
+          }),
       )
       await ctrl.handleImportFiles([new File([text], 'plural.ics')])
 
@@ -522,8 +624,8 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
       // V1 has 3 events
       const textV1 = vcal(
         vevent({ uid: 'v1', summary: 'V1', start: '20261012T080000Z', end: '20261012T090000Z' }) +
-        vevent({ uid: 'v2', summary: 'V2', start: '20261012T100000Z', end: '20261012T110000Z' }) +
-        vevent({ uid: 'v3', summary: 'V3', start: '20261012T120000Z', end: '20261012T130000Z' }),
+          vevent({ uid: 'v2', summary: 'V2', start: '20261012T100000Z', end: '20261012T110000Z' }) +
+          vevent({ uid: 'v3', summary: 'V3', start: '20261012T120000Z', end: '20261012T130000Z' }),
       )
       await ctrl.handleImportFiles([new File([textV1], 'myschedule.ics')])
       expect(ctrl.getEvents()).toHaveLength(3)
@@ -531,8 +633,18 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
       // V2 updates V1, removes V2, V3, and adds V4
       const textV2 = vcal(
-        vevent({ uid: 'v1', summary: 'V1 Updated', start: '20261012T080000Z', end: '20261012T090000Z' }) +
-        vevent({ uid: 'v4', summary: 'V4 New', start: '20261012T140000Z', end: '20261012T150000Z' }),
+        vevent({
+          uid: 'v1',
+          summary: 'V1 Updated',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }) +
+          vevent({
+            uid: 'v4',
+            summary: 'V4 New',
+            start: '20261012T140000Z',
+            end: '20261012T150000Z',
+          }),
       )
       await ctrl.handleImportFiles([new File([textV2], 'myschedule.ics')])
 
@@ -544,8 +656,18 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
 
     it('calendarUnsubscribe cascades and removes all associated events and subscription', async () => {
       const text = vcal(
-        vevent({ uid: 'del-1', summary: 'To Delete 1', start: '20261012T080000Z', end: '20261012T090000Z' }) +
-        vevent({ uid: 'del-2', summary: 'To Delete 2', start: '20261012T100000Z', end: '20261012T110000Z' }),
+        vevent({
+          uid: 'del-1',
+          summary: 'To Delete 1',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }) +
+          vevent({
+            uid: 'del-2',
+            summary: 'To Delete 2',
+            start: '20261012T100000Z',
+            end: '20261012T110000Z',
+          }),
       )
       await ctrl.handleImportFiles([new File([text], 'to_delete.ics')])
       expect(ctrl.getEvents()).toHaveLength(2)
@@ -563,7 +685,14 @@ describe('Challenger M2: Stress Testing CalendarView ICS Upload & Drag-and-Drop 
     it('handles a massive batch of 25 files cleanly', async () => {
       const files: File[] = []
       for (let i = 1; i <= 25; i++) {
-        const text = vcal(vevent({ uid: `mass-${i}`, summary: `Mass ${i}`, start: '20261012T080000Z', end: '20261012T090000Z' }))
+        const text = vcal(
+          vevent({
+            uid: `mass-${i}`,
+            summary: `Mass ${i}`,
+            start: '20261012T080000Z',
+            end: '20261012T090000Z',
+          }),
+        )
         files.push(new File([text], `mass_${i}.ics`))
       }
 

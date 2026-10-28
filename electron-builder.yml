@@ -1,4 +1,4 @@
-# Installationspakete: Windows (.exe), macOS (.dmg), Linux (.AppImage)
+# Installer packages: Windows (.exe), macOS (.dmg), Linux (.AppImage)
 appId: de.studyorganizer.app
 productName: Study Organizer
 copyright: Copyright © 2026 Soufian Kroud
@@ -32,8 +32,8 @@ mac:
     - target: dmg
       arch: [universal]
   artifactName: Study-Organizer-${version}-mac.${ext}
-  # Ad-hoc-Signatur: läuft ohne Apple-Entwicklerkonto (beim ersten Start „Trotzdem öffnen“).
-  # Mit Zertifikat: identity entfernen und CSC_LINK/CSC_KEY_PASSWORD setzen.
+  # Ad-hoc signature: works without an Apple developer account (first launch needs "Open Anyway").
+  # With a certificate: remove identity and set CSC_LINK/CSC_KEY_PASSWORD.
   identity: '-'
   hardenedRuntime: false
 

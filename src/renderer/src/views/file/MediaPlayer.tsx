@@ -1,6 +1,15 @@
-// Video- und Audio-Player mit einstellbarer Geschwindigkeit, Sprüngen und gemerkter Position.
+// Video and audio player with adjustable speed, skipping and a remembered position.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Maximize, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react'
+import {
+  Maximize,
+  Pause,
+  PictureInPicture2,
+  Play,
+  RotateCcw,
+  RotateCw,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
 import type { Item } from '@shared/types'
 import { api } from '@/lib/api'
 import { IconButton } from '@/ui/Button'
@@ -13,10 +22,12 @@ function formatClock(seconds: number): string {
   const s = Math.floor(seconds % 60)
   const m = Math.floor((seconds / 60) % 60)
   const h = Math.floor(seconds / 3600)
-  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`
+  return h
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`
 }
 
-// Position und Geschwindigkeit pro Datei merken (nur auf diesem Gerät)
+// Remember position and speed per file (on this device only)
 const storageKey = (id: string) => `media:${id}`
 function loadState(id: string): { time: number; rate: number } {
   try {
@@ -29,7 +40,7 @@ function saveState(id: string, time: number, rate: number): void {
   try {
     localStorage.setItem(storageKey(id), JSON.stringify({ time, rate }))
   } catch {
-    // Speicher voll oder gesperrt – nicht schlimm
+    // Storage full or blocked: not critical
   }
 }
 
@@ -55,7 +66,10 @@ export function MediaPlayer({ item }: { item: Item }) {
       setRate(saved.rate)
     }
     media.addEventListener('loadedmetadata', onLoaded)
-    const interval = setInterval(() => !media.paused && saveState(item.id, media.currentTime, media.playbackRate), 5000)
+    const interval = setInterval(
+      () => !media.paused && saveState(item.id, media.currentTime, media.playbackRate),
+      5000,
+    )
     return () => {
       media.removeEventListener('loadedmetadata', onLoaded)
       clearInterval(interval)
@@ -75,7 +89,8 @@ export function MediaPlayer({ item }: { item: Item }) {
   }
   const stepRate = (direction: 1 | -1) => {
     const index = SPEEDS.indexOf(rate)
-    const next = SPEEDS[Math.min(SPEEDS.length - 1, Math.max(0, (index === -1 ? 2 : index) + direction))]
+    const next =
+      SPEEDS[Math.min(SPEEDS.length - 1, Math.max(0, (index === -1 ? 2 : index) + direction))]
     changeRate(next)
   }
 
@@ -133,14 +148,23 @@ export function MediaPlayer({ item }: { item: Item }) {
           onChange={(e) => {
             media().currentTime = Number(e.target.value)
           }}
-          style={{ '--progress': `${duration ? (time / duration) * 100 : 0}%` } as React.CSSProperties}
+          style={
+            { '--progress': `${duration ? (time / duration) * 100 : 0}%` } as React.CSSProperties
+          }
         />
         <div className="media-row">
-          <IconButton label="10 Sekunden zurück (J)" onClick={() => skip(-10)}><RotateCcw /></IconButton>
-          <IconButton label={playing ? 'Pause (Leertaste)' : 'Abspielen (Leertaste)'} onClick={toggle}>
+          <IconButton label="10 Sekunden zurück (J)" onClick={() => skip(-10)}>
+            <RotateCcw />
+          </IconButton>
+          <IconButton
+            label={playing ? 'Pause (Leertaste)' : 'Abspielen (Leertaste)'}
+            onClick={toggle}
+          >
             {playing ? <Pause /> : <Play />}
           </IconButton>
-          <IconButton label="10 Sekunden vor (L)" onClick={() => skip(10)}><RotateCw /></IconButton>
+          <IconButton label="10 Sekunden vor (L)" onClick={() => skip(10)}>
+            <RotateCw />
+          </IconButton>
           <span className="small muted tabular media-time">
             {formatClock(time)} / {formatClock(duration)}
           </span>
@@ -152,7 +176,10 @@ export function MediaPlayer({ item }: { item: Item }) {
             onClick={(e) =>
               showMenu(e.currentTarget, [
                 { heading: 'Geschwindigkeit' },
-                ...SPEEDS.map((s) => ({ label: `${s.toLocaleString('de-DE')}×`, onClick: () => changeRate(s) })),
+                ...SPEEDS.map((s) => ({
+                  label: `${s.toLocaleString('de-DE')}×`,
+                  onClick: () => changeRate(s),
+                })),
               ])
             }
           >
@@ -181,10 +208,20 @@ export function MediaPlayer({ item }: { item: Item }) {
           />
           {isVideo && (
             <>
-              <IconButton label="Bild-in-Bild" onClick={() => void media().requestPictureInPicture().catch(() => undefined)}>
+              <IconButton
+                label="Bild-in-Bild"
+                onClick={() =>
+                  void media()
+                    .requestPictureInPicture()
+                    .catch(() => undefined)
+                }
+              >
                 <PictureInPicture2 />
               </IconButton>
-              <IconButton label="Vollbild (F)" onClick={() => void wrapRef.current?.requestFullscreen()}>
+              <IconButton
+                label="Vollbild (F)"
+                onClick={() => void wrapRef.current?.requestFullscreen()}
+              >
                 <Maximize />
               </IconButton>
             </>

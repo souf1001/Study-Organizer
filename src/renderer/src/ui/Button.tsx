@@ -9,8 +9,21 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode
 }
 
-export function Button({ variant = 'default', size = 'md', icon, className = '', type = 'button', children, ...rest }: ButtonProps) {
-  const classes = ['btn', variant !== 'default' && `btn-${variant}`, size !== 'md' && `btn-${size}`, className]
+export function Button({
+  variant = 'default',
+  size = 'md',
+  icon,
+  className = '',
+  type = 'button',
+  children,
+  ...rest
+}: ButtonProps) {
+  const classes = [
+    'btn',
+    variant !== 'default' && `btn-${variant}`,
+    size !== 'md' && `btn-${size}`,
+    className,
+  ]
   return (
     <button type={type} className={classes.filter(Boolean).join(' ')} {...rest}>
       {icon}
@@ -25,7 +38,14 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   pressed?: boolean
 }
 
-export function IconButton({ label, small, pressed, className = '', children, ...rest }: IconButtonProps) {
+export function IconButton({
+  label,
+  small,
+  pressed,
+  className = '',
+  children,
+  ...rest
+}: IconButtonProps) {
   return (
     <button
       type="button"

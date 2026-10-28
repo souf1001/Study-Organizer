@@ -1,23 +1,30 @@
-// Alle Anbieter mit OpenAI-kompatibler Schnittstelle (Groq, Hugging Face, Gemini, OpenAI, Mistral, Ollama …).
+// All providers with an OpenAI-compatible API (Groq, Hugging Face, Gemini, OpenAI, Mistral, Ollama, ...).
 import OpenAI from 'openai'
 import type { AiRequest } from '../shared/types'
 
 function client(baseURL: string, apiKey: string, fetchImpl?: typeof fetch): OpenAI {
-  // Lokale Server (Ollama, LM Studio) brauchen keinen Key, das SDK aber einen Wert.
+  // Local servers (Ollama, LM Studio) need no key, but the SDK requires a value.
   return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', fetch: fetchImpl })
 }
 
-export function extractValidTokenLimit(errorMessage: string, requestedTokens: number): number | null {
+/** Reads the maximum allowed token count from a provider's "max_tokens too large" error message */
+export function extractValidTokenLimit(
+  errorMessage: string,
+  requestedTokens: number,
+): number | null {
   const betweenMatch = errorMessage.match(/between\s+\d+\s+and\s+(\d+)/i)
   if (betweenMatch) {
-    const val = Number(betweenMatch[1])
-    if (val > 0) return val
+    const limit = Number(betweenMatch[1])
+    if (limit > 0) return limit
   }
-  const maxMatch = errorMessage.match(/(?:max(?:imum)?|up\s+to|less\s+than\s+or\s+equal\s+to|<=)\s*[:=]?\s*(\d{3,6})/i)
+  const maxMatch = errorMessage.match(
+    /(?:max(?:imum)?|up\s+to|less\s+than\s+or\s+equal\s+to|<=)\s*[:=]?\s*(\d{3,6})/i,
+  )
   if (maxMatch) {
-    const val = Number(maxMatch[1])
-    if (val > 0) return val
+    const limit = Number(maxMatch[1])
+    if (limit > 0) return limit
   }
+  // Otherwise take the largest plausible number below the requested amount
   const numbers = (errorMessage.match(/\b\d{3,6}\b/g) ?? []).map(Number)
   const valid = numbers.filter((n) => n >= 256 && n < requestedTokens)
   if (valid.length > 0) {
@@ -40,12 +47,21 @@ export async function streamOpenAi(
   let tokenLimit = request.maxTokens ?? defaultTokens
   const openAiClient = client(baseUrl, apiKey, fetchImpl)
 
-  const createParams = (tokens: number, msgs: typeof request.messages) => ({
-    model,
-    stream: true as const,
-    messages: [{ role: 'system' as const, content: request.system }, ...msgs],
-    ...(isReasoning ? { max_completion_tokens: tokens } : { max_tokens: tokens }),
-  })
+  /** `tokens: null` sends no explicit limit (some custom providers reject the parameter) */
+  const createStream = (tokens: number | null, msgs: typeof request.messages) =>
+    openAiClient.chat.completions.create(
+      {
+        model,
+        stream: true as const,
+        messages: [{ role: 'system' as const, content: request.system }, ...msgs],
+        ...(tokens === null
+          ? {}
+          : isReasoning
+            ? { max_completion_tokens: tokens }
+            : { max_tokens: tokens }),
+      },
+      { signal },
+    )
 
   let totalText = ''
   let continuations = 0
@@ -69,72 +85,30 @@ export async function streamOpenAi(
 
     let stream
     try {
-      stream = await openAiClient.chat.completions.create(
-        createParams(tokenLimit, messagesToSend),
-        { signal },
-      )
+      stream = await createStream(tokenLimit, messagesToSend)
     } catch (err: unknown) {
       if (signal.aborted) break
-      const msg = err instanceof Error ? err.message : String(err)
-      const validLimit = extractValidTokenLimit(msg, tokenLimit)
+      const validLimit = extractValidTokenLimit(
+        err instanceof Error ? err.message : String(err),
+        tokenLimit,
+      )
       if (validLimit && validLimit > 0) {
         tokenLimit = validLimit
-        stream = await openAiClient.chat.completions.create(
-          createParams(tokenLimit, messagesToSend),
-          { signal },
-        )
-      } else if (tokenLimit > 8_192) {
-        tokenLimit = 8_192
-        try {
-          stream = await openAiClient.chat.completions.create(
-            createParams(tokenLimit, messagesToSend),
-            { signal },
-          )
-        } catch {
-          tokenLimit = 4_096
+        stream = await createStream(tokenLimit, messagesToSend)
+      } else {
+        // Step down through common limits, finally without any explicit limit
+        const fallbackLimits = [8_192, 4_096].filter((limit) => limit < tokenLimit)
+        stream = null
+        for (const limit of fallbackLimits) {
+          tokenLimit = limit
           try {
-            stream = await openAiClient.chat.completions.create(
-              createParams(tokenLimit, messagesToSend),
-              { signal },
-            )
+            stream = await createStream(tokenLimit, messagesToSend)
+            break
           } catch {
-            stream = await openAiClient.chat.completions.create(
-              {
-                model,
-                stream: true,
-                messages: [{ role: 'system', content: request.system }, ...messagesToSend],
-              },
-              { signal },
-            )
+            // Try the next smaller limit
           }
         }
-      } else if (tokenLimit > 4_096) {
-        tokenLimit = 4_096
-        try {
-          stream = await openAiClient.chat.completions.create(
-            createParams(tokenLimit, messagesToSend),
-            { signal },
-          )
-        } catch {
-          stream = await openAiClient.chat.completions.create(
-            {
-              model,
-              stream: true,
-              messages: [{ role: 'system', content: request.system }, ...messagesToSend],
-            },
-            { signal },
-          )
-        }
-      } else {
-        // Fallback without explicit token limit if rejected by a custom provider
-        stream = await openAiClient.chat.completions.create(
-          {
-            model,
-            stream: true,
-            messages: [{ role: 'system', content: request.system }, ...messagesToSend],
-          },
-          { signal },
-        )
+        stream ??= await createStream(null, messagesToSend)
       }
     }
 
@@ -155,7 +129,7 @@ export async function streamOpenAi(
       }
     }
 
-    // Wenn Token-Limit erreicht wurde ('length'), automatisch nahtlos fortsetzen
+    // The answer was cut off by the token limit: ask the model to continue seamlessly
     if (finishReason === 'length' && iterText.length > 0 && !signal.aborted) {
       continuations++
     } else {
@@ -166,7 +140,11 @@ export async function streamOpenAi(
   return totalText
 }
 
-export async function listOpenAiModels(baseUrl: string, apiKey: string, fetchImpl?: typeof fetch): Promise<string[]> {
+export async function listOpenAiModels(
+  baseUrl: string,
+  apiKey: string,
+  fetchImpl?: typeof fetch,
+): Promise<string[]> {
   const ids: string[] = []
   for await (const model of client(baseUrl, apiKey, fetchImpl).models.list()) ids.push(model.id)
   return ids.sort()

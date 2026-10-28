@@ -1,5 +1,5 @@
-// Gemeinsame Datentypen für Backend (Electron-Main / Server) und Oberfläche.
-// Datumsangaben: ISODate = 'YYYY-MM-DD' (lokales Datum), Zeitpunkte = ISO-String mit Zeitzone.
+// Data types shared by the backend and the UI.
+// Dates: ISODate = 'YYYY-MM-DD' (local date); points in time are ISO strings with a time zone.
 
 export type ID = string
 export type ISODate = string
@@ -41,29 +41,21 @@ export type SessionKind = 'lecture' | 'exercise' | 'lab' | 'seminar' | 'tutorial
 export interface ScheduleSlot {
   id: ID
   kind: SessionKind
-  /** 1 = Montag … 7 = Sonntag */
+  /** 1 = Monday … 7 = Sunday */
   weekday: number
   /** 'HH:MM' */
   start: string
   end: string
   room: string
   everyTwoWeeks: boolean
-  /** Erster Termin (optional, z. B. wenn ein Praktikum erst später beginnt) */
+  /** First session (optional, e.g. when a lab starts later in the semester) */
   firstDate: ISODate | null
-  /** Ausgefallene Termine */
+  /** Cancelled dates */
   skip: ISODate[]
 }
 
 export type ModuleColor =
-  | 'gray'
-  | 'brown'
-  | 'orange'
-  | 'yellow'
-  | 'green'
-  | 'blue'
-  | 'purple'
-  | 'pink'
-  | 'red'
+  'gray' | 'brown' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'red'
 
 export interface Module {
   id: ID
@@ -90,7 +82,7 @@ export interface Folder {
   sessionKind: SessionKind | null
   date: ISODate | null
   room: string
-  /** Praktikum: Testat bestanden / erledigt */
+  /** Lab: attestation passed / done */
   done: boolean
   order: number
   createdAt: string
@@ -106,11 +98,11 @@ export interface Item {
   kind: ItemKind
   title: string
   fileType: FileType | null
-  /** Dateiname im Speicherordner (id + Endung) */
+  /** File name in the data folder (id + extension) */
   fileName: string | null
   mime: string | null
   size: number | null
-  /** Bild, das in eine Notiz eingefügt wurde (nicht in Listen anzeigen) */
+  /** Image pasted into a note (not shown in lists) */
   attachedTo: ID | null
   source: 'moodle' | 'ai' | null
   externalId: string | null
@@ -152,9 +144,9 @@ export interface Task {
 export interface Subscription {
   id: ID
   name: string
-  /** 'url' = Abo (Adresse liegt verschlüsselt im Schlüsselbund), 'file' = einmalig importierte .ics-Datei */
+  /** 'url' = subscription (the address is stored encrypted with the secrets), 'file' = one-time .ics import */
   kind: 'url' | 'file'
-  /** Nur zur Anzeige, ohne geheime Parameter */
+  /** For display only, without secret parameters */
   url: string
   enabled: boolean
   lastSync: string | null
@@ -173,7 +165,7 @@ export interface Settings {
   appearance: {
     theme: ThemeSetting
     accent: AccentId
-    /** Skalierung der Oberfläche, 0.9 – 1.2 */
+    /** UI scale factor, 0.9 – 1.2 */
     zoom: number
     compact: boolean
     reduceMotion: boolean
@@ -185,7 +177,7 @@ export interface Settings {
     paperColor: PaperColorId
     wide: boolean
     spellcheck: boolean
-    /** Nur Stift zeichnet, Finger scrollt */
+    /** Only the pen draws; fingers scroll */
     penOnly: boolean
     penColor: string
     penSize: number
@@ -193,7 +185,7 @@ export interface Settings {
   study: {
     semesterModel: SemesterModelId
     askForNewSemester: boolean
-    /** Vorlage für Ordnernamen, z. B. '{kind} {n} · {date}' */
+    /** Template for session folder names, e.g. '{kind} {n} · {date}' */
     sessionFolderName: string
   }
   calendar: {
@@ -285,20 +277,22 @@ export const COLLECTIONS = [
 export type CollectionName = (typeof COLLECTIONS)[number]
 export type RecordOf<C extends CollectionName> = Db[C][number]
 
-/** Felder der Wurzel, die direkt überschrieben werden dürfen */
-export type DbPatch = Partial<Pick<Db, 'onboarded' | 'activeSemesterId' | 'profile' | 'settings' | 'moodleDiscussions'>>
+/** Top-level fields that may be overwritten directly */
+export type DbPatch = Partial<
+  Pick<Db, 'onboarded' | 'activeSemesterId' | 'profile' | 'settings' | 'moodleDiscussions'>
+>
 
-// ---- Notizen ----
+// ---- Notes ----
 
 export type StrokeTool = 'pen' | 'marker'
 
 export interface Stroke {
   id: ID
   tool: StrokeTool
-  /** Farbe als Hex oder 'ink' (passt sich dem Theme an) */
+  /** Hex color or 'ink' (follows the theme) */
   color: string
   size: number
-  /** Flache Liste: x, y, Druck, x, y, Druck, … */
+  /** Flat list: x, y, pressure, x, y, pressure, … */
   points: number[]
 }
 
@@ -309,18 +303,18 @@ export interface NoteDoc {
   paper: PaperId
   paperColor: PaperColorId
   font: FontId
-  /** Mindesthöhe der Seite in px (Platz zum Zeichnen) */
+  /** Minimum page height in px (room for drawing) */
   height: number
-  /** Reiner Text für Suche und KI */
+  /** Plain text for search and AI */
   text: string
 }
 
-/** Markierungen auf PDF-Seiten, Schlüssel = Seitennummer (ab 1) */
+/** Drawings on PDF pages, keyed by page number (starting at 1) */
 export interface Annotations {
   pages: Record<string, Stroke[]>
 }
 
-// ---- KI ----
+// ---- AI ----
 
 export interface AiMessage {
   role: 'user' | 'assistant'
@@ -342,7 +336,7 @@ export interface ChatSession {
   updatedAt: string
 }
 
-// ---- Integrationen ----
+// ---- Integrations ----
 
 export interface SyncResult {
   count: number
@@ -358,9 +352,9 @@ export interface MoodleCourse {
 
 export interface MoodleSiteInfo {
   siteName: string
-  /** Offizielle Adresse der Moodle-Instanz */
+  /** Canonical address of the Moodle site */
   url: string
-  /** Anmeldung nur über Hochschul-Login (SSO) möglich */
+  /** Sign-in is only possible through the university login (SSO) */
   ssoRequired: boolean
 }
 
@@ -387,10 +381,12 @@ export interface SearchHit {
 export interface FileInput {
   name: string
   type: string
-  /** Pfad auf der Festplatte (Desktop) */
+  /** Path on disk (desktop) */
   path?: string
-  /** Inhalt, falls kein Pfad vorhanden ist (z. B. eingefügtes Bild) */
+  /** Content when there is no path (e.g. a pasted image) */
   bytes?: Uint8Array
+  /** Downloaded from the internet (Windows then applies its SmartScreen checks when opening it) */
+  fromInternet?: boolean
 }
 
 export interface FileTarget {

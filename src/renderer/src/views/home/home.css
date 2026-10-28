@@ -61,11 +61,15 @@
   background: var(--bg-elevated);
   box-shadow: var(--shadow-card);
   text-align: left;
-  transition: box-shadow var(--duration) var(--ease), transform var(--duration) var(--ease);
+  transition:
+    box-shadow var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
 }
 
 .recent-card:hover {
-  box-shadow: 0 0 0 1px var(--border-strong), 0 4px 12px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 .recent-card > svg {

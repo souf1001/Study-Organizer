@@ -1,4 +1,4 @@
-// KI-Funktionen: Kontext aus Notizen/Folien bauen, Zusammenfassungen als Notiz anlegen.
+// AI helpers: build context from notes/slides and save summaries as notes.
 import { generateJSON } from '@tiptap/core'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
@@ -20,43 +20,63 @@ export interface ContextDoc {
   text: string
 }
 
-const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const escapeAttr = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-/** $$…$$ und $…$ werden zu Formel-Platzhaltern, die Editor (TipTap) und Chat (KaTeX) verstehen */
+/** Turns $$…$$ and $…$ into math placeholders understood by the editor (TipTap) and chat (KaTeX). */
 function protectMath(markdown: string): string {
-  // Code-Blöcke nicht anfassen
+  // Leave fenced code blocks untouched.
   return markdown
     .split(/(```[\s\S]*?```)/g)
     .map((part) =>
       part.startsWith('```')
         ? part
         : part
-            .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n<div data-type="block-math" data-latex="${escapeAttr(tex.trim())}"></div>\n`)
-            .replace(/(^|[^\\$])\$([^\s$](?:[^$\n]*[^\s$])?)\$(?!\d)/g, (_, pre: string, tex: string) => `${pre}<span data-type="inline-math" data-latex="${escapeAttr(tex)}"></span>`),
+            .replace(
+              /\$\$([\s\S]+?)\$\$/g,
+              (_, tex: string) =>
+                `\n<div data-type="block-math" data-latex="${escapeAttr(tex.trim())}"></div>\n`,
+            )
+            .replace(
+              /(^|[^\\$])\$([^\s$](?:[^$\n]*[^\s$])?)\$(?!\d)/g,
+              (_, pre: string, tex: string) =>
+                `${pre}<span data-type="inline-math" data-latex="${escapeAttr(tex)}"></span>`,
+            ),
     )
     .join('')
 }
 
-/** Formel-Platzhalter in einem Element mit KaTeX darstellen */
+/** Renders the math placeholders inside an element with KaTeX. */
 export function renderMath(root: HTMLElement): void {
-  root.querySelectorAll<HTMLElement>('[data-type="inline-math"], [data-type="block-math"]').forEach((el) => {
-    katex.render(el.dataset.latex ?? '', el, { throwOnError: false, displayMode: el.dataset.type === 'block-math' })
-  })
+  root
+    .querySelectorAll<HTMLElement>('[data-type="inline-math"], [data-type="block-math"]')
+    .forEach((el) => {
+      katex.render(el.dataset.latex ?? '', el, {
+        throwOnError: false,
+        displayMode: el.dataset.type === 'block-math',
+      })
+    })
 }
 
-/** Markdown → sicheres HTML (KI-Antworten können beliebigen Text enthalten) */
+/** Markdown → sanitized HTML (AI answers may contain arbitrary text). */
 export function markdownToHtml(markdown: string): string {
-  return DOMPurify.sanitize(marked.parse(protectMath(markdown), { async: false, gfm: true, breaks: false }), {
-    FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'img'],
-    FORBID_ATTR: ['style'],
-  })
+  return DOMPurify.sanitize(
+    marked.parse(protectMath(markdown), { async: false, gfm: true, breaks: false }),
+    {
+      FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'img'],
+      FORBID_ATTR: ['style'],
+    },
+  )
 }
 
 function describe(db: Db, item: Item): string {
   const folder = db.folders.find((f) => f.id === item.folderId)
   const module = db.modules.find((m) => m.id === item.moduleId)
   const kind = item.kind === 'note' ? 'Notiz' : item.fileType === 'pdf' ? 'Folien/PDF' : 'Datei'
-  const where = [module?.name, folder ? `${folder.name}${folder.date ? ` (${shortDate(folder.date, true)})` : ''}` : null]
+  const where = [
+    module?.name,
+    folder ? `${folder.name}${folder.date ? ` (${shortDate(folder.date, true)})` : ''}` : null,
+  ]
   return `${kind}: ${item.title} – ${where.filter(Boolean).join(' / ')}`
 }
 
@@ -68,25 +88,36 @@ export async function collectDocs(items: Item[]): Promise<ContextDoc[]> {
       const text = (await itemText(item)).trim()
       if (text) docs.push({ title: describe(db, item), text })
     } catch {
-      // Datei nicht lesbar – überspringen
+      // Unreadable file: skip it.
     }
   }
   return docs
 }
 
-/** Verteilt das Zeichenbudget fair auf alle Dokumente */
-export function buildContext(docs: ContextDoc[], maxChars: number): { text: string; truncated: boolean } {
-  const order = docs.map((d, i) => ({ d, i })).sort((a, b) => a.d.text.length - b.d.text.length)
+/**
+ * Splits the character budget fairly across all documents: shorter documents are
+ * served first, and whatever they leave unused goes to the longer ones.
+ */
+export function buildContext(
+  docs: ContextDoc[],
+  maxChars: number,
+): { text: string; truncated: boolean } {
+  const byLength = docs
+    .map((doc, index) => ({ doc, index }))
+    .sort((a, b) => a.doc.text.length - b.doc.text.length)
   const budget = new Array<number>(docs.length)
   let remaining = maxChars
-  order.forEach(({ d, i }, n) => {
-    const share = Math.floor(remaining / (order.length - n))
-    budget[i] = Math.min(d.text.length, share)
-    remaining -= budget[i]
+  byLength.forEach(({ doc, index }, position) => {
+    const share = Math.floor(remaining / (byLength.length - position))
+    budget[index] = Math.min(doc.text.length, share)
+    remaining -= budget[index]
   })
   const truncated = docs.some((d, i) => d.text.length > budget[i])
   const text = docs
-    .map((d, i) => `<dokument titel="${d.title.replace(/"/g, "'")}">\n${d.text.slice(0, budget[i])}${d.text.length > budget[i] ? '\n[… gekürzt]' : ''}\n</dokument>`)
+    .map(
+      (d, i) =>
+        `<dokument titel="${d.title.replace(/"/g, "'")}">\n${d.text.slice(0, budget[i])}${d.text.length > budget[i] ? '\n[… gekürzt]' : ''}\n</dokument>`,
+    )
     .join('\n\n')
   return { text, truncated }
 }
@@ -104,7 +135,7 @@ export function systemPrompt(context: string): string {
   ].join('\n')
 }
 
-// ---- Laufende KI-Aufgabe (Fortschrittsfenster) ----
+// ---- Running AI task (progress dialog) ----
 
 interface AiTask {
   title: string
@@ -120,7 +151,7 @@ export function isAiReady(): boolean {
 
 export { repairMarkdown }
 
-/** Streamt eine Antwort und zeigt dabei den Fortschritt an */
+/** Streams an answer while showing its progress; returns null on error or cancel. */
 export async function runAi(
   title: string,
   system: string,
@@ -153,15 +184,24 @@ export async function runAi(
   }
 }
 
-/** Legt eine Notiz aus Markdown an und öffnet sie */
-export async function createNoteFromMarkdown(title: string, markdown: string, moduleId: ID, folderId: ID | null): Promise<Item> {
+/** Creates a note from Markdown and opens it in a new pane. */
+export async function createNoteFromMarkdown(
+  title: string,
+  markdown: string,
+  moduleId: ID,
+  folderId: ID | null,
+): Promise<Item> {
   const db = getDb()
   const repaired = repairMarkdown(markdown)
   const html = markdownToHtml(repaired)
   let content
   try {
-    content = generateJSON(html, buildExtensions({ insertImage: () => undefined, editMath: () => undefined }))
+    content = generateJSON(
+      html,
+      buildExtensions({ insertImage: () => undefined, editMath: () => undefined }),
+    )
   } catch {
+    // Fall back to plain paragraphs if the HTML cannot be parsed into the editor schema.
     content = {
       type: 'doc',
       content: repaired
@@ -211,15 +251,29 @@ Wie die Themen zusammenhängen.
 
 const SELECTION_PROMPT = `Fasse die markierten Unterlagen zusammen. Gliederung: ## Überblick, ## Kernaussagen, ## Begriffe & Definitionen, ## Zum Nacharbeiten.`
 
-async function summarize(title: string, prompt: string, items: Item[], moduleId: ID, folderId: ID | null): Promise<void> {
-  if (!isAiReady()) return toastError(new Error('KI ist nicht aktiviert. Bitte in den Einstellungen unter „KI“ einrichten.'))
+async function summarize(
+  title: string,
+  prompt: string,
+  items: Item[],
+  moduleId: ID,
+  folderId: ID | null,
+): Promise<void> {
+  if (!isAiReady())
+    return toastError(
+      new Error('KI ist nicht aktiviert. Bitte in den Einstellungen unter „KI“ einrichten.'),
+    )
   const docs = await collectDocs(items)
-  if (docs.length === 0) return toastError(new Error('Keine lesbaren Inhalte gefunden (Notizen, PDFs oder Textdateien).'))
+  if (docs.length === 0)
+    return toastError(
+      new Error('Keine lesbaren Inhalte gefunden (Notizen, PDFs oder Textdateien).'),
+    )
   const { text, truncated } = buildContext(docs, getDb().settings.ai.maxContextChars)
   try {
     const answer = await runAi(title, systemPrompt(text), [{ role: 'user', content: prompt }])
     if (!answer) return
-    const note = truncated ? `${answer}\n\n---\n*Hinweis: Die Unterlagen waren sehr lang und wurden für die KI gekürzt.*` : answer
+    const note = truncated
+      ? `${answer}\n\n---\n*Hinweis: Die Unterlagen waren sehr lang und wurden für die KI gekürzt.*`
+      : answer
     await createNoteFromMarkdown(title, note, moduleId, folderId)
   } catch (err) {
     toastError(err)
@@ -230,9 +284,18 @@ const summarizable = (items: Item[]) => items.filter((i) => !i.attachedTo && i.s
 
 export function summarizeFolder(folder: Folder): Promise<void> {
   const db = getDb()
-  const ids = new Set([folder.id, ...db.folders.filter((f) => f.parentId === folder.id).map((f) => f.id)])
+  const ids = new Set([
+    folder.id,
+    ...db.folders.filter((f) => f.parentId === folder.id).map((f) => f.id),
+  ])
   const items = summarizable(db.items.filter((i) => i.folderId && ids.has(i.folderId)))
-  return summarize(`Zusammenfassung – ${folder.name}`, SESSION_PROMPT, items, folder.moduleId, folder.id)
+  return summarize(
+    `Zusammenfassung – ${folder.name}`,
+    SESSION_PROMPT,
+    items,
+    folder.moduleId,
+    folder.id,
+  )
 }
 
 export function summarizePastSessions(moduleId: ID, untilDate: string): Promise<void> {
@@ -242,12 +305,21 @@ export function summarizePastSessions(moduleId: ID, untilDate: string): Promise<
     .filter((f) => f.moduleId === moduleId && f.kind === 'session' && f.date && f.date <= untilDate)
     .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
   const items = summarizable(folders.flatMap((f) => db.items.filter((i) => i.folderId === f.id)))
-  return summarize(`Bisherige Vorlesungen – ${module?.name ?? ''}`, PAST_PROMPT, items, moduleId, null)
+  return summarize(
+    `Bisherige Vorlesungen – ${module?.name ?? ''}`,
+    PAST_PROMPT,
+    items,
+    moduleId,
+    null,
+  )
 }
 
 export function summarizeItems(items: Item[]): Promise<void> {
   if (items.length === 0) return Promise.resolve()
   const first = items[0]
-  const title = items.length === 1 ? `Zusammenfassung – ${first.title}` : `Zusammenfassung – ${items.length} Unterlagen`
+  const title =
+    items.length === 1
+      ? `Zusammenfassung – ${first.title}`
+      : `Zusammenfassung – ${items.length} Unterlagen`
   return summarize(title, SELECTION_PROMPT, items, first.moduleId, first.folderId)
 }

@@ -1,4 +1,4 @@
-// Zugriff auf die Datenhaltung. In der Desktop-App kommt die Umsetzung aus dem Preload-Skript.
+// Access to the data layer. In the desktop app the implementation comes from the preload script.
 import type { Api } from '@shared/api'
 
 declare global {

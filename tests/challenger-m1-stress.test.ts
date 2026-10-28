@@ -47,7 +47,8 @@ function makeVevent(opts: {
 // STRESS TEST AREA 1: BOM STRIPPING & DECODING
 // ============================================================================
 describe('Empirical Stress: Area 1 - Fixed BOM Stripping & Decoding', () => {
-  const minimalIcsBody = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Test\r\nDTSTART:20261012T080000Z\r\nEND:VEVENT\r\nEND:VCALENDAR'
+  const minimalIcsBody =
+    'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:1\r\nSUMMARY:Test\r\nDTSTART:20261012T080000Z\r\nEND:VEVENT\r\nEND:VCALENDAR'
 
   it('strips triple UTF-8 BOM in Buffer', () => {
     const tripleBom = Buffer.concat([
@@ -207,7 +208,9 @@ describe('Empirical Stress: Area 2 - Roman Numeral IV Boundary in classifyEvent'
 
     for (const title of falseIv) {
       const kind = classifyEvent(title)
-      expect(kind, `Word containing iv falsely matched exercise for "${title}"`).not.toBe('exercise')
+      expect(kind, `Word containing iv falsely matched exercise for "${title}"`).not.toBe(
+        'exercise',
+      )
     }
   })
 
@@ -392,10 +395,25 @@ describe('Empirical Stress: Area 4 - Trailing Activity Stripping & Module Linkin
       'Infostand im Foyer',
     ]
 
-    const sub = { id: 'sub-1', name: 'Test', kind: 'file' as const, url: '', enabled: true, lastSync: null, lastError: null }
+    const sub = {
+      id: 'sub-1',
+      name: 'Test',
+      kind: 'file' as const,
+      url: '',
+      enabled: true,
+      lastSync: null,
+      lastError: null,
+    }
 
     for (const title of bogusEvents) {
-      const ics = makeVcal(makeVevent({ uid: 'bogus-1', summary: title, start: '20261015T140000Z', end: '20261015T160000Z' }))
+      const ics = makeVcal(
+        makeVevent({
+          uid: 'bogus-1',
+          summary: title,
+          start: '20261015T140000Z',
+          end: '20261015T160000Z',
+        }),
+      )
       const created: string[] = []
       const events = eventsFromIcs(ics, sub, [], {
         activeSemesterId: 'sem-active',
@@ -410,9 +428,24 @@ describe('Empirical Stress: Area 4 - Trailing Activity Stripping & Module Linkin
   })
 
   it('allows auto-creation for genuine academic events or courses with course codes', () => {
-    const sub = { id: 'sub-1', name: 'Test', kind: 'file' as const, url: '', enabled: true, lastSync: null, lastError: null }
+    const sub = {
+      id: 'sub-1',
+      name: 'Test',
+      kind: 'file' as const,
+      url: '',
+      enabled: true,
+      lastSync: null,
+      lastError: null,
+    }
 
-    const academicIcs = makeVcal(makeVevent({ uid: 'ac-1', summary: 'Software Engineering Vorlesung', start: '20261015T100000Z', end: '20261015T113000Z' }))
+    const academicIcs = makeVcal(
+      makeVevent({
+        uid: 'ac-1',
+        summary: 'Software Engineering Vorlesung',
+        start: '20261015T100000Z',
+        end: '20261015T113000Z',
+      }),
+    )
     const created1: string[] = []
     eventsFromIcs(academicIcs, sub, [], {
       activeSemesterId: 'sem-active',
@@ -423,7 +456,14 @@ describe('Empirical Stress: Area 4 - Trailing Activity Stripping & Module Linkin
     expect(created1).toHaveLength(1)
     expect(created1[0]).toBe('Software Engineering')
 
-    const codeIcs = makeVcal(makeVevent({ uid: 'ac-2', summary: 'CS-50 Special Research Project', start: '20261015T100000Z', end: '20261015T113000Z' }))
+    const codeIcs = makeVcal(
+      makeVevent({
+        uid: 'ac-2',
+        summary: 'CS-50 Special Research Project',
+        start: '20261015T100000Z',
+        end: '20261015T113000Z',
+      }),
+    )
     const created2: string[] = []
     eventsFromIcs(codeIcs, sub, [], {
       activeSemesterId: 'sem-active',
@@ -455,10 +495,28 @@ describe('Empirical Stress: Area 5 - Defect in extractCourseInfo Roman Numeral I
   })
 
   it('DEMONSTRATES DEFECT: Multi-semester collision when Analysis IV is imported before Analysis 1', () => {
-    const sub = { id: 's', name: 'p', kind: 'file' as const, url: '', enabled: true, lastSync: null, lastError: null }
+    const sub = {
+      id: 's',
+      name: 'p',
+      kind: 'file' as const,
+      url: '',
+      enabled: true,
+      lastSync: null,
+      lastError: null,
+    }
     const ics = makeVcal(
-      makeVevent({ uid: 'iv-1', summary: 'Analysis IV Vorlesung', start: '20261012T080000Z', end: '20261012T090000Z' }) +
-      makeVevent({ uid: '1-1', summary: 'Analysis 1 Vorlesung', start: '20261012T100000Z', end: '20261012T110000Z' }),
+      makeVevent({
+        uid: 'iv-1',
+        summary: 'Analysis IV Vorlesung',
+        start: '20261012T080000Z',
+        end: '20261012T090000Z',
+      }) +
+        makeVevent({
+          uid: '1-1',
+          summary: 'Analysis 1 Vorlesung',
+          start: '20261012T100000Z',
+          end: '20261012T110000Z',
+        }),
     )
 
     const created: string[] = []

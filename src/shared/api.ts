@@ -18,14 +18,15 @@ import type {
   SyncResult,
   FileTarget,
 } from './types'
+import type { SetupExportOptions, SetupImportResult } from './setup-bundle'
 
 /**
- * Schnittstelle zwischen Oberfläche und Datenhaltung.
- * Desktop: Umsetzung im Preload-Skript (IPC zum Electron-Main-Prozess).
- * Web: Umsetzung per HTTP gegen den Server.
+ * Interface between the UI and the data layer.
+ * Desktop: implemented in the preload script (IPC to the Electron main process).
+ * Android: implemented in the WebView on top of IndexedDB.
  */
 export interface Api {
-  platform: 'desktop' | 'web'
+  platform: 'desktop' | 'web' | 'android'
 
   loadDb(): Promise<Db>
   put<C extends CollectionName>(collection: C, record: RecordOf<C>): Promise<void>
@@ -36,7 +37,7 @@ export interface Api {
   writeNote(id: ID, doc: NoteDoc): Promise<void>
   readAnnotations(id: ID): Promise<Annotations | null>
   writeAnnotations(id: ID, annotations: Annotations): Promise<void>
-  /** Aus PDFs extrahierter Text (für Suche und KI) */
+  /** Text extracted from PDFs (for search and AI) */
   readText(id: ID): Promise<string | null>
   writeText(id: ID, text: string): Promise<void>
 
@@ -59,7 +60,7 @@ export interface Api {
   moodle: {
     siteInfo(url: string): Promise<MoodleSiteInfo>
     connect(input: MoodleConnectInput): Promise<MoodleCourse[]>
-    /** Anmeldung über den Hochschul-Login (nur Desktop) */
+    /** Sign in through the university's single sign-on page (not available everywhere) */
     connectSso?(url: string): Promise<MoodleCourse[]>
     courses(): Promise<MoodleCourse[]>
     sync(): Promise<MoodleSyncResult>
@@ -68,7 +69,7 @@ export interface Api {
     disconnect(): Promise<void>
   }
 
-  /** Wird aufgerufen, wenn das Backend Daten selbst geändert hat (z. B. Kalender-Abgleich) */
+  /** Called when the backend changed data on its own (e.g. a calendar sync) */
   onChange(listener: () => void): () => void
 
   openExternal(url: string): Promise<void>
@@ -76,6 +77,16 @@ export interface Api {
   revealDataDir(): Promise<void>
   backup(): Promise<string | null>
   resetAll(): Promise<void>
+
+  setup: SetupApi
+}
+
+/** Moving settings, connections and data to another device */
+export interface SetupApi {
+  /** Creates a setup file and lets the user save it; resolves to where it went, or null if cancelled */
+  export(options: SetupExportOptions): Promise<string | null>
+  /** Applies the content of a setup file picked by the user */
+  import(fileContent: string, password?: string): Promise<SetupImportResult>
 }
 
 export interface AiStream {
@@ -84,14 +95,14 @@ export interface AiStream {
 }
 
 export interface CalendarApi {
-  /** Kalender-Abo anlegen (iCal-Adresse von Moodle, Stud.IP, ILIAS, OBS …) und sofort abgleichen */
+  /** Adds a calendar subscription (iCal address from Moodle, Stud.IP, ILIAS, OBS …) and syncs it right away */
   subscribe(name: string, url: string): Promise<Subscription>
   unsubscribe(id: ID): Promise<void>
   removeSubscription(id: ID): Promise<void>
   sync(id: ID): Promise<SyncResult>
-  /** Einmaliger Import einer .ics-Datei (z. B. Stundenplan aus my h_da / HISinOne) */
+  /** One-time import of an .ics file (e.g. the timetable from my h_da / HISinOne) */
   importFile(name: string, text: string): Promise<SyncResult>
-  /** Weist unzugeordnete Termine anhand der Modulnamen und -codes automatisch neu zu */
+  /** Assigns events without a module by matching module names and codes */
   rematchEvents?(): Promise<number>
 }
 

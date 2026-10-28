@@ -1,4 +1,4 @@
-// Bestätigen- und Eingabe-Dialoge als Promise: `if (await confirm({...})) …`
+// Promise-based confirm and prompt dialogs: `if (await confirm({...})) …`
 import { useState } from 'react'
 import { create } from 'zustand'
 import { Button } from './Button'
@@ -27,14 +27,24 @@ type Dialog =
 const useDialog = create<{ dialog: Dialog | null }>(() => ({ dialog: null }))
 
 export function confirm(options: ConfirmOptions): Promise<boolean> {
-  return new Promise((resolve) => useDialog.setState({ dialog: { kind: 'confirm', options, resolve } }))
+  return new Promise((resolve) =>
+    useDialog.setState({ dialog: { kind: 'confirm', options, resolve } }),
+  )
 }
 
 export function prompt(options: PromptOptions): Promise<string | null> {
-  return new Promise((resolve) => useDialog.setState({ dialog: { kind: 'prompt', options, resolve } }))
+  return new Promise((resolve) =>
+    useDialog.setState({ dialog: { kind: 'prompt', options, resolve } }),
+  )
 }
 
-function PromptDialog({ options, resolve }: { options: PromptOptions; resolve: (v: string | null) => void }) {
+function PromptDialog({
+  options,
+  resolve,
+}: {
+  options: PromptOptions
+  resolve: (v: string | null) => void
+}) {
   const [value, setValue] = useState(options.initial ?? '')
   const submit = () => resolve(value.trim() || null)
   return (
@@ -66,12 +76,15 @@ function PromptDialog({ options, resolve }: { options: PromptOptions; resolve: (
 export function DialogHost() {
   const dialog = useDialog((s) => s.dialog)
   if (!dialog) return null
-  const finish = <T,>(resolve: (v: T) => void) => (value: T) => {
-    useDialog.setState({ dialog: null })
-    resolve(value)
-  }
+  const finish =
+    <T,>(resolve: (v: T) => void) =>
+    (value: T) => {
+      useDialog.setState({ dialog: null })
+      resolve(value)
+    }
 
-  if (dialog.kind === 'prompt') return <PromptDialog options={dialog.options} resolve={finish(dialog.resolve)} />
+  if (dialog.kind === 'prompt')
+    return <PromptDialog options={dialog.options} resolve={finish(dialog.resolve)} />
 
   const done = finish(dialog.resolve)
   const { options } = dialog
@@ -82,7 +95,11 @@ export function DialogHost() {
       footer={
         <>
           <Button onClick={() => done(false)}>Abbrechen</Button>
-          <Button autoFocus variant={options.danger ? 'danger' : 'primary'} onClick={() => done(true)}>
+          <Button
+            autoFocus
+            variant={options.danger ? 'danger' : 'primary'}
+            onClick={() => done(true)}
+          >
             {options.confirmLabel ?? 'OK'}
           </Button>
         </>

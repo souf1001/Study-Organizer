@@ -1,9 +1,17 @@
-// Anzeigeformate auf Deutsch.
+// German display formats.
 import { diffDays, parseISODate, today, toISODate } from '@shared/dates'
 import type { ISODate } from '@shared/types'
 
-const dayFormat = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })
-const longDayFormat = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+const dayFormat = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+})
+const longDayFormat = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+})
 const timeFormat = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
 const monthFormat = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' })
 
@@ -48,5 +56,5 @@ export function greeting(date = new Date()): string {
 }
 
 export const isMac = navigator.userAgent.includes('Mac')
-/** '⌘' auf dem Mac, sonst 'Strg' */
+/** '⌘' on macOS, 'Strg' elsewhere. */
 export const modKey = isMac ? '⌘' : 'Strg'

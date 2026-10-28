@@ -1,7 +1,13 @@
 import type { Db } from './types'
 
 export interface AgentAction {
-  tool: 'cancel_event' | 'create_event' | 'create_note' | 'create_task' | 'complete_task' | 'create_folder'
+  tool:
+    | 'cancel_event'
+    | 'create_event'
+    | 'create_note'
+    | 'create_task'
+    | 'complete_task'
+    | 'create_folder'
   params: Record<string, unknown>
 }
 
@@ -12,9 +18,7 @@ export interface ActionResult {
   createdItemId?: string
 }
 
-/**
- * System-Prompt-Erweiterung für den autonomen Agenten-Modus.
- */
+/** System prompt extension for the autonomous agent mode (the prompt itself is German on purpose). */
 export function agentSystemPrompt(db: Db): string {
   const moduleSummary = db.modules
     .map((m) => `- Modul ID: "${m.id}", Name: "${m.name}", Code: "${m.code || ''}"`)
@@ -52,9 +56,7 @@ Wichtig: Führe die gewünschte Aktion direkt und präzise aus. Verwende nachvol
 `
 }
 
-/**
- * Parst Aktionsblöcke aus der Antwort des KI-Modells.
- */
+/** Parses action blocks from the model's answer and returns the answer without them. */
 export function extractAgentActions(text: string): { cleanText: string; actions: AgentAction[] } {
   const actions: AgentAction[] = []
   const actionRegex = /```(?:action|json\s+action)\s*([\s\S]*?)```/gi
@@ -67,7 +69,7 @@ export function extractAgentActions(text: string): { cleanText: string; actions:
         actions.push(parsed)
       }
     } catch {
-      // Ignoriere fehlerhaftes JSON
+      // Skip malformed JSON
     }
   }
 

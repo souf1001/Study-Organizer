@@ -1,5 +1,5 @@
-// KI-Anbieter. Fast alle sprechen das OpenAI-kompatible Chat-Format,
-// Anthropic wird über das offizielle SDK angesprochen.
+// AI providers. Almost all of them speak the OpenAI-compatible chat format;
+// Anthropic is accessed via its official SDK.
 
 export type AiApiKind = 'openai' | 'anthropic'
 
@@ -9,12 +9,12 @@ export interface AiProvider {
   api: AiApiKind
   baseUrl: string
   defaultModel: string
-  /** Seite, auf der man einen API-Key erstellt */
+  /** Page where users create an API key */
   keyUrl: string
   note: string
   free: boolean
   keyOptional?: boolean
-  /** Basis-URL darf geändert werden (lokale oder eigene Server) */
+  /** The base URL may be changed (local or self-hosted servers) */
   customBaseUrl?: boolean
 }
 

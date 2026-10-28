@@ -1,26 +1,54 @@
-// Datenhaltung: eine JSON-Datei für alle Metadaten plus Ordner für Notizen und Dateien.
+// Desktop storage: one JSON file for all metadata plus folders for notes and files.
 //
-//   <dir>/db.json              Semester, Module, Ordner, Einträge, Termine, Aufgaben, Einstellungen
-//   <dir>/notes/<id>.json      Inhalt einer Notiz (Text + Zeichnungen)
-//   <dir>/files/<id>.<ext>     hochgeladene Dateien
-//   <dir>/text/<id>.txt        aus PDFs extrahierter Text (Suche, KI)
-//   <dir>/annotations/<id>.json Markierungen auf PDF-Seiten
+//   <dir>/db.json               semesters, modules, folders, items, events, tasks, settings
+//   <dir>/notes/<id>.json       content of a note (text + drawings)
+//   <dir>/files/<id>.<ext>      uploaded files
+//   <dir>/text/<id>.txt         text extracted from PDFs (search, AI)
+//   <dir>/annotations/<id>.json drawings on PDF pages
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { COLLECTIONS, type Annotations, type CollectionName, type Db, type DbPatch, type FileInput, type FileTarget, type Item, type NoteDoc, type RecordOf, type SearchHit } from '../shared/types'
+import {
+  COLLECTIONS,
+  type Annotations,
+  type CollectionName,
+  type Db,
+  type DbPatch,
+  type FileInput,
+  type FileTarget,
+  type Item,
+  type NoteDoc,
+  type RecordOf,
+  type SearchHit,
+} from '../shared/types'
 import { createDefaultDb, newId, normalizeDb } from '../shared/defaults'
+import type { DataStore } from './data-store'
 import { assertFileName, assertId, detectFile, titleFromFileName } from './files'
 
 const SAVE_DELAY_MS = 250
-const PATCH_KEYS: (keyof DbPatch)[] = ['onboarded', 'activeSemesterId', 'profile', 'settings', 'moodleDiscussions']
+const DATA_SUBFOLDERS = ['notes', 'files', 'text', 'annotations'] as const
+const PATCH_KEYS: (keyof DbPatch)[] = [
+  'onboarded',
+  'activeSemesterId',
+  'profile',
+  'settings',
+  'moodleDiscussions',
+]
 
 const isObject = (value: unknown): value is object =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** Windows: mark a file as downloaded from the internet so SmartScreen and similar checks apply */
+async function markAsDownloaded(file: string): Promise<void> {
+  if (process.platform !== 'win32') return
+  await fs
+    .writeFile(`${file}:Zone.Identifier`, '[ZoneTransfer]\r\nZoneId=3\r\n')
+    .catch(() => undefined)
+}
+
 let tmpCounter = 0
 const fileQueues = new Map<string, Promise<void>>()
 
-/** Schreibt über eine eigene Temp-Datei und benennt dann um – nie halb geschriebene Dateien. */
+/** Writes to a temporary file first and then renames it, so a file is never half written */
 async function writeFileNow(file: string, data: string, mode?: number): Promise<void> {
   const tmp = `${file}.${process.pid}.${++tmpCounter}.tmp`
   try {
@@ -32,7 +60,7 @@ async function writeFileNow(file: string, data: string, mode?: number): Promise<
   }
 }
 
-/** Schreibvorgänge auf dieselbe Datei nacheinander ausführen, damit der neueste Stand gewinnt */
+/** Serializes writes to the same file so the most recent write always wins */
 export function writeAtomic(file: string, data: string, mode?: number): Promise<void> {
   const previous = fileQueues.get(file) ?? Promise.resolve()
   const next = previous.catch(() => undefined).then(() => writeFileNow(file, data, mode))
@@ -51,7 +79,7 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-export class Store {
+export class Store implements DataStore {
   private db: Db = createDefaultDb()
   private saveTimer: NodeJS.Timeout | null = null
   private textCache = new Map<string, string>()
@@ -60,11 +88,15 @@ export class Store {
 
   static async open(dir: string): Promise<Store> {
     const store = new Store(dir)
-    for (const sub of ['notes', 'files', 'text', 'annotations']) {
-      await fs.mkdir(path.join(dir, sub), { recursive: true })
-    }
+    await store.createSubfolders()
     store.db = normalizeDb(await readJson<Db>(store.dbFile))
     return store
+  }
+
+  private async createSubfolders(): Promise<void> {
+    for (const sub of DATA_SUBFOLDERS) {
+      await fs.mkdir(path.join(this.dir, sub), { recursive: true })
+    }
   }
 
   private get dbFile(): string {
@@ -85,24 +117,24 @@ export class Store {
     return this.db
   }
 
-  // ---- Speichern ----
+  // ---- Saving ----
 
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer)
     this.saveTimer = setTimeout(() => {
-      // Fehler landen im Log; die nächste Änderung versucht es erneut
-      this.flush().catch((error) => console.error('db.json konnte nicht gespeichert werden:', error))
+      // Errors are only logged: the next change tries again
+      this.flush().catch((error) => console.error('Could not save db.json:', error))
     }, SAVE_DELAY_MS)
   }
 
-  /** Schreibt ausstehende Änderungen sofort (z. B. vor dem Beenden) */
+  /** Writes pending changes immediately (e.g. before quitting) */
   flush(): Promise<void> {
     if (this.saveTimer) clearTimeout(this.saveTimer)
     this.saveTimer = null
     return writeAtomic(this.dbFile, JSON.stringify(this.db))
   }
 
-  // ---- Datensätze ----
+  // ---- Records ----
 
   private list<C extends CollectionName>(collection: C): RecordOf<C>[] {
     if (!COLLECTIONS.includes(collection)) throw new Error(`Unbekannte Sammlung: ${collection}`)
@@ -119,8 +151,11 @@ export class Store {
     this.scheduleSave()
   }
 
-  /** Ersetzt alle Datensätze, auf die `match` zutrifft, durch `records` (z. B. Termine eines Abos) */
-  replaceMany<C extends CollectionName>(collection: C, match: (r: RecordOf<C>) => boolean, records: RecordOf<C>[]): void {
+  replaceMany<C extends CollectionName>(
+    collection: C,
+    match: (r: RecordOf<C>) => boolean,
+    records: RecordOf<C>[],
+  ): void {
     for (const r of records) assertId(r.id)
     const kept = this.list(collection).filter((r) => !match(r))
     ;(this.db[collection] as RecordOf<C>[]) = [...kept, ...records]
@@ -132,17 +167,25 @@ export class Store {
     for (const [key, value] of Object.entries(patch)) {
       if (!PATCH_KEYS.includes(key as keyof DbPatch)) throw new Error(`Feld nicht erlaubt: ${key}`)
       const valid =
-        key === 'onboarded' ? typeof value === 'boolean'
-        : key === 'activeSemesterId' ? value === null || typeof value === 'string'
-        : key === 'moodleDiscussions' ? Array.isArray(value)
-        : isObject(value)
+        key === 'onboarded'
+          ? typeof value === 'boolean'
+          : key === 'activeSemesterId'
+            ? value === null || typeof value === 'string'
+            : key === 'moodleDiscussions'
+              ? Array.isArray(value)
+              : isObject(value)
       if (!valid) throw new Error(`Ungültiger Wert für ${key}`)
     }
     Object.assign(this.db, patch)
     this.scheduleSave()
   }
 
-  /** Löscht einen Datensatz samt allem, was daran hängt */
+  async replaceDb(db: Db): Promise<void> {
+    this.db = normalizeDb(db)
+    this.textCache.clear()
+    await this.flush()
+  }
+
   async remove(collection: CollectionName, id: string): Promise<void> {
     assertId(id)
     const db = this.db
@@ -152,7 +195,8 @@ export class Store {
     }
 
     if (collection === 'semesters') {
-      for (const m of db.modules.filter((m) => m.semesterId === id)) await this.remove('modules', m.id)
+      for (const m of db.modules.filter((m) => m.semesterId === id))
+        await this.remove('modules', m.id)
       if (db.activeSemesterId === id) db.activeSemesterId = null
     }
     if (collection === 'modules') {
@@ -174,7 +218,9 @@ export class Store {
           }
         }
       }
-      itemIds.push(...db.items.filter((i) => i.folderId && folderIds.has(i.folderId)).map((i) => i.id))
+      itemIds.push(
+        ...db.items.filter((i) => i.folderId && folderIds.has(i.folderId)).map((i) => i.id),
+      )
       drop('folders', (f) => !folderIds.has(f.id))
     }
     if (collection === 'items') {
@@ -211,7 +257,7 @@ export class Store {
     }
   }
 
-  // ---- Notizen, Markierungen, Text ----
+  // ---- Notes, annotations, extracted text ----
 
   async readNote(id: string): Promise<NoteDoc | null> {
     return readJson<NoteDoc>(this.pathFor('notes', id))
@@ -244,7 +290,7 @@ export class Store {
     this.textCache.set(id, String(text))
   }
 
-  // ---- Dateien ----
+  // ---- Files ----
 
   async addFile(target: FileTarget, input: FileInput): Promise<Item> {
     assertId(target.moduleId)
@@ -256,6 +302,7 @@ export class Store {
     if (input.path) await fs.copyFile(input.path, dest)
     else if (input.bytes) await fs.writeFile(dest, input.bytes)
     else throw new Error('Datei ohne Inhalt')
+    if (input.fromInternet) await markAsDownloaded(dest)
     const { size } = await fs.stat(dest)
     const now = new Date().toISOString()
     const item: Item = {
@@ -278,13 +325,27 @@ export class Store {
     return item
   }
 
-  // ---- Suche ----
+  async readFile(fileName: string): Promise<Uint8Array | null> {
+    try {
+      return new Uint8Array(await fs.readFile(this.filePath(fileName)))
+    } catch {
+      return null
+    }
+  }
+
+  async writeFile(fileName: string, bytes: Uint8Array): Promise<void> {
+    await fs.writeFile(this.filePath(fileName), bytes)
+  }
+
+  // ---- Search ----
 
   private async textOf(item: Item): Promise<string> {
     const cached = this.textCache.get(item.id)
     if (cached !== undefined) return cached
     const text =
-      item.kind === 'note' ? ((await this.readNote(item.id))?.text ?? '') : ((await this.readText(item.id)) ?? '')
+      item.kind === 'note'
+        ? ((await this.readNote(item.id))?.text ?? '')
+        : ((await this.readText(item.id)) ?? '')
     this.textCache.set(item.id, text)
     return text
   }
@@ -299,22 +360,25 @@ export class Store {
       const index = text.toLowerCase().indexOf(needle)
       if (index === -1) continue
       const start = Math.max(0, index - 40)
-      const snippet = text.slice(start, index + needle.length + 60).replace(/\s+/g, ' ').trim()
+      const snippet = text
+        .slice(start, index + needle.length + 60)
+        .replace(/\s+/g, ' ')
+        .trim()
       hits.push({ itemId: item.id, snippet: (start > 0 ? '…' : '') + snippet })
       if (hits.length >= 50) break
     }
     return hits
   }
 
-  // ---- Alles zurücksetzen ----
+  // ---- Reset ----
 
   async reset(): Promise<void> {
     if (this.saveTimer) clearTimeout(this.saveTimer)
     await (fileQueues.get(this.dbFile) ?? Promise.resolve())
-    for (const sub of ['notes', 'files', 'text', 'annotations']) {
+    for (const sub of DATA_SUBFOLDERS) {
       await fs.rm(path.join(this.dir, sub), { recursive: true, force: true })
-      await fs.mkdir(path.join(this.dir, sub), { recursive: true })
     }
+    await this.createSubfolders()
     this.textCache.clear()
     this.db = createDefaultDb()
     await this.flush()

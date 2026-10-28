@@ -4,8 +4,8 @@ import { eventsFromIcs } from '../src/backend/ics'
 import type { CalendarEvent, Subscription } from '../src/shared/types'
 import { newEvent, newModule } from '../src/shared/defaults'
 
-describe('Kalender-Terminserien & Modulzuweisung', () => {
-  it('findSeriesEvents erkennt alle Termine einer Wiederholung anhand baseUid oder Abo+Titel', () => {
+describe('Calendar event series & module assignment', () => {
+  it('findSeriesEvents finds all events of a recurrence by baseUid or subscription + title', () => {
     const events: CalendarEvent[] = [
       newEvent({
         id: 'e1',
@@ -46,7 +46,7 @@ describe('Kalender-Terminserien & Modulzuweisung', () => {
     expect(series.map((e) => e.id)).toEqual(['e1', 'e2', 'e3'])
   })
 
-  it('eventsFromIcs bewahrt manuelle Modulzuweisungen von Terminen und Serien bei Re-Sync', () => {
+  it('eventsFromIcs keeps manual module assignments of events and series on re-sync', () => {
     const sub: Subscription = {
       id: 'sub-1',
       name: 'Stundenplan',
@@ -77,7 +77,7 @@ DTEND:20261108T093000Z
 END:VEVENT
 END:VCALENDAR`
 
-    // Angenommen, der Nutzer hat den ersten Termin manuell mod-B zugewiesen:
+    // Suppose the user manually assigned the first event to mod-B:
     const existingEvents: CalendarEvent[] = [
       newEvent({
         id: 'custom-id-1',
@@ -95,14 +95,14 @@ END:VCALENDAR`
     })
 
     expect(parsed).toHaveLength(2)
-    // Erster Termin behält die manuelle Zuweisung und die ID:
+    // The first event keeps its manual assignment and ID:
     expect(parsed[0].id).toBe('custom-id-1')
     expect(parsed[0].moduleId).toBe(modB.id)
-    // Zweiter Termin der gleichen Serie übernimmt ebenfalls modB:
+    // The second event of the same series also inherits modB:
     expect(parsed[1].moduleId).toBe(modB.id)
   })
 
-  it('eventsFromIcs bewahrt benutzerdefinierte Notizen bei Re-Sync', () => {
+  it('eventsFromIcs keeps user-defined notes on re-sync', () => {
     const sub: Subscription = {
       id: 'sub-2',
       name: 'Stundenplan',
@@ -146,7 +146,7 @@ END:VCALENDAR`
     expect(parsed[0].notes).toBe('Meine persönlichen Notizen zur Vorlesung')
   })
 
-  it('findSeriesEvents erkennt Moodle-Terminserien und manuelle Serien', () => {
+  it('findSeriesEvents detects Moodle event series and manual series', () => {
     const events: CalendarEvent[] = [
       newEvent({
         id: 'm1',

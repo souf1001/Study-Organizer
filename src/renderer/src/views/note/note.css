@@ -4,7 +4,7 @@
   height: 100%;
 }
 
-/* ---- Werkzeugleiste ---- */
+/* ---- Toolbar ---- */
 .note-toolbar {
   display: flex;
   align-items: center;
@@ -100,7 +100,7 @@
   width: 360px;
 }
 
-/* ---- Seite ---- */
+/* ---- Page ---- */
 .note-scroll {
   flex: 1;
   overflow: auto;
@@ -116,7 +116,7 @@
   user-select: text;
 }
 
-/* Mit Zeichnungen hat die Seite eine feste Breite und einen Rand wie ein Blatt Papier */
+/* With drawings the page gets a fixed width and a border like a sheet of paper */
 .note-page.fixed,
 .note-page:not(.paper-plain),
 .note-page:not([data-color='auto']) {
@@ -173,7 +173,7 @@
   mix-blend-mode: multiply;
 }
 
-/* ---- Textinhalt ---- */
+/* ---- Text content ---- */
 .note-prose {
   outline: none;
   line-height: 1.65;
@@ -199,9 +199,15 @@
   margin-top: 1.4em;
 }
 
-.note-prose h1 { font-size: 1.75em; }
-.note-prose h2 { font-size: 1.4em; }
-.note-prose h3 { font-size: 1.15em; }
+.note-prose h1 {
+  font-size: 1.75em;
+}
+.note-prose h2 {
+  font-size: 1.4em;
+}
+.note-prose h3 {
+  font-size: 1.15em;
+}
 
 .note-prose ul,
 .note-prose ol {
@@ -366,7 +372,7 @@
   color: var(--text-3);
 }
 
-/* Liniertes Papier: Text sitzt auf den Linien */
+/* Lined paper: text sits on the lines */
 .note-page.paper-lined .note-prose,
 .note-page.paper-college .note-prose,
 .note-page.paper-cornell .note-prose {
@@ -404,7 +410,7 @@
   margin-top: 0;
 }
 
-/* ---- Slash-Menü ---- */
+/* ---- Slash menu ---- */
 .slash-menu {
   width: 280px;
   max-height: 330px;

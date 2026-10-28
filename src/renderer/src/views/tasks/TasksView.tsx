@@ -1,4 +1,4 @@
-// Aufgaben & Abgaben: gruppiert nach Fälligkeit, schnell anlegen und abhaken.
+// Tasks & assignments: grouped by due date, with quick add and check-off.
 import { useState, type KeyboardEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { newTask } from '@shared/defaults'
@@ -39,14 +39,16 @@ function TaskRow({ task }: { task: Task }) {
         value={title}
         aria-label="Titel"
         onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => title.trim() && title !== task.title && putRecord('tasks', { ...task, title: title.trim() })}
+        onBlur={() =>
+          title.trim() &&
+          title !== task.title &&
+          putRecord('tasks', { ...task, title: title.trim() })
+        }
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
       />
       {task.source === 'moodle' && <span className="badge">Moodle</span>}
       {module && (
-        <span className={`badge color-${module.color}`}>
-          {module.code || module.name}
-        </span>
+        <span className={`badge color-${module.color}`}>{module.code || module.name}</span>
       )}
       <span className="small faint">{TASK_KINDS[task.kind]}</span>
       <input
@@ -55,7 +57,12 @@ function TaskRow({ task }: { task: Task }) {
         aria-label="Fällig am"
         title={task.due ? `${formatDateTime(task.due)} (${relativeDay(dueDate!)})` : 'Kein Datum'}
         value={task.due ? toLocalInput(task.due) : ''}
-        onChange={(e) => putRecord('tasks', { ...task, due: e.target.value ? new Date(e.target.value).toISOString() : null })}
+        onChange={(e) =>
+          putRecord('tasks', {
+            ...task,
+            due: e.target.value ? new Date(e.target.value).toISOString() : null,
+          })
+        }
       />
       <IconButton small label="Löschen" onClick={() => void removeRecord('tasks', task.id)}>
         <Trash2 />
@@ -64,7 +71,7 @@ function TaskRow({ task }: { task: Task }) {
   )
 }
 
-/** ISO-Zeitpunkt → Wert für <input type="datetime-local"> in lokaler Zeit */
+/** ISO timestamp → value for <input type="datetime-local"> in local time. */
 function toLocalInput(iso: string): string {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -75,11 +82,19 @@ function QuickAdd({ moduleId, kind }: { moduleId: ID | null; kind: TaskKind }) {
   const db = useDb()
   const modules = semesterModules(db, activeSemester(db)?.id)
   const [title, setTitle] = useState('')
-  const [module, setModule] = useState<ID | ''>(moduleId ?? '')
+  const [selectedModuleId, setSelectedModuleId] = useState<ID | ''>(moduleId ?? '')
   const [due, setDue] = useState('')
   const add = () => {
     if (!title.trim()) return
-    putRecord('tasks', newTask({ title: title.trim(), moduleId: module || null, kind, due: due ? new Date(`${due}T23:59`).toISOString() : null }))
+    putRecord(
+      'tasks',
+      newTask({
+        title: title.trim(),
+        moduleId: selectedModuleId || null,
+        kind,
+        due: due ? new Date(`${due}T23:59`).toISOString() : null,
+      }),
+    )
     setTitle('')
     setDue('')
   }
@@ -87,26 +102,52 @@ function QuickAdd({ moduleId, kind }: { moduleId: ID | null; kind: TaskKind }) {
   return (
     <div className="task-add">
       <Plus className="faint" size={16} />
-      <input className="input-bare" placeholder="Neue Aufgabe, z. B. Übungsblatt 4 abgeben" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={onKey} />
+      <input
+        className="input-bare"
+        placeholder="Neue Aufgabe, z. B. Übungsblatt 4 abgeben"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={onKey}
+      />
       {moduleId === null && (
         <Select
-          value={module}
+          value={selectedModuleId}
           aria-label="Modul"
-          options={[{ value: '', label: 'Ohne Modul' }, ...modules.map((m) => ({ value: m.id, label: m.name }))]}
-          onChange={setModule}
+          options={[
+            { value: '', label: 'Ohne Modul' },
+            ...modules.map((m) => ({ value: m.id, label: m.name })),
+          ]}
+          onChange={setSelectedModuleId}
         />
       )}
-      <input type="date" className="input task-date" aria-label="Fällig am" value={due} onChange={(e) => setDue(e.target.value)} onKeyDown={onKey} />
+      <input
+        type="date"
+        className="input task-date"
+        aria-label="Fällig am"
+        value={due}
+        onChange={(e) => setDue(e.target.value)}
+        onKeyDown={onKey}
+      />
     </div>
   )
 }
 
-export function TaskList({ tasks, newTask: create, showDone }: { tasks: Task[]; newTask?: { moduleId: ID | null; kind: TaskKind }; showDone?: boolean }) {
-  const open = tasks.filter((t) => !t.done).sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
+export function TaskList({
+  tasks,
+  newTask: quickAdd,
+  showDone,
+}: {
+  tasks: Task[]
+  newTask?: { moduleId: ID | null; kind: TaskKind }
+  showDone?: boolean
+}) {
+  const open = tasks
+    .filter((t) => !t.done)
+    .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
   const done = tasks.filter((t) => t.done)
   return (
     <div className="task-list">
-      {create && <QuickAdd moduleId={create.moduleId} kind={create.kind} />}
+      {quickAdd && <QuickAdd moduleId={quickAdd.moduleId} kind={quickAdd.kind} />}
       {open.map((t) => (
         <TaskRow key={t.id} task={t} />
       ))}
@@ -130,7 +171,10 @@ export function TasksView() {
   const groups: { title: string; tasks: Task[] }[] = [
     { title: 'Überfällig', tasks: open.filter((t) => t.due && isoDateOf(t.due) < day) },
     { title: 'Heute', tasks: open.filter((t) => t.due && isoDateOf(t.due) === day) },
-    { title: 'Diese Woche', tasks: open.filter((t) => t.due && isoDateOf(t.due) > day && isoDateOf(t.due) <= weekEnd) },
+    {
+      title: 'Diese Woche',
+      tasks: open.filter((t) => t.due && isoDateOf(t.due) > day && isoDateOf(t.due) <= weekEnd),
+    },
     { title: 'Später', tasks: open.filter((t) => t.due && isoDateOf(t.due) > weekEnd) },
     { title: 'Ohne Datum', tasks: open.filter((t) => !t.due) },
   ]

@@ -1,9 +1,9 @@
-// Brücke zwischen Oberfläche und Hauptprozess. Stellt window.studyApi bereit (siehe shared/api.ts).
+// Bridge between the UI and the main process. Exposes window.studyApi (see shared/api.ts).
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { Api } from '../shared/api'
 import type { FileInput } from '../shared/types'
 
-/** Entfernt das technische Präfix, das Electron vor Fehlermeldungen setzt */
+/** Removes the technical prefix Electron puts in front of error messages */
 function cleanError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error)
   return new Error(message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
@@ -38,7 +38,8 @@ const api: Api = {
   readText: (id) => invoke('text:read', id),
   writeText: (id, text) => invoke('text:write', id, text),
 
-  addFiles: async (target, files) => invoke('files:add', target, await Promise.all(files.map(toInput))),
+  addFiles: async (target, files) =>
+    invoke('files:add', target, await Promise.all(files.map(toInput))),
   fileUrl: (item) => `studyfile://files/${item.fileName}`,
   openFile: (item) => invoke('files:open', item.fileName),
 
@@ -96,6 +97,11 @@ const api: Api = {
   revealDataDir: () => invoke('app:revealDataDir'),
   backup: () => invoke('app:backup'),
   resetAll: () => invoke('app:reset'),
+
+  setup: {
+    export: (options) => invoke('setup:export', options),
+    import: (content, password) => invoke('setup:import', content, password),
+  },
 }
 
 contextBridge.exposeInMainWorld('studyApi', api)

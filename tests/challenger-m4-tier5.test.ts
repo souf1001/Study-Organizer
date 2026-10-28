@@ -168,14 +168,24 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
     })
 
     it('preserves multi-byte Unicode astral plane characters (emojis / surrogate pairs)', () => {
-      const ics = vcal(vevent({
-        uid: 'emoji-1',
-        summary: '🚀 Informatik & Robotik 💻',
-        start: '20261012T100000Z',
-        end: '20261012T113000Z',
-        description: 'Toller Kurs 🎉',
-      }))
-      const sub: Subscription = { id: 's1', name: 'Test', kind: 'file', url: 'Datei', enabled: false, lastSync: null, lastError: null }
+      const ics = vcal(
+        vevent({
+          uid: 'emoji-1',
+          summary: '🚀 Informatik & Robotik 💻',
+          start: '20261012T100000Z',
+          end: '20261012T113000Z',
+          description: 'Toller Kurs 🎉',
+        }),
+      )
+      const sub: Subscription = {
+        id: 's1',
+        name: 'Test',
+        kind: 'file',
+        url: 'Datei',
+        enabled: false,
+        lastSync: null,
+        lastError: null,
+      }
       const events = eventsFromIcs(ics, sub, [])
       expect(events).toHaveLength(1)
       expect(events[0].title).toBe('🚀 Informatik & Robotik 💻')
@@ -187,27 +197,39 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
   // 5.2: Pathological ICS Syntax & Parser Resilience
   // --------------------------------------------------------------------------
   describe('5.2: Pathological ICS Syntax & Parser Resilience', () => {
-    const sub: Subscription = { id: 's1', name: 'Test', kind: 'file', url: 'Datei', enabled: false, lastSync: null, lastError: null }
+    const sub: Subscription = {
+      id: 's1',
+      name: 'Test',
+      kind: 'file',
+      url: 'Datei',
+      enabled: false,
+      lastSync: null,
+      lastError: null,
+    }
 
     it('converts zero-duration event (start === end) of kind "other" to "deadline"', () => {
-      const ics = vcal(vevent({
-        uid: 'zero-dur-1',
-        summary: 'Projekt-Meilenstein', // no explicit kind keyword -> 'other'
-        start: '20261015T120000Z',
-        end: '20261015T120000Z',
-      }))
+      const ics = vcal(
+        vevent({
+          uid: 'zero-dur-1',
+          summary: 'Projekt-Meilenstein', // no explicit kind keyword -> 'other'
+          start: '20261015T120000Z',
+          end: '20261015T120000Z',
+        }),
+      )
       const events = eventsFromIcs(ics, sub, [])
       expect(events).toHaveLength(1)
       expect(events[0].kind).toBe('deadline')
     })
 
     it('handles inverted time range (DTSTART > DTEND) gracefully without crashing', () => {
-      const ics = vcal(vevent({
-        uid: 'inverted-1',
-        summary: 'Zeitreise Vorlesung',
-        start: '20261015T140000Z',
-        end: '20261015T120000Z',
-      }))
+      const ics = vcal(
+        vevent({
+          uid: 'inverted-1',
+          summary: 'Zeitreise Vorlesung',
+          start: '20261015T140000Z',
+          end: '20261015T120000Z',
+        }),
+      )
       expect(() => eventsFromIcs(ics, sub, [])).not.toThrow()
     })
 
@@ -216,14 +238,16 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
       const longDesc = 'Sehr ausführliche Beschreibung. '.repeat(100) // 3200 chars
       const longLoc = 'Raum S2|02 '.repeat(40) // 440 chars
 
-      const ics = vcal(vevent({
-        uid: 'clamp-1',
-        summary: longTitle,
-        start: '20261015T100000Z',
-        end: '20261015T113000Z',
-        description: longDesc,
-        location: longLoc,
-      }))
+      const ics = vcal(
+        vevent({
+          uid: 'clamp-1',
+          summary: longTitle,
+          start: '20261015T100000Z',
+          end: '20261015T113000Z',
+          description: longDesc,
+          location: longLoc,
+        }),
+      )
       const events = eventsFromIcs(ics, sub, [])
       expect(events).toHaveLength(1)
       expect(events[0].title.length).toBeLessThanOrEqual(300)
@@ -233,13 +257,15 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
 
     it('caps unbounded high-frequency recurrence rules to MAX_OCCURRENCES', () => {
       // RRULE daily forever starting 2026-10-01
-      const ics = vcal(vevent({
-        uid: 'recur-daily-1',
-        summary: 'Tägliche Vorlesung',
-        start: '20261001T080000Z',
-        end: '20261001T090000Z',
-        rrule: 'FREQ=DAILY;INTERVAL=1',
-      }))
+      const ics = vcal(
+        vevent({
+          uid: 'recur-daily-1',
+          summary: 'Tägliche Vorlesung',
+          start: '20261001T080000Z',
+          end: '20261001T090000Z',
+          rrule: 'FREQ=DAILY;INTERVAL=1',
+        }),
+      )
       const now = new Date('2026-10-01T00:00:00Z')
       const events = eventsFromIcs(ics, sub, [], { now })
       // Bounded by query window (400 days) and MAX_OCCURRENCES (1000)
@@ -248,14 +274,16 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
     })
 
     it('handles EXDATE to skip canceled recurring instances', () => {
-      const ics = vcal(vevent({
-        uid: 'recur-exdate-1',
-        summary: 'Wöchentliche Übung',
-        start: '20261005T080000Z',
-        end: '20261005T093000Z',
-        rrule: 'FREQ=WEEKLY;COUNT=3',
-        exdate: ['20261012T080000Z'], // Cancel week 2
-      }))
+      const ics = vcal(
+        vevent({
+          uid: 'recur-exdate-1',
+          summary: 'Wöchentliche Übung',
+          start: '20261005T080000Z',
+          end: '20261005T093000Z',
+          rrule: 'FREQ=WEEKLY;COUNT=3',
+          exdate: ['20261012T080000Z'], // Cancel week 2
+        }),
+      )
       const now = new Date('2026-10-01T00:00:00Z')
       const events = eventsFromIcs(ics, sub, [], { now })
       expect(events).toHaveLength(2)
@@ -281,7 +309,9 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
       expect(classifyEvent('schließt am Gebäude')).not.toBe('deadline')
       expect(classifyEvent('schließt ab um 18:00')).not.toBe('deadline')
       expect(classifyEvent('schließt auf am Morgen')).not.toBe('deadline')
-      expect(classifyEvent('Elektrotechnik: Was passiert, wenn die Schaltung kurzschließt?')).not.toBe('deadline')
+      expect(
+        classifyEvent('Elektrotechnik: Was passiert, wenn die Schaltung kurzschließt?'),
+      ).not.toBe('deadline')
       expect(classifyEvent('Wenn sich die Tür verschließt')).not.toBe('deadline')
       expect(classifyEvent('Mauer umschließt das Areal')).not.toBe('deadline')
     })
@@ -339,12 +369,7 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
       const longMod = newModule('sem1', { name: 'Analysis für Informatiker', code: 'ANA-INF' })
       const modules = [shortMod, longMod]
 
-      const matched = matchModule(
-        'Analysis für Informatiker Vorlesung',
-        '',
-        [],
-        modules,
-      )
+      const matched = matchModule('Analysis für Informatiker Vorlesung', '', [], modules)
       expect(matched?.id).toBe(longMod.id)
     })
 
@@ -366,7 +391,22 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
     })
 
     it('strips all documented course code suffixes', () => {
-      const suffixes = ['vl', 'ue', 'üe', 'pr', 'tut', 'iv', 'se', 'ku', 'pj', 'pl', 'sl', 'ko', 'ex', 'vo']
+      const suffixes = [
+        'vl',
+        'ue',
+        'üe',
+        'pr',
+        'tut',
+        'iv',
+        'se',
+        'ku',
+        'pj',
+        'pl',
+        'sl',
+        'ko',
+        'ex',
+        'vo',
+      ]
       for (const suf of suffixes) {
         expect(stripModuleSuffix(`20-00-0012-${suf}`)).toBe('20-00-0012')
         expect(stripModuleSuffix(`CS-101-${suf.toUpperCase()}`)).toBe('CS-101')
@@ -378,13 +418,7 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
       const modActive = newModule('sem-active', { name: 'Software Engineering', code: 'SE' })
       const modules = [modOld, modActive]
 
-      const matched = matchModule(
-        'Software Engineering Vorlesung',
-        '',
-        [],
-        modules,
-        'sem-active',
-      )
+      const matched = matchModule('Software Engineering Vorlesung', '', [], modules, 'sem-active')
       expect(matched?.id).toBe(modActive.id)
     })
 
@@ -420,8 +454,22 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
     })
 
     it('re-importing stundenplan (1).ics cleanly replaces stundenplan.ics without duplicate subscriptions or events', async () => {
-      const ics1 = vcal(vevent({ uid: 'ev1', summary: 'Vorlesung A', start: '20261012T080000Z', end: '20261012T093000Z' }))
-      const ics2 = vcal(vevent({ uid: 'ev1', summary: 'Vorlesung A (Raum neu)', start: '20261012T080000Z', end: '20261012T093000Z' }))
+      const ics1 = vcal(
+        vevent({
+          uid: 'ev1',
+          summary: 'Vorlesung A',
+          start: '20261012T080000Z',
+          end: '20261012T093000Z',
+        }),
+      )
+      const ics2 = vcal(
+        vevent({
+          uid: 'ev1',
+          summary: 'Vorlesung A (Raum neu)',
+          start: '20261012T080000Z',
+          end: '20261012T093000Z',
+        }),
+      )
 
       await env.service.calendarImportFile('stundenplan.ics', ics1)
       expect(env.store.get().subscriptions).toHaveLength(1)
@@ -437,7 +485,14 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
     })
 
     it('matches file subscriptions case-insensitively during re-import', async () => {
-      const ics = vcal(vevent({ uid: 'ev1', summary: 'Mathe', start: '20261012T080000Z', end: '20261012T093000Z' }))
+      const ics = vcal(
+        vevent({
+          uid: 'ev1',
+          summary: 'Mathe',
+          start: '20261012T080000Z',
+          end: '20261012T093000Z',
+        }),
+      )
       await env.service.calendarImportFile('timetable.ics', ics)
       await env.service.calendarImportFile('TIMETABLE.ICS', ics)
       expect(env.store.get().subscriptions).toHaveLength(1)
@@ -449,8 +504,12 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
   // --------------------------------------------------------------------------
   describe('5.6: WebCal URL Normalization, Masking & Network Security Boundaries', () => {
     it('normalizes webcal and webcals schemes to https', () => {
-      expect(normalizeCalendarUrl('webcal://tucan.tu-darmstadt.de/feed.ics')).toBe('https://tucan.tu-darmstadt.de/feed.ics')
-      expect(normalizeCalendarUrl('webcals://tucan.tu-darmstadt.de/feed.ics')).toBe('https://tucan.tu-darmstadt.de/feed.ics')
+      expect(normalizeCalendarUrl('webcal://tucan.tu-darmstadt.de/feed.ics')).toBe(
+        'https://tucan.tu-darmstadt.de/feed.ics',
+      )
+      expect(normalizeCalendarUrl('webcals://tucan.tu-darmstadt.de/feed.ics')).toBe(
+        'https://tucan.tu-darmstadt.de/feed.ics',
+      )
       expect(normalizeCalendarUrl('https://example.com/cal')).toBe('https://example.com/cal')
       expect(normalizeCalendarUrl('http://example.com/cal')).toBe('http://example.com/cal')
     })
@@ -462,7 +521,9 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
     })
 
     it('masks confidential query parameters in calendar URLs for UI display', () => {
-      const masked = maskCalendarUrl('https://moodle.tu-darmstadt.de/cal.php?authtoken=secret_xyz123&user=999')
+      const masked = maskCalendarUrl(
+        'https://moodle.tu-darmstadt.de/cal.php?authtoken=secret_xyz123&user=999',
+      )
       expect(masked).toBe('moodle.tu-darmstadt.de/cal.php?…')
       expect(masked).not.toContain('secret_xyz123')
 
@@ -477,7 +538,14 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
   describe('5.7: Rolling Window Merge & History Preservation', () => {
     it('preserves historical past events beyond rolling window while cleanly updating active events', () => {
       const now = new Date('2026-11-20T12:00:00Z')
-      const base = { kind: 'lecture' as const, allDay: false, moduleId: null, location: 'Hörsaal', notes: '', subscriptionId: 'sub1' }
+      const base = {
+        kind: 'lecture' as const,
+        allDay: false,
+        moduleId: null,
+        location: 'Hörsaal',
+        notes: '',
+        subscriptionId: 'sub1',
+      }
 
       // Event from 20 days ago (past history)
       const historicalEvent: CalendarEvent = {
@@ -510,7 +578,11 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
         externalId: 'ext-fut',
       }
 
-      const merged = mergeSubscriptionEvents([historicalEvent, existingFuture], [incomingFuture], now)
+      const merged = mergeSubscriptionEvents(
+        [historicalEvent, existingFuture],
+        [incomingFuture],
+        now,
+      )
 
       expect(merged).toHaveLength(2)
       const hist = merged.find((e) => e.externalId === 'ext-hist')
@@ -529,23 +601,44 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
   // --------------------------------------------------------------------------
   describe('5.8: TUCaN Session Wizard & Electron IPC Boundaries', () => {
     it('isIcsDownload identifies calendar downloads by extension, MIME, or query parameter', () => {
-      const mockItem = (filename: string, mime: string, url: string) => ({
-        getFilename: () => filename,
-        getMimeType: () => mime,
-        getURL: () => url,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any
+      const mockItem = (filename: string, mime: string, url: string) =>
+        ({
+          getFilename: () => filename,
+          getMimeType: () => mime,
+          getURL: () => url,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }) as any
 
-      expect(isIcsDownload(mockItem('stundenplan.ics', 'application/octet-stream', 'https://tucan.de/file'))).toBe(true)
-      expect(isIcsDownload(mockItem('EXPORT.ICS', 'application/octet-stream', 'https://tucan.de/file'))).toBe(true)
-      expect(isIcsDownload(mockItem('export.php', 'text/calendar', 'https://tucan.de/file'))).toBe(true)
-      expect(isIcsDownload(mockItem('download', 'application/ics', 'https://tucan.de/file'))).toBe(true)
-      expect(isIcsDownload(mockItem('export', '', 'https://tucan.de/stundenplan?format=ics'))).toBe(true)
+      expect(
+        isIcsDownload(
+          mockItem('stundenplan.ics', 'application/octet-stream', 'https://tucan.de/file'),
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(mockItem('EXPORT.ICS', 'application/octet-stream', 'https://tucan.de/file')),
+      ).toBe(true)
+      expect(isIcsDownload(mockItem('export.php', 'text/calendar', 'https://tucan.de/file'))).toBe(
+        true,
+      )
+      expect(isIcsDownload(mockItem('download', 'application/ics', 'https://tucan.de/file'))).toBe(
+        true,
+      )
+      expect(isIcsDownload(mockItem('export', '', 'https://tucan.de/stundenplan?format=ics'))).toBe(
+        true,
+      )
 
       // Dangerous or unrelated files are rejected
-      expect(isIcsDownload(mockItem('trojan.exe', 'application/x-msdownload', 'https://bad.com/trojan.exe'))).toBe(false)
-      expect(isIcsDownload(mockItem('notes.pdf', 'application/pdf', 'https://tucan.de/notes.pdf'))).toBe(false)
-      expect(isIcsDownload(mockItem('archive.zip', 'application/zip', 'https://tucan.de/archive.zip'))).toBe(false)
+      expect(
+        isIcsDownload(
+          mockItem('trojan.exe', 'application/x-msdownload', 'https://bad.com/trojan.exe'),
+        ),
+      ).toBe(false)
+      expect(
+        isIcsDownload(mockItem('notes.pdf', 'application/pdf', 'https://tucan.de/notes.pdf')),
+      ).toBe(false)
+      expect(
+        isIcsDownload(mockItem('archive.zip', 'application/zip', 'https://tucan.de/archive.zip')),
+      ).toBe(false)
     })
   })
 
@@ -555,8 +648,18 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
   describe('5.9: Cross-Feature State Store & Cascade Operations', () => {
     it('calendarUnsubscribe cascades cleanly removing subscription and all associated events', async () => {
       const ics = vcal(
-        vevent({ uid: 'ev1', summary: 'Kurs 1', start: '20261012T080000Z', end: '20261012T093000Z' }) +
-        vevent({ uid: 'ev2', summary: 'Kurs 2', start: '20261013T080000Z', end: '20261013T093000Z' }),
+        vevent({
+          uid: 'ev1',
+          summary: 'Kurs 1',
+          start: '20261012T080000Z',
+          end: '20261012T093000Z',
+        }) +
+          vevent({
+            uid: 'ev2',
+            summary: 'Kurs 2',
+            start: '20261013T080000Z',
+            end: '20261013T093000Z',
+          }),
       )
       await env.service.calendarImportFile('schedule.ics', ics)
       const sub = env.store.get().subscriptions[0]
@@ -604,8 +707,18 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
 
       // Replace with shrunk dataset of 2 events
       const smallIcs = vcal(
-        vevent({ uid: 'bulk-event-0', summary: 'Vorlesung 0 (Neu)', start: '20261101T080000Z', end: '20261101T093000Z' }) +
-        vevent({ uid: 'bulk-event-1', summary: 'Vorlesung 1 (Neu)', start: '20261102T080000Z', end: '20261102T093000Z' }),
+        vevent({
+          uid: 'bulk-event-0',
+          summary: 'Vorlesung 0 (Neu)',
+          start: '20261101T080000Z',
+          end: '20261101T093000Z',
+        }) +
+          vevent({
+            uid: 'bulk-event-1',
+            summary: 'Vorlesung 1 (Neu)',
+            start: '20261102T080000Z',
+            end: '20261102T093000Z',
+          }),
       )
       const shrinkRes = await env.service.calendarImportFile('semester_full.ics', smallIcs)
       expect(shrinkRes.count).toBe(2)
@@ -633,7 +746,15 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
         'END:VEVENT\r\n' +
         'END:VCALENDAR\r\n'
 
-      const sub: Subscription = { id: 'sub', name: 'test', kind: 'file', url: '', enabled: false, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 'sub',
+        name: 'test',
+        kind: 'file',
+        url: '',
+        enabled: false,
+        lastSync: null,
+        lastError: null,
+      }
       const events = eventsFromIcs(foldedIcs, sub, [])
       expect(events).toHaveLength(1)
       expect(events[0].title).toBe('Line unfolding in RFC 5545 calendar specifications')
@@ -651,7 +772,15 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
         'END:VEVENT\r\n' +
         'END:VCALENDAR\r\n'
 
-      const sub: Subscription = { id: 'sub', name: 'test', kind: 'file', url: '', enabled: false, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 'sub',
+        name: 'test',
+        kind: 'file',
+        url: '',
+        enabled: false,
+        lastSync: null,
+        lastError: null,
+      }
       const events = eventsFromIcs(noSummaryIcs, sub, [])
       expect(events).toHaveLength(1)
       expect(events[0].title).toBe('(ohne Titel)')
@@ -710,8 +839,22 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
   // --------------------------------------------------------------------------
   describe('5.14: Concurrency & Isolation', () => {
     it('concurrent imports of different files preserve independent subscriptions and events', async () => {
-      const icsA = vcal(vevent({ uid: 'a1', summary: 'File A Event', start: '20261012T080000Z', end: '20261012T090000Z' }))
-      const icsB = vcal(vevent({ uid: 'b1', summary: 'File B Event', start: '20261012T100000Z', end: '20261012T110000Z' }))
+      const icsA = vcal(
+        vevent({
+          uid: 'a1',
+          summary: 'File A Event',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
+      const icsB = vcal(
+        vevent({
+          uid: 'b1',
+          summary: 'File B Event',
+          start: '20261012T100000Z',
+          end: '20261012T110000Z',
+        }),
+      )
 
       await Promise.all([
         env.service.calendarImportFile('fileA.ics', icsA),
@@ -725,8 +868,12 @@ describe('Tier 5 Adversarial Coverage Hardening', () => {
       const subA = subs.find((s) => s.name === 'fileA.ics')!
       const subB = subs.find((s) => s.name === 'fileB.ics')!
 
-      expect(env.store.get().events.find((e) => e.subscriptionId === subA.id)?.title).toBe('File A Event')
-      expect(env.store.get().events.find((e) => e.subscriptionId === subB.id)?.title).toBe('File B Event')
+      expect(env.store.get().events.find((e) => e.subscriptionId === subA.id)?.title).toBe(
+        'File A Event',
+      )
+      expect(env.store.get().events.find((e) => e.subscriptionId === subB.id)?.title).toBe(
+        'File B Event',
+      )
     })
   })
 })

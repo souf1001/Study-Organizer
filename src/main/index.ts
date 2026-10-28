@@ -1,4 +1,4 @@
-// Electron-Hauptprozess: Fenster, Datenspeicher, Datei-Protokoll und regelmäßiger Kalender-Abgleich.
+// Electron main process: window, data store, file protocol and periodic background sync.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, Menu, nativeTheme, session, shell } from 'electron'
@@ -11,13 +11,13 @@ import { createSecrets } from './secrets'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOUR = 60 * 60 * 1000
 
-// Eigener Datenordner (z. B. für Tests oder eine portable Installation): dann liegen auch
-// Browser-Profil und verschlüsselte Keys dort statt im Benutzerprofil.
+// Custom data folder (e.g. for tests or a portable installation): the browser profile and the
+// encrypted keys then live there as well instead of in the user profile.
 const customDataDir = process.env.STUDY_ORGANIZER_DATA
 if (customDataDir) app.setPath('userData', path.join(customDataDir, 'electron-profile'))
 
 registerSchemePrivileges()
-// Datums- und Zeitfelder auf Deutsch (TT.MM.JJJJ, 24-Stunden-Format)
+// German date and time inputs (DD.MM.YYYY, 24-hour clock)
 app.commandLine.appendSwitch('lang', 'de-DE')
 
 let mainWindow: BrowserWindow | null = null
@@ -48,7 +48,7 @@ function createWindow(): BrowserWindow {
     if (mainWindow === window) mainWindow = null
   })
 
-  // Links immer im Browser öffnen, nie im App-Fenster
+  // Always open links in the browser, never inside the app window
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -72,7 +72,13 @@ function setupMenu(): void {
     Menu.buildFromTemplate([
       { role: 'appMenu' },
       { role: 'editMenu' },
-      { label: 'Ansicht', submenu: [{ role: 'togglefullscreen' }, ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' as const }])] },
+      {
+        label: 'Ansicht',
+        submenu: [
+          { role: 'togglefullscreen' },
+          ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' as const }]),
+        ],
+      },
       { role: 'windowMenu' },
     ]),
   )
@@ -100,7 +106,7 @@ function startBackgroundSync(service: Service, store: Store): void {
   let lastCalendarRun = Date.now()
   let lastMoodleRun = Date.now()
 
-  // Regelmäßige Prüfung im Hintergrund (minütlicher Takt)
+  // Check once a minute whether a sync is due
   setInterval(() => {
     const settings = store.get().settings
     const moodleInterval = settings.moodle.syncIntervalMinutes ?? 10
@@ -135,7 +141,8 @@ async function main(): Promise<void> {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === 'fullscreen' || permission === 'clipboard-sanitized-write')
   })
-  if (process.platform !== 'darwin') session.defaultSession.setSpellCheckerLanguages(['de-DE', 'en-US'])
+  if (process.platform !== 'darwin')
+    session.defaultSession.setSpellCheckerLanguages(['de-DE', 'en-US'])
 
   mainWindow = createWindow()
   startBackgroundSync(service, store)
@@ -152,7 +159,7 @@ async function main(): Promise<void> {
     if (process.platform !== 'darwin') app.quit()
   })
 
-  // Vor dem Beenden alle Änderungen sicher auf die Festplatte schreiben
+  // Write all pending changes to disk before quitting
   let flushed = false
   app.on('before-quit', (event) => {
     if (flushed) return

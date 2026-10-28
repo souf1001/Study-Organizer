@@ -1,4 +1,4 @@
-// Modul anlegen oder bearbeiten.
+// Create or edit a module.
 import { useState } from 'react'
 import { Check } from 'lucide-react'
 import { MODULE_COLORS, newModule } from '@shared/defaults'
@@ -11,7 +11,13 @@ import { Modal } from '@/ui/Modal'
 import { ScheduleEditor } from './ScheduleEditor'
 import './module.css'
 
-export function ColorPicker({ value, onChange }: { value: ModuleColor; onChange: (c: ModuleColor) => void }) {
+export function ColorPicker({
+  value,
+  onChange,
+}: {
+  value: ModuleColor
+  onChange: (c: ModuleColor) => void
+}) {
   return (
     <div className="color-picker" role="radiogroup" aria-label="Farbe">
       {MODULE_COLORS.map((c) => (
@@ -36,8 +42,18 @@ function nextColor(semesterId: string): ModuleColor {
   return MODULE_COLORS[used % MODULE_COLORS.length]
 }
 
-export function ModuleDialog({ semester, module, onClose }: { semester: Semester; module?: Module; onClose: () => void }) {
-  const [draft, setDraft] = useState<Module>(() => module ?? newModule(semester.id, { color: nextColor(semester.id) }))
+export function ModuleDialog({
+  semester,
+  module,
+  onClose,
+}: {
+  semester: Semester
+  module?: Module
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState<Module>(
+    () => module ?? newModule(semester.id, { color: nextColor(semester.id) }),
+  )
   const set = (values: Partial<Module>) => setDraft((d) => ({ ...d, ...values }))
 
   const save = () => {
@@ -64,13 +80,26 @@ export function ModuleDialog({ semester, module, onClose }: { semester: Semester
       <div className="module-form">
         <div className="form-grid">
           <Field label="Name">
-            <Input autoFocus value={draft.name} placeholder="z. B. Analysis 1" onChange={(e) => set({ name: e.target.value })} />
+            <Input
+              autoFocus
+              value={draft.name}
+              placeholder="z. B. Analysis 1"
+              onChange={(e) => set({ name: e.target.value })}
+            />
           </Field>
           <Field label="Kürzel">
-            <Input value={draft.code} placeholder="z. B. ANA1" onChange={(e) => set({ code: e.target.value })} />
+            <Input
+              value={draft.code}
+              placeholder="z. B. ANA1"
+              onChange={(e) => set({ code: e.target.value })}
+            />
           </Field>
           <Field label="Dozent/in">
-            <Input value={draft.lecturer} placeholder="Prof. Dr. …" onChange={(e) => set({ lecturer: e.target.value })} />
+            <Input
+              value={draft.lecturer}
+              placeholder="Prof. Dr. …"
+              onChange={(e) => set({ lecturer: e.target.value })}
+            />
           </Field>
           <Field label="ECTS">
             <Input

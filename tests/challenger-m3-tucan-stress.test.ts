@@ -108,7 +108,8 @@ const { MockBrowserWindow, MockSession, MockDownloadItem } = vi.hoisted(() => {
   class MockSession {
     public static sessions: Map<string, MockSession> = new Map()
     public partition: string
-    public permissionHandler: ((wc: unknown, perm: string, cb: (grant: boolean) => void) => void) | null = null
+    public permissionHandler:
+      ((wc: unknown, perm: string, cb: (grant: boolean) => void) => void) | null = null
     public listeners: Record<string, Listener[]> = {}
 
     constructor(partition: string) {
@@ -122,7 +123,9 @@ const { MockBrowserWindow, MockSession, MockDownloadItem } = vi.hoisted(() => {
       return MockSession.sessions.get(partition)!
     }
 
-    setPermissionRequestHandler(fn: (wc: unknown, perm: string, cb: (grant: boolean) => void) => void) {
+    setPermissionRequestHandler(
+      fn: (wc: unknown, perm: string, cb: (grant: boolean) => void) => void,
+    ) {
       this.permissionHandler = fn
     }
 
@@ -317,27 +320,111 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
   // ==========================================================================
   describe('1. isIcsDownload Filtering & Edge Cases', () => {
     it('accurately detects standard .ics filenames regardless of case', () => {
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'stundenplan.ics' }) as unknown as import('electron').DownloadItem)).toBe(true)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'Export_TUCaN.ICS' }) as unknown as import('electron').DownloadItem)).toBe(true)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'schedule (1).iCs' }) as unknown as import('electron').DownloadItem)).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'stundenplan.ics',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'Export_TUCaN.ICS',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'schedule (1).iCs',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
     })
 
     it('accurately detects calendar MIME types', () => {
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'export', mime: 'text/calendar' }) as unknown as import('electron').DownloadItem)).toBe(true)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'export', mime: 'application/ics' }) as unknown as import('electron').DownloadItem)).toBe(true)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'export', mime: 'text/x-vcalendar' }) as unknown as import('electron').DownloadItem)).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'export',
+            mime: 'text/calendar',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'export',
+            mime: 'application/ics',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'export',
+            mime: 'text/x-vcalendar',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
     })
 
     it('accurately detects calendar URL patterns', () => {
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'file', url: 'https://tucan.tu-darmstadt.de/schedule.ics' }) as unknown as import('electron').DownloadItem)).toBe(true)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'file', url: 'https://tucan.tu-darmstadt.de/export?format=ics' }) as unknown as import('electron').DownloadItem)).toBe(true)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'file', url: 'https://tucan.tu-darmstadt.de/get?file=cal.ics&token=xyz' }) as unknown as import('electron').DownloadItem)).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'file',
+            url: 'https://tucan.tu-darmstadt.de/schedule.ics',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'file',
+            url: 'https://tucan.tu-darmstadt.de/export?format=ics',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'file',
+            url: 'https://tucan.tu-darmstadt.de/get?file=cal.ics&token=xyz',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(true)
     })
 
     it('rejects non-calendar files and non-calendar MIME types', () => {
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'vorlesung_skript.pdf', mime: 'application/pdf', url: 'https://tucan.tu-darmstadt.de/dl/skript.pdf' }) as unknown as import('electron').DownloadItem)).toBe(false)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'archive.zip', mime: 'application/zip', url: 'https://tucan.tu-darmstadt.de/files.zip' }) as unknown as import('electron').DownloadItem)).toBe(false)
-      expect(isIcsDownload(new MockDownloadItem({ filename: 'index.html', mime: 'text/html', url: 'https://tucan.tu-darmstadt.de/home' }) as unknown as import('electron').DownloadItem)).toBe(false)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'vorlesung_skript.pdf',
+            mime: 'application/pdf',
+            url: 'https://tucan.tu-darmstadt.de/dl/skript.pdf',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(false)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'archive.zip',
+            mime: 'application/zip',
+            url: 'https://tucan.tu-darmstadt.de/files.zip',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(false)
+      expect(
+        isIcsDownload(
+          new MockDownloadItem({
+            filename: 'index.html',
+            mime: 'text/html',
+            url: 'https://tucan.tu-darmstadt.de/home',
+          }) as unknown as import('electron').DownloadItem,
+        ),
+      ).toBe(false)
     })
   })
 
@@ -365,7 +452,7 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
       const initialListeners = ses.listeners['will-download']?.length ?? 0
 
       const wizardPromise = startTucanWizard(service)
-      expect((ses.listeners['will-download']?.length ?? 0)).toBe(initialListeners + 1)
+      expect(ses.listeners['will-download']?.length ?? 0).toBe(initialListeners + 1)
 
       const win = MockBrowserWindow.instances[0]
       win.close()
@@ -433,7 +520,14 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
       const win = MockBrowserWindow.instances[0]
 
       // Simulate network outage / DNS failure on main frame (errorCode != -3)
-      win.webContents.emit('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', 'https://www.tucan.tu-darmstadt.de/', true)
+      win.webContents.emit(
+        'did-fail-load',
+        {},
+        -105,
+        'ERR_NAME_NOT_RESOLVED',
+        'https://www.tucan.tu-darmstadt.de/',
+        true,
+      )
 
       const result = await wizardPromise
       expect(result.success).toBe(false)
@@ -486,12 +580,14 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
       expect(settled).toBe(false)
 
       // Now user clicks the proper ICS export
-      const icsData = vcal(vevent({
-        uid: 'tucan-valid-1',
-        summary: 'Mathematik 1 - Vorlesung',
-        start: '20261014T080000Z',
-        end: '20261014T093000Z',
-      }))
+      const icsData = vcal(
+        vevent({
+          uid: 'tucan-valid-1',
+          summary: 'Mathematik 1 - Vorlesung',
+          start: '20261014T080000Z',
+          end: '20261014T093000Z',
+        }),
+      )
 
       const icsItem = new MockDownloadItem({
         filename: 'stundenplan.ics',
@@ -520,14 +616,16 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
       const win = MockBrowserWindow.instances[0]
       const ses = MockSession.fromPartition('tucan-session')
 
-      const icsString = vcal(vevent({
-        uid: 'tucan-utf16le-1',
-        summary: 'Software Engineering - Vorlesung',
-        start: '20261015T100000Z',
-        end: '20261015T113000Z',
-        location: 'S2|02 / Room A',
-        description: 'TUCaN Vorlesung mit Umlauten: Überprüfung & Grüße',
-      }))
+      const icsString = vcal(
+        vevent({
+          uid: 'tucan-utf16le-1',
+          summary: 'Software Engineering - Vorlesung',
+          start: '20261015T100000Z',
+          end: '20261015T113000Z',
+          location: 'S2|02 / Room A',
+          description: 'TUCaN Vorlesung mit Umlauten: Überprüfung & Grüße',
+        }),
+      )
 
       const utf16Bytes = encodeUtf16Le(icsString, true)
 
@@ -563,12 +661,14 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
       const win = MockBrowserWindow.instances[0]
       const ses = MockSession.fromPartition('tucan-session')
 
-      const icsString = vcal(vevent({
-        uid: 'tucan-utf16be-1',
-        summary: 'Rechnerorganisation - Übung',
-        start: '20261016T140000Z',
-        end: '20261016T153000Z',
-      }))
+      const icsString = vcal(
+        vevent({
+          uid: 'tucan-utf16be-1',
+          summary: 'Rechnerorganisation - Übung',
+          start: '20261016T140000Z',
+          end: '20261016T153000Z',
+        }),
+      )
 
       const utf16Bytes = encodeUtf16Be(icsString, true)
 
@@ -685,13 +785,19 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
     it('accepts both (service, parentWindow) and (parentWindow, service)', async () => {
       const dummyParent = new MockBrowserWindow()
 
-      const p1 = startTucanWizard(service, dummyParent as unknown as import('electron').BrowserWindow)
+      const p1 = startTucanWizard(
+        service,
+        dummyParent as unknown as import('electron').BrowserWindow,
+      )
       const win1 = MockBrowserWindow.instances[MockBrowserWindow.instances.length - 1]
       expect(win1.options.parent).toBe(dummyParent)
       win1.close()
       await p1
 
-      const p2 = startTucanWizard(dummyParent as unknown as import('electron').BrowserWindow, service)
+      const p2 = startTucanWizard(
+        dummyParent as unknown as import('electron').BrowserWindow,
+        service,
+      )
       const win2 = MockBrowserWindow.instances[MockBrowserWindow.instances.length - 1]
       expect(win2.options.parent).toBe(dummyParent)
       win2.close()
@@ -713,11 +819,13 @@ describe('Challenger M3: TUCaN Session Wizard Empirical Stress Harness', () => {
       const ses = MockSession.fromPartition('tucan-session')
 
       // Download triggered specifically in window 2
-      const icsData = vcal(vevent({
-        uid: 'win2-event',
-        summary: 'Window 2 Vorlesung',
-        start: '20261018T100000Z',
-      }))
+      const icsData = vcal(
+        vevent({
+          uid: 'win2-event',
+          summary: 'Window 2 Vorlesung',
+          start: '20261018T100000Z',
+        }),
+      )
       const item = new MockDownloadItem({
         filename: 'win2.ics',
         mime: 'text/calendar',

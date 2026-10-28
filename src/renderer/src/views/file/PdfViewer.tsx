@@ -1,6 +1,13 @@
-// PDF-Ansicht (Vorlesungsfolien): Seiten werden erst beim Hinscrollen gerendert.
-// Text ist markierbar, und mit dem Stift kann man direkt auf die Folien schreiben.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+// PDF viewer (lecture slides): pages are rendered lazily when scrolled into view.
+// Text is selectable, and the pen can draw directly on the slides.
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { ExternalLink, Minus, PenLine, Plus, ScanLine } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import type { Annotations, Item, Stroke } from '@shared/types'
@@ -44,7 +51,10 @@ function PdfPage({
   const [size, setSize] = useState<Size>(estimate)
 
   useEffect(() => {
-    const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && setVisible(true), { rootMargin: '1200px 0px' })
+    const observer = new IntersectionObserver(
+      ([entry]) => entry.isIntersecting && setVisible(true),
+      { rootMargin: '1200px 0px' },
+    )
     if (ref.current) observer.observe(ref.current)
     return () => observer.disconnect()
   }, [])
@@ -63,11 +73,19 @@ function PdfPage({
       const canvas = canvasRef.current!
       canvas.width = Math.floor(viewport.width * ratio)
       canvas.height = Math.floor(viewport.height * ratio)
-      task = page.render({ canvas, viewport, transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined })
+      task = page.render({
+        canvas,
+        viewport,
+        transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
+      })
       await task.promise.catch(() => undefined)
       if (cancelled || !textRef.current) return
       textRef.current.replaceChildren()
-      await new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: textRef.current, viewport }).render()
+      await new pdfjs.TextLayer({
+        textContentSource: page.streamTextContent(),
+        container: textRef.current,
+        viewport,
+      }).render()
     })().catch(() => undefined)
     return () => {
       cancelled = true
@@ -75,7 +93,11 @@ function PdfPage({
     }
   }, [visible, pdf, number, scale])
 
-  const style = { width: size.width * scale, height: size.height * scale, '--scale-factor': scale } as CSSProperties
+  const style = {
+    width: size.width * scale,
+    height: size.height * scale,
+    '--scale-factor': scale,
+  } as CSSProperties
   return (
     <div ref={ref} className="pdf-page" data-page={number} style={style}>
       <canvas ref={canvasRef} />
@@ -118,7 +140,10 @@ export function PdfViewer({ item }: { item: Item }) {
         setFirst({ width: v.width, height: v.height })
         setPdf(loaded)
       })
-      .catch((e: Error) => !cancelled && toastError(new Error(`PDF konnte nicht geöffnet werden: ${e.message}`)))
+      .catch(
+        (e: Error) =>
+          !cancelled && toastError(new Error(`PDF konnte nicht geöffnet werden: ${e.message}`)),
+      )
     void api.readAnnotations(item.id).then((a) => !cancelled && a && setAnnotations(a))
     return () => {
       cancelled = true
@@ -140,7 +165,10 @@ export function PdfViewer({ item }: { item: Item }) {
       setAnnotations((current) => {
         const next = { pages: { ...current.pages, [pageNumber]: strokes } }
         if (saveTimer.current) clearTimeout(saveTimer.current)
-        saveTimer.current = setTimeout(() => void api.writeAnnotations(item.id, next).catch(toastError), 600)
+        saveTimer.current = setTimeout(
+          () => void api.writeAnnotations(item.id, next).catch(toastError),
+          600,
+        )
         return next
       })
     },
@@ -165,7 +193,8 @@ export function PdfViewer({ item }: { item: Item }) {
     target?.scrollIntoView({ block: 'start' })
   }
 
-  const zoomBy = (factor: number) => setZoom(Math.min(4, Math.max(0.3, Math.round(scale * factor * 100) / 100)))
+  const zoomBy = (factor: number) =>
+    setZoom(Math.min(4, Math.max(0.3, Math.round(scale * factor * 100) / 100)))
 
   return (
     <div className="file-view">
@@ -181,17 +210,43 @@ export function PdfViewer({ item }: { item: Item }) {
           / {pdf?.numPages ?? '–'}
         </span>
         <span className="toolbar-sep" />
-        <IconButton label="Verkleinern" onClick={() => zoomBy(1 / 1.15)}><Minus /></IconButton>
+        <IconButton label="Verkleinern" onClick={() => zoomBy(1 / 1.15)}>
+          <Minus />
+        </IconButton>
         <span className="small muted tabular zoom-label">{Math.round(scale * 100)} %</span>
-        <IconButton label="Vergrößern" onClick={() => zoomBy(1.15)}><Plus /></IconButton>
-        <IconButton label="An Breite anpassen" pressed={zoom === 'fit'} onClick={() => setZoom('fit')}><ScanLine /></IconButton>
+        <IconButton label="Vergrößern" onClick={() => zoomBy(1.15)}>
+          <Plus />
+        </IconButton>
+        <IconButton
+          label="An Breite anpassen"
+          pressed={zoom === 'fit'}
+          onClick={() => setZoom('fit')}
+        >
+          <ScanLine />
+        </IconButton>
         <span className="toolbar-sep" />
-        <IconButton label="Auf Folien schreiben" pressed={drawing} onClick={() => setDrawing(!drawing)}><PenLine /></IconButton>
+        <IconButton
+          label="Auf Folien schreiben"
+          pressed={drawing}
+          onClick={() => setDrawing(!drawing)}
+        >
+          <PenLine />
+        </IconButton>
         {drawing && (
-          <InkToolbar tool={tool} onTool={setTool} penOnly={settings.penOnly} onPenOnly={(penOnly) => updateSettings('editor', { penOnly })} />
+          <InkToolbar
+            tool={tool}
+            onTool={setTool}
+            penOnly={settings.penOnly}
+            onPenOnly={(penOnly) => updateSettings('editor', { penOnly })}
+          />
         )}
         <span className="spacer" />
-        <IconButton label="Mit Standard-App öffnen" onClick={() => void api.openFile(item).catch(toastError)}><ExternalLink /></IconButton>
+        <IconButton
+          label="Mit Standard-App öffnen"
+          onClick={() => void api.openFile(item).catch(toastError)}
+        >
+          <ExternalLink />
+        </IconButton>
       </div>
       <div className="pdf-scroll" ref={scrollRef} onScroll={onScroll}>
         {pdf &&

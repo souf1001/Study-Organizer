@@ -149,7 +149,9 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
 
       it('handles URLs with ports, query parameters, auth tokens, and internationalized domain names', () => {
         expect(isValidFeedUrl('webcal://campus.tu-darmstadt.de:8443/cal.ics')).toBe(true)
-        expect(isValidFeedUrl('https://moodle.tu-darmstadt.de/export.php?id=1&token=sec!@$%^*()')).toBe(true)
+        expect(
+          isValidFeedUrl('https://moodle.tu-darmstadt.de/export.php?id=1&token=sec!@$%^*()'),
+        ).toBe(true)
         expect(isValidFeedUrl('https://münchen-hochschule.de/kalender.ics')).toBe(true)
         expect(isValidFeedUrl('https://127.0.0.1:8080/cal.ics')).toBe(true)
       })
@@ -170,14 +172,23 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       })
 
       it('normalizes webcal:// and webcals:// to https://', () => {
-        expect(normalizeCalendarUrl('webcal://tucan.tu-darmstadt.de/cal.ics')).toBe('https://tucan.tu-darmstadt.de/cal.ics')
-        expect(normalizeCalendarUrl('webcals://tucan.tu-darmstadt.de/cal.ics')).toBe('https://tucan.tu-darmstadt.de/cal.ics')
-        expect(normalizeCalendarUrl('http://insecure.h-da.de/cal.ics')).toBe('http://insecure.h-da.de/cal.ics')
-        expect(normalizeCalendarUrl('https://secure.h-da.de/cal.ics')).toBe('https://secure.h-da.de/cal.ics')
+        expect(normalizeCalendarUrl('webcal://tucan.tu-darmstadt.de/cal.ics')).toBe(
+          'https://tucan.tu-darmstadt.de/cal.ics',
+        )
+        expect(normalizeCalendarUrl('webcals://tucan.tu-darmstadt.de/cal.ics')).toBe(
+          'https://tucan.tu-darmstadt.de/cal.ics',
+        )
+        expect(normalizeCalendarUrl('http://insecure.h-da.de/cal.ics')).toBe(
+          'http://insecure.h-da.de/cal.ics',
+        )
+        expect(normalizeCalendarUrl('https://secure.h-da.de/cal.ics')).toBe(
+          'https://secure.h-da.de/cal.ics',
+        )
       })
 
       it('maskCalendarUrl protects authentication tokens and sensitive parameters', () => {
-        const sensitive1 = 'https://moodle.tu-darmstadt.de/export.php?userid=12345&authtoken=supersecrettoken999'
+        const sensitive1 =
+          'https://moodle.tu-darmstadt.de/export.php?userid=12345&authtoken=supersecrettoken999'
         const masked1 = maskCalendarUrl(sensitive1)
         expect(masked1).not.toContain('supersecrettoken999')
         expect(masked1).not.toContain('12345')
@@ -223,7 +234,10 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       const mockFetch = vi.fn().mockResolvedValue(new Response(vcal(''))) as unknown as typeof fetch
       const service = createService(store, secrets, { fetchImpl: mockFetch })
 
-      const sub = await service.calendarSubscribe('  Höhere Mathematik II & Übungen (WS 26/27)  ', 'https://uni.de/cal.ics')
+      const sub = await service.calendarSubscribe(
+        '  Höhere Mathematik II & Übungen (WS 26/27)  ',
+        'https://uni.de/cal.ics',
+      )
       expect(sub.name).toBe('Höhere Mathematik II & Übungen (WS 26/27)')
     })
   })
@@ -255,10 +269,15 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
     })
 
     it('calendarSync handles network timeouts and aborts gracefully without unhandled rejections', async () => {
-      const mockFetch = vi.fn().mockRejectedValue(new Error('Network request failed: timeout')) as unknown as typeof fetch
+      const mockFetch = vi
+        .fn()
+        .mockRejectedValue(new Error('Network request failed: timeout')) as unknown as typeof fetch
       const service = createService(store, secrets, { fetchImpl: mockFetch })
 
-      const sub = await service.calendarSubscribe('Network Timeout Feed', 'https://campus.de/cal.ics')
+      const sub = await service.calendarSubscribe(
+        'Network Timeout Feed',
+        'https://campus.de/cal.ics',
+      )
       expect(sub.lastError).toBe('Network request failed: timeout')
 
       const res = await service.calendarSync(sub.id)
@@ -268,7 +287,9 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
 
     it('calendarSync handles non-calendar / garbage payload safely', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
-        new Response('<!DOCTYPE html><html><body>Error 500 Internal Error</body></html>', { status: 200 }),
+        new Response('<!DOCTYPE html><html><body>Error 500 Internal Error</body></html>', {
+          status: 200,
+        }),
       ) as unknown as typeof fetch
       const service = createService(store, secrets, { fetchImpl: mockFetch })
 
@@ -305,7 +326,14 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       expect(store.get().subscriptions.find((s) => s.id === sub.id)).toBeUndefined()
 
       // Now resolve the fetch with events
-      const icsData = vcal(vevent({ uid: 'late-1', summary: 'Late Event', start: '20261012T080000Z', end: '20261012T090000Z' }))
+      const icsData = vcal(
+        vevent({
+          uid: 'late-1',
+          summary: 'Late Event',
+          start: '20261012T080000Z',
+          end: '20261012T090000Z',
+        }),
+      )
       resolveFetch(new Response(icsData))
 
       const result = await syncPromise
@@ -318,10 +346,22 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
 
     it('deduplicates and merges events across multiple sync cycles without event ballooning', async () => {
       const icsData = vcal(
-        vevent({ uid: 'ev-1', summary: 'Mathematik I', start: '20261015T080000Z', end: '20261015T100000Z' }) +
-        vevent({ uid: 'ev-2', summary: 'Physik I', start: '20261016T080000Z', end: '20261016T100000Z' }),
+        vevent({
+          uid: 'ev-1',
+          summary: 'Mathematik I',
+          start: '20261015T080000Z',
+          end: '20261015T100000Z',
+        }) +
+          vevent({
+            uid: 'ev-2',
+            summary: 'Physik I',
+            start: '20261016T080000Z',
+            end: '20261016T100000Z',
+          }),
       )
-      const mockFetch = vi.fn().mockImplementation(() => new Response(icsData)) as unknown as typeof fetch
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(() => new Response(icsData)) as unknown as typeof fetch
       const service = createService(store, secrets, { fetchImpl: mockFetch })
 
       const sub = await service.calendarSubscribe('Uni Feed', 'https://campus.de/cal.ics')
@@ -341,7 +381,12 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
   describe('Subscription Lifecycle: Removal & Cascading Deletions', () => {
     it('calendarUnsubscribe deletes subscription, secret token, and cascades all associated events', async () => {
       const icsData = vcal(
-        vevent({ uid: 'ev-sub1', summary: 'Sub 1 Event', start: '20261015T080000Z', end: '20261015T100000Z' }),
+        vevent({
+          uid: 'ev-sub1',
+          summary: 'Sub 1 Event',
+          start: '20261015T080000Z',
+          end: '20261015T100000Z',
+        }),
       )
       const mockFetch = vi.fn().mockResolvedValue(new Response(icsData)) as unknown as typeof fetch
       const service = createService(store, secrets, { fetchImpl: mockFetch })
@@ -380,10 +425,25 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
     })
 
     it('removing one subscription leaves other subscriptions and their events untouched', async () => {
-      const ics1 = vcal(vevent({ uid: 'ev-1', summary: 'Sub 1 Event', start: '20261015T080000Z', end: '20261015T100000Z' }))
-      const ics2 = vcal(vevent({ uid: 'ev-2', summary: 'Sub 2 Event', start: '20261016T080000Z', end: '20261016T100000Z' }))
+      const ics1 = vcal(
+        vevent({
+          uid: 'ev-1',
+          summary: 'Sub 1 Event',
+          start: '20261015T080000Z',
+          end: '20261015T100000Z',
+        }),
+      )
+      const ics2 = vcal(
+        vevent({
+          uid: 'ev-2',
+          summary: 'Sub 2 Event',
+          start: '20261016T080000Z',
+          end: '20261016T100000Z',
+        }),
+      )
 
-      const mockFetch = vi.fn()
+      const mockFetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(ics1))
         .mockResolvedValueOnce(new Response(ics2)) as unknown as typeof fetch
 
@@ -430,7 +490,11 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
           return
         }
         if (!isValidFeedUrl(url)) {
-          mockToastError(new Error('Ungültige Kalender-URL. Erlaubte Protokolle sind webcal://, https:// oder http://.'))
+          mockToastError(
+            new Error(
+              'Ungültige Kalender-URL. Erlaubte Protokolle sind webcal://, https:// oder http://.',
+            ),
+          )
           return
         }
         await apiSubscribe(name, url)
@@ -438,14 +502,18 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
 
       // Empty name
       await runSubscribe('  ', 'https://campus.de/cal.ics')
-      expect(mockToastError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Namen') }))
+      expect(mockToastError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('Namen') }),
+      )
       expect(apiSubscribe).not.toHaveBeenCalled()
 
       mockToastError.mockClear()
 
       // Invalid URL
       await runSubscribe('Valid Name', 'ftp://campus.de/cal.ics')
-      expect(mockToastError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Ungültige Kalender-URL') }))
+      expect(mockToastError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('Ungültige Kalender-URL') }),
+      )
       expect(apiSubscribe).not.toHaveBeenCalled()
     })
 
@@ -466,7 +534,9 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       }
 
       await handleSync('sub-123')
-      expect(mockToastError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Sync failed unexpectedly' }))
+      expect(mockToastError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Sync failed unexpectedly' }),
+      )
       // Must NOT remain stuck in syncing state!
       expect(syncingId).toBeNull()
     })
@@ -477,7 +547,13 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       const mockLoadDb = vi.fn().mockResolvedValue(undefined)
       const mockToast = vi.fn()
 
-      const handleRemove = async (sub: Subscription, api: { removeSubscription?: (id: string) => Promise<void>; unsubscribe?: (id: string) => Promise<void> }) => {
+      const handleRemove = async (
+        sub: Subscription,
+        api: {
+          removeSubscription?: (id: string) => Promise<void>
+          unsubscribe?: (id: string) => Promise<void>
+        },
+      ) => {
         const ok = await mockConfirm({
           title: `„${sub.name}“ entfernen?`,
           message: 'Alle zugehörigen Termine werden aus dem Kalender gelöscht.',
@@ -493,7 +569,15 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
         mockToast(`„${sub.name}“ wurde entfernt`)
       }
 
-      const testSub: Subscription = { id: 's-1', name: 'TUCaN Plan', kind: 'file', url: 'local.ics', enabled: true, lastSync: null, lastError: null }
+      const testSub: Subscription = {
+        id: 's-1',
+        name: 'TUCaN Plan',
+        kind: 'file',
+        url: 'local.ics',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
 
       // 1. User cancels confirm
       mockConfirm.mockResolvedValueOnce(false)
@@ -521,7 +605,9 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       const mockToast = vi.fn()
       const mockToastError = vi.fn()
 
-      const handleWizard = async (wizardFn: () => Promise<{ success: boolean; count?: number; error?: string }>) => {
+      const handleWizard = async (
+        wizardFn: () => Promise<{ success: boolean; count?: number; error?: string }>,
+      ) => {
         tucanBusy = true
         try {
           const res = await wizardFn()
@@ -540,7 +626,10 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       }
 
       // Case 1: Cancellation by user
-      await handleWizard(async () => ({ success: false, error: 'Vorgang durch Benutzer abgebrochen.' }))
+      await handleWizard(async () => ({
+        success: false,
+        error: 'Vorgang durch Benutzer abgebrochen.',
+      }))
       expect(mockToast).toHaveBeenCalledWith('TUCaN-Assistent abgebrochen')
       expect(mockToastError).not.toHaveBeenCalled()
       expect(tucanBusy).toBe(false)
@@ -548,8 +637,13 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
       mockToast.mockClear()
 
       // Case 2: Network failure
-      await handleWizard(async () => ({ success: false, error: 'Verbindung zu TUCaN fehlgeschlagen (ERR_CONNECTION_REFUSED).' }))
-      expect(mockToastError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('fehlgeschlagen') }))
+      await handleWizard(async () => ({
+        success: false,
+        error: 'Verbindung zu TUCaN fehlgeschlagen (ERR_CONNECTION_REFUSED).',
+      }))
+      expect(mockToastError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('fehlgeschlagen') }),
+      )
       expect(tucanBusy).toBe(false)
 
       mockToastError.mockClear()
@@ -566,12 +660,15 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
   // Suite 6: IntegrationSettings File Inspection & Wiring Verification
   // ==========================================================================
   describe('Static & Layout Inspection of IntegrationSettings.tsx', () => {
-    const settingsPath = path.resolve(__dirname, '../src/renderer/src/views/settings/IntegrationSettings.tsx')
+    const settingsPath = path.resolve(
+      __dirname,
+      '../src/renderer/src/views/settings/IntegrationSettings.tsx',
+    )
     const content = readFileSync(settingsPath, 'utf-8')
 
     it('defines isValidFeedUrl with protocol regex and URL candidate test', () => {
       expect(content).toContain('function isValidFeedUrl(rawUrl: string): boolean')
-      expect(content).toContain('candidate = trimmed.replace(/^webcals?:\\/\\//i, \'https://\')')
+      expect(content).toContain("candidate = trimmed.replace(/^webcals?:\\/\\//i, 'https://')")
       expect(content).toContain('new URL(candidate)')
     })
 
@@ -612,7 +709,8 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
   // ==========================================================================
   describe('Deep Stress & Multi-Subscription Edge Conditions', () => {
     it('maskCalendarUrl protects credentials embedded in userinfo (e.g. https://user:pass@host)', () => {
-      const urlWithCreds = 'https://student_user:super_secret_password@tucan.tu-darmstadt.de/cal.ics?authtoken=abc123xyz'
+      const urlWithCreds =
+        'https://student_user:super_secret_password@tucan.tu-darmstadt.de/cal.ics?authtoken=abc123xyz'
       const masked = maskCalendarUrl(urlWithCreds)
 
       expect(masked).not.toContain('super_secret_password')
@@ -665,7 +763,9 @@ describe('Challenger M3-2: IntegrationSettings UI, WebCal URL Validation & Subsc
 
     it('supports rapid sequential creation, sync, and removal of multiple subscriptions', async () => {
       const mockFetch = vi.fn().mockImplementation(async (url: string) => {
-        const ics = vcal(vevent({ uid: `ev-${url}`, summary: `Event for ${url}`, start: '20261015T080000Z' }))
+        const ics = vcal(
+          vevent({ uid: `ev-${url}`, summary: `Event for ${url}`, start: '20261015T080000Z' }),
+        )
         return new Response(ics)
       }) as unknown as typeof fetch
 

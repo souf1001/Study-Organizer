@@ -1,10 +1,11 @@
-// Arbeitsfläche: bis zu 4 Bereiche (Split-Screen), jeder mit eigener Ansicht und Verlauf.
+// Workspace: up to 4 split-screen panes, each with its own view and history.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ID } from '@shared/types'
 import { toast } from '@/ui/Toast'
 
-export type ModuleTab = 'overview' | 'sessions' | 'lab' | 'files' | 'tasks' | 'announcements' | 'chats'
+export type ModuleTab =
+  'overview' | 'sessions' | 'lab' | 'files' | 'tasks' | 'announcements' | 'chats'
 
 export type View =
   | { type: 'home' }
@@ -43,7 +44,7 @@ interface WorkspaceState {
 const newPane = (view: View): Pane => ({ id: crypto.randomUUID(), view, back: [], forward: [] })
 const sameView = (a: View, b: View): boolean => JSON.stringify(a) === JSON.stringify(b)
 
-const first = newPane({ type: 'home' })
+const initialPane = newPane({ type: 'home' })
 
 export const useWorkspace = create<WorkspaceState>()(
   persist(
@@ -52,8 +53,8 @@ export const useWorkspace = create<WorkspaceState>()(
         set((s) => ({ panes: s.panes.map((p) => (p.id === paneId ? fn(p) : p)) }))
 
       return {
-        panes: [first],
-        activeId: first.id,
+        panes: [initialPane],
+        activeId: initialPane.id,
         sidebarOpen: true,
 
         open(view, options = {}) {
@@ -61,6 +62,7 @@ export const useWorkspace = create<WorkspaceState>()(
           if (options.newPane) {
             const existing = panes.find((p) => sameView(p.view, view))
             if (existing) return set({ activeId: existing.id })
+            // When all panes are taken, fall through and open the view in the target pane instead.
             if (panes.length >= MAX_PANES) {
               toast(`Es passen höchstens ${MAX_PANES} Bereiche nebeneinander.`)
             } else {
@@ -89,7 +91,10 @@ export const useWorkspace = create<WorkspaceState>()(
           }
           const index = panes.findIndex((p) => p.id === paneId)
           const rest = panes.filter((p) => p.id !== paneId)
-          set({ panes: rest, activeId: activeId === paneId ? rest[Math.max(0, index - 1)].id : activeId })
+          set({
+            panes: rest,
+            activeId: activeId === paneId ? rest[Math.max(0, index - 1)].id : activeId,
+          })
         },
 
         focus(paneId) {
@@ -99,7 +104,12 @@ export const useWorkspace = create<WorkspaceState>()(
         back(paneId) {
           updatePane(paneId, (p) =>
             p.back.length
-              ? { ...p, view: p.back[p.back.length - 1], back: p.back.slice(0, -1), forward: [p.view, ...p.forward] }
+              ? {
+                  ...p,
+                  view: p.back[p.back.length - 1],
+                  back: p.back.slice(0, -1),
+                  forward: [p.view, ...p.forward],
+                }
               : p,
           )
         },
@@ -124,7 +134,7 @@ export const useWorkspace = create<WorkspaceState>()(
   ),
 )
 
-/** Ansicht öffnen – mit gedrückter Cmd/Strg-Taste in einem neuen Bereich */
+/** Opens a view; with Cmd/Ctrl held it opens in a new pane. */
 export function openView(view: View, event?: { metaKey: boolean; ctrlKey: boolean }): void {
   useWorkspace.getState().open(view, { newPane: Boolean(event?.metaKey || event?.ctrlKey) })
 }
@@ -133,5 +143,5 @@ export function openInNewPane(view: View): void {
   useWorkspace.getState().open(view, { newPane: true })
 }
 
-/** Datentyp für Drag & Drop von Einträgen in einen Bereich */
+/** Drag & drop data type for dropping entries onto a pane. */
 export const DRAG_VIEW_TYPE = 'application/x-study-view'

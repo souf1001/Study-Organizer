@@ -251,7 +251,9 @@ describe('TUCaN In-Page Background Fetch & Completion Button', () => {
 
     // Window remains open
     expect(win.isDestroyed()).toBe(false)
-    const retryScripts = win.webContents.executedScripts.filter((s) => s.includes('Erneut versuchen'))
+    const retryScripts = win.webContents.executedScripts.filter((s) =>
+      s.includes('Erneut versuchen'),
+    )
     expect(retryScripts.length).toBeGreaterThan(0)
 
     // Closing without any import resolves with cancellation error

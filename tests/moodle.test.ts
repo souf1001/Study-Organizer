@@ -25,7 +25,7 @@ function fakeFetch(handler: Handler): typeof fetch {
 }
 
 describe('Moodle', () => {
-  it('normalisiert Moodle-Adressen', () => {
+  it('normalizes Moodle addresses', () => {
     expect(normalizeMoodleUrl('lernen.h-da.de/my/')).toBe('https://lernen.h-da.de')
     expect(normalizeMoodleUrl('https://moodle.uni.de/moodle/login/index.php')).toBe(
       'https://moodle.uni.de/moodle',
@@ -33,7 +33,7 @@ describe('Moodle', () => {
     expect(() => normalizeMoodleUrl('http://unsicher.de')).toThrow()
   })
 
-  it('meldet sich an und lädt Kurse', async () => {
+  it('logs in and loads courses', async () => {
     const fetchImpl = fakeFetch((fn) =>
       fn === 'core_webservice_get_site_info'
         ? { sitename: 'h_da Moodle', userid: 7, fullname: 'Test' }
@@ -47,7 +47,7 @@ describe('Moodle', () => {
     expect(result.courses).toEqual([{ id: 11, fullname: 'Analysis 1', shortname: 'ANA1' }])
   })
 
-  it('erkennt die Login-Art über die öffentliche Konfiguration', async () => {
+  it('detects the login type via the public configuration', async () => {
     const fetchImpl = (async () =>
       Response.json([
         {
@@ -62,7 +62,7 @@ describe('Moodle', () => {
     })
   })
 
-  it('übernimmt Fehlermeldungen von Moodle', async () => {
+  it('passes through error messages from Moodle', async () => {
     const client = new MoodleClient(
       'https://m.de',
       't',
@@ -71,7 +71,7 @@ describe('Moodle', () => {
     await expect(client.siteInfo()).rejects.toThrow('Ungültiges Token')
   })
 
-  it('synchronisiert Abgaben, Termine und Dateien', async () => {
+  it('syncs assignments, events and files', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-'))
     try {
       const store = await Store.open(dir)
@@ -151,7 +151,7 @@ describe('Moodle', () => {
       const first = await syncMoodle(store, client)
       expect(first).toEqual({ tasks: 1, events: 1, files: 1, errors: [] })
 
-      // Erledigt-Status bleibt beim erneuten Abgleich erhalten, nichts wird doppelt angelegt
+      // The done status survives a re-sync and nothing is duplicated
       const task = store.get().tasks[0]
       store.put('tasks', { ...task, done: true })
       const second = await syncMoodle(store, client)
@@ -171,7 +171,7 @@ describe('Moodle', () => {
     }
   })
 
-  it('lädt keine Dateien, wenn das Speicherlimit erreicht ist', async () => {
+  it('does not download files when the storage limit is reached', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-'))
     try {
       const store = await Store.open(dir)
@@ -179,12 +179,31 @@ describe('Moodle', () => {
       store.put('modules', module)
       const settings = store.get().settings
       store.update({
-        settings: { ...settings, moodle: { ...settings.moodle, url: 'https://m.de', courseMap: { 11: module.id }, syncFiles: true } },
+        settings: {
+          ...settings,
+          moodle: {
+            ...settings.moodle,
+            url: 'https://m.de',
+            courseMap: { 11: module.id },
+            syncFiles: true,
+          },
+        },
       })
-      const file = { type: 'file', filename: 'a.pdf', fileurl: 'https://m.de/webservice/pluginfile.php/1/a.pdf', filesize: 4, timemodified: 1 }
+      const file = {
+        type: 'file',
+        filename: 'a.pdf',
+        fileurl: 'https://m.de/webservice/pluginfile.php/1/a.pdf',
+        filesize: 4,
+        timemodified: 1,
+      }
       const fetchImpl = fakeFetch((fn) =>
         fn === 'core_course_get_contents'
-          ? [{ name: 'Woche 1', modules: [{ modname: 'resource', name: 'Folien', contents: [file] }] }]
+          ? [
+              {
+                name: 'Woche 1',
+                modules: [{ modname: 'resource', name: 'Folien', contents: [file] }],
+              },
+            ]
           : fn === 'mod_assign_get_assignments'
             ? { courses: [] }
             : { events: [] },

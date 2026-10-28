@@ -1,4 +1,4 @@
-// Startseite „Heute“: Termine des Tages, anstehende Fristen und zuletzt Bearbeitetes.
+// "Heute" home page: today's sessions, upcoming deadlines and recently edited items.
 import { useState } from 'react'
 import { CalendarClock, FileText, FolderOpen, MapPin } from 'lucide-react'
 import { addDays, diffDays, isoDateOf, today } from '@shared/dates'
@@ -14,33 +14,44 @@ import { FileIcon } from '../file/FileIcon'
 import { SemesterDialog } from '../semester/SemesterDialog'
 import './home.css'
 
+const BANNER_DISMISSED_KEY = 'semester-banner-dismissed'
+
+/** Name of the semester whose "new semester" banner was dismissed. */
 function readDismissed(): string | null {
   try {
-    return localStorage.getItem('semester-banner-dismissed')
+    return localStorage.getItem(BANNER_DISMISSED_KEY)
   } catch {
     return null
   }
 }
 
-function SessionRow({ occ, showDay }: { occ: Occurrence; showDay?: boolean }) {
+function SessionRow({ occurrence, showDay }: { occurrence: Occurrence; showDay?: boolean }) {
   const db = useDb()
-  const module = db.modules.find((m) => m.id === occ.moduleId)
-  const folder = findSessionFolder(db, occ.moduleId, occ.date, occ.kind)
-  const count = folder ? db.items.filter((i) => i.folderId === folder.id && !i.attachedTo).length : 0
+  const module = db.modules.find((m) => m.id === occurrence.moduleId)
+  const folder = findSessionFolder(db, occurrence.moduleId, occurrence.date, occurrence.kind)
+  const count = folder
+    ? db.items.filter((i) => i.folderId === folder.id && !i.attachedTo).length
+    : 0
   if (!module) return null
   return (
-    <div className="list-row clickable" onClick={(e) => openSession(occ, e)}>
-      <span className="home-time tabular">{showDay ? formatDay(occ.date) : occ.start}</span>
+    <div className="list-row clickable" onClick={(e) => openSession(occurrence, e)}>
+      <span className="home-time tabular">
+        {showDay ? formatDay(occurrence.date) : occurrence.start}
+      </span>
       <span className={`dot color-${module.color}`} />
       <span className="truncate">
         {module.name}
-        <span className="faint"> · {SESSION_LABELS[occ.kind]}{showDay ? ` · ${occ.start}` : ''}</span>
+        <span className="faint">
+          {' '}
+          · {SESSION_LABELS[occurrence.kind]}
+          {showDay ? ` · ${occurrence.start}` : ''}
+        </span>
       </span>
       <span className="meta row">
-        {occ.room && (
+        {occurrence.room && (
           <span className="row home-room">
             <MapPin size={13} />
-            {occ.room}
+            {occurrence.room}
           </span>
         )}
         <FolderOpen size={14} />
@@ -58,9 +69,12 @@ export function HomeView() {
   const semester = activeSemester(db)
   const week = semester ? lectureWeek(semester, day) : null
 
-  // Neues Semester vorschlagen, wenn heute in keinem angelegten Semester liegt
+  // Suggest a new semester when today is not covered by any existing one.
   const expected = semesterForDate(db.settings.study.semesterModel, day)
-  const showBanner = db.settings.study.askForNewSemester && !findSemesterAt(db.semesters, day) && dismissed !== expected.name
+  const showBanner =
+    db.settings.study.askForNewSemester &&
+    !findSemesterAt(db.semesters, day) &&
+    dismissed !== expected.name
 
   const pad = (n: number) => String(n).padStart(2, '0')
   const timeOf = (iso: string) => {
@@ -68,14 +82,15 @@ export function HomeView() {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
-  const scheduleOccs = semester ? semesterOccurrences(db, semester) : []
+  // Module-bound calendar events (except exams/deadlines) are shown like timetable sessions.
+  const scheduleOccurrences = semester ? semesterOccurrences(db, semester) : []
   const calendarEvents = db.events.filter((e) => {
     if (e.kind === 'exam' || e.kind === 'deadline') return false
     if (!e.moduleId) return false
-    const mod = db.modules.find((m) => m.id === e.moduleId)
-    return mod && (!semester || mod.semesterId === semester.id)
+    const module = db.modules.find((m) => m.id === e.moduleId)
+    return module && (!semester || module.semesterId === semester.id)
   })
-  const eventOccs: Occurrence[] = calendarEvents.map((e) => {
+  const eventOccurrences: Occurrence[] = calendarEvents.map((e) => {
     const sessionKind: SessionKind =
       e.kind === 'lab' ? 'lab' : e.kind === 'exercise' ? 'exercise' : 'lecture'
     return {
@@ -89,13 +104,16 @@ export function HomeView() {
       index: 0,
     }
   })
-  const occMap = new Map<string, Occurrence>()
-  for (const o of scheduleOccs) occMap.set(`${o.date}#${o.start}#${o.kind}`, o)
-  for (const o of eventOccs) {
-    const key = `${o.date}#${o.start}#${o.kind}`
-    if (!occMap.has(key)) occMap.set(key, o)
+  // Timetable sessions win over calendar events at the same date, time and kind.
+  const occurrenceKey = (o: Occurrence) => `${o.date}#${o.start}#${o.kind}`
+  const occurrencesByKey = new Map<string, Occurrence>()
+  for (const o of scheduleOccurrences) occurrencesByKey.set(occurrenceKey(o), o)
+  for (const o of eventOccurrences) {
+    if (!occurrencesByKey.has(occurrenceKey(o))) occurrencesByKey.set(occurrenceKey(o), o)
   }
-  const occurrences = Array.from(occMap.values()).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
+  const occurrences = Array.from(occurrencesByKey.values()).sort((a, b) =>
+    (a.date + a.start).localeCompare(b.date + b.start),
+  )
   const todays = occurrences.filter((o) => o.date === day)
   const upcoming = occurrences.filter((o) => o.date > day).slice(0, 5)
 
@@ -103,10 +121,31 @@ export function HomeView() {
   const deadlines = [
     ...db.tasks
       .filter((t) => !t.done && t.due && isoDateOf(t.due) <= horizon)
-      .map((t) => ({ id: t.id, title: t.title, when: t.due!, allDay: false, moduleId: t.moduleId, kind: 'Aufgabe', view: { type: 'tasks' } as const })),
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        when: t.due!,
+        allDay: false,
+        moduleId: t.moduleId,
+        kind: 'Aufgabe',
+        view: { type: 'tasks' } as const,
+      })),
     ...db.events
-      .filter((e) => (e.kind === 'exam' || e.kind === 'deadline') && isoDateOf(e.start) >= day && isoDateOf(e.start) <= addDays(day, 45))
-      .map((e) => ({ id: e.id, title: e.title, when: e.start, allDay: e.allDay, moduleId: e.moduleId, kind: e.kind === 'exam' ? 'Prüfung' : 'Frist', view: { type: 'calendar' } as const })),
+      .filter(
+        (e) =>
+          (e.kind === 'exam' || e.kind === 'deadline') &&
+          isoDateOf(e.start) >= day &&
+          isoDateOf(e.start) <= addDays(day, 45),
+      )
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        when: e.start,
+        allDay: e.allDay,
+        moduleId: e.moduleId,
+        kind: e.kind === 'exam' ? 'Prüfung' : 'Frist',
+        view: { type: 'calendar' } as const,
+      })),
   ].sort((a, b) => a.when.localeCompare(b.when))
 
   const recent = db.items
@@ -116,8 +155,10 @@ export function HomeView() {
 
   let status = semester?.name ?? ''
   if (semester && week) status += ` · Vorlesungswoche ${week.week} von ${week.total}`
-  else if (semester && day < semester.lectureStart) status += ` · Vorlesungsbeginn ${relativeDay(semester.lectureStart)}`
-  else if (semester && day > semester.lectureEnd && day <= semester.end) status += ' · vorlesungsfreie Zeit'
+  else if (semester && day < semester.lectureStart)
+    status += ` · Vorlesungsbeginn ${relativeDay(semester.lectureStart)}`
+  else if (semester && day > semester.lectureEnd && day <= semester.end)
+    status += ' · vorlesungsfreie Zeit'
 
   return (
     <div className="page">
@@ -136,7 +177,9 @@ export function HomeView() {
             <CalendarClock />
             <div>
               <div className="banner-title">Das {expected.name} hat begonnen</div>
-              <div className="small muted">Leg das neue Semester an und übernimm Module, die weiterlaufen.</div>
+              <div className="small muted">
+                Leg das neue Semester an und übernimm Module, die weiterlaufen.
+              </div>
             </div>
             <span className="spacer" />
             <Button
@@ -144,9 +187,9 @@ export function HomeView() {
               onClick={() => {
                 setDismissed(expected.name)
                 try {
-                  localStorage.setItem('semester-banner-dismissed', expected.name)
+                  localStorage.setItem(BANNER_DISMISSED_KEY, expected.name)
                 } catch {
-                  // egal
+                  // Storage unavailable: the banner just reappears next time.
                 }
               }}
             >
@@ -161,10 +204,14 @@ export function HomeView() {
         <div className="home-grid">
           <section className="section">
             <div className="section-title">Heute</div>
-            {todays.length === 0 && <p className="muted small home-empty">Heute stehen keine Veranstaltungen im Stundenplan.</p>}
+            {todays.length === 0 && (
+              <p className="muted small home-empty">
+                Heute stehen keine Veranstaltungen im Stundenplan.
+              </p>
+            )}
             <div className="list">
               {todays.map((o) => (
-                <SessionRow key={o.slotId + o.date} occ={o} />
+                <SessionRow key={o.slotId + o.date} occurrence={o} />
               ))}
             </div>
             {upcoming.length > 0 && (
@@ -172,7 +219,7 @@ export function HomeView() {
                 <div className="section-title home-subtitle">Als Nächstes</div>
                 <div className="list">
                   {upcoming.map((o) => (
-                    <SessionRow key={o.slotId + o.date} occ={o} showDay />
+                    <SessionRow key={o.slotId + o.date} occurrence={o} showDay />
                   ))}
                 </div>
               </>
@@ -181,17 +228,33 @@ export function HomeView() {
 
           <section className="section">
             <div className="section-title">Fristen & Prüfungen</div>
-            {deadlines.length === 0 && <p className="muted small home-empty">In den nächsten zwei Wochen ist nichts fällig.</p>}
+            {deadlines.length === 0 && (
+              <p className="muted small home-empty">
+                In den nächsten zwei Wochen ist nichts fällig.
+              </p>
+            )}
             <div className="list">
               {deadlines.map((d) => {
                 const module = db.modules.find((m) => m.id === d.moduleId)
                 const days = diffDays(day, isoDateOf(d.when))
                 return (
-                  <div key={d.id} className="list-row clickable" onClick={(e) => openView(d.view, e)}>
-                    <span className={`badge ${days < 0 ? 'color-red' : days <= 2 ? 'color-orange' : ''}`}>{relativeDay(isoDateOf(d.when))}</span>
+                  <div
+                    key={d.id}
+                    className="list-row clickable"
+                    onClick={(e) => openView(d.view, e)}
+                  >
+                    <span
+                      className={`badge ${days < 0 ? 'color-red' : days <= 2 ? 'color-orange' : ''}`}
+                    >
+                      {relativeDay(isoDateOf(d.when))}
+                    </span>
                     <span className="truncate">
                       {d.title}
-                      <span className="faint"> · {d.kind}{module ? ` · ${module.name}` : ''}</span>
+                      <span className="faint">
+                        {' '}
+                        · {d.kind}
+                        {module ? ` · ${module.name}` : ''}
+                      </span>
                     </span>
                     <span className="meta">{formatDateTime(d.when, d.allDay)}</span>
                   </div>
@@ -203,12 +266,21 @@ export function HomeView() {
 
         <section className="section">
           <div className="section-title">Zuletzt bearbeitet</div>
-          {recent.length === 0 && <p className="muted small home-empty">Noch keine Notizen oder Dateien. Öffne ein Modul in der Seitenleiste, um loszulegen.</p>}
+          {recent.length === 0 && (
+            <p className="muted small home-empty">
+              Noch keine Notizen oder Dateien. Öffne ein Modul in der Seitenleiste, um loszulegen.
+            </p>
+          )}
           <div className="recent-grid">
             {recent.map((item) => {
               const module = db.modules.find((m) => m.id === item.moduleId)
               return (
-                <button key={item.id} type="button" className="recent-card" onClick={(e) => openView({ type: 'item', id: item.id }, e)}>
+                <button
+                  key={item.id}
+                  type="button"
+                  className="recent-card"
+                  onClick={(e) => openView({ type: 'item', id: item.id }, e)}
+                >
                   {item.kind === 'note' ? <FileText /> : <FileIcon type={item.fileType} />}
                   <span className="recent-title truncate">{item.title}</span>
                   <span className="recent-meta truncate">

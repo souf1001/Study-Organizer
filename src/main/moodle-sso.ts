@@ -1,29 +1,22 @@
-// Moodle-Anmeldung über den Hochschul-Login (SSO/Shibboleth) – wie bei der offiziellen Moodle-App:
-// Moodle leitet nach dem Login auf moodlemobile://token=<base64> weiter. Diese Weiterleitung
-// fangen wir im Anmeldefenster ab, bevor das Betriebssystem sie verarbeitet.
-import { createHash, randomBytes } from 'node:crypto'
+// Desktop Moodle SSO: shows Moodle's launch page in a separate window and catches the final
+// moodlemobile:// redirect before the operating system tries to handle it.
 import { BrowserWindow, session } from 'electron'
+import {
+  MOODLE_LAUNCH_SCHEME,
+  createPassport,
+  moodleLaunchUrl,
+  parseLaunchToken,
+} from '../shared/moodle-launch'
 
-const md5 = (value: string) => createHash('md5').update(value).digest('hex')
-
-/** Liest den Token aus der Weiterleitung und prüft die Signatur md5(wwwroot + passport) */
-export function parseLaunchToken(url: string, site: string, passport: string): string | null {
-  const match = /^moodlemobile:\/\/token=([A-Za-z0-9+/=_-]+)/.exec(url)
-  if (!match) return null
-  const [signature, token] = Buffer.from(match[1], 'base64').toString('utf8').split(':::')
-  const variants = [site, site.replace(/^https:/, 'http:')]
-  if (!token || !variants.some((v) => md5(v + passport) === signature)) {
-    throw new Error('Die Antwort von Moodle konnte nicht bestätigt werden.')
-  }
-  return token
-}
+export { parseLaunchToken }
 
 export function moodleSsoLogin(site: string, parent: BrowserWindow | null): Promise<string> {
-  const passport = randomBytes(8).toString('hex')
-  const launch = `${site}/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=${passport}&urlscheme=moodlemobile`
+  const passport = createPassport()
 
-  // Fremde Anmeldeseiten bekommen keine Berechtigungen (Kamera, Mikrofon, Benachrichtigungen …)
-  session.fromPartition('moodle-sso').setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+  // Third-party login pages get no permissions (camera, microphone, notifications …)
+  session
+    .fromPartition('moodle-sso')
+    .setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
 
   return new Promise((resolve, reject) => {
     const window = new BrowserWindow({
@@ -33,7 +26,12 @@ export function moodleSsoLogin(site: string, parent: BrowserWindow | null): Prom
       modal: Boolean(parent),
       title: 'Moodle-Anmeldung',
       autoHideMenuBar: true,
-      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: 'moodle-sso' },
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition: 'moodle-sso',
+      },
     })
     let settled = false
     const finish = (error: Error | null, token?: string) => {
@@ -44,7 +42,7 @@ export function moodleSsoLogin(site: string, parent: BrowserWindow | null): Prom
       else resolve(token!)
     }
     const check = (event: { preventDefault: () => void }, url: string) => {
-      if (!url.startsWith('moodlemobile://')) return
+      if (!url.startsWith(MOODLE_LAUNCH_SCHEME)) return
       event.preventDefault()
       try {
         const token = parseLaunchToken(url, site, passport)
@@ -56,13 +54,13 @@ export function moodleSsoLogin(site: string, parent: BrowserWindow | null): Prom
     window.webContents.on('will-redirect', check)
     window.webContents.on('will-navigate', check)
     window.webContents.on('did-fail-load', (_e, _code, _desc, url) => {
-      if (url.startsWith('moodlemobile://')) check({ preventDefault: () => undefined }, url)
+      if (url.startsWith(MOODLE_LAUNCH_SCHEME)) check({ preventDefault: () => undefined }, url)
     })
     window.webContents.setWindowOpenHandler(({ url }) => {
       check({ preventDefault: () => undefined }, url)
       return { action: 'deny' }
     })
     window.on('closed', () => finish(new Error('Anmeldung abgebrochen.')))
-    void window.loadURL(launch)
+    void window.loadURL(moodleLaunchUrl(site, passport))
   })
 }

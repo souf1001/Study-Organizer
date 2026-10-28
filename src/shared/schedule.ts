@@ -1,7 +1,15 @@
-// Wöchentliche Modultermine (Vorlesung, Übung, Praktikum …) in konkrete Termine umrechnen.
+// Expands weekly module slots (lecture, exercise, lab, ...) into concrete dates.
 import { addDays, nextWeekday, shortDate } from './dates'
 import { isInBreak } from './semester'
-import type { CalendarEvent, ID, ISODate, Module, ScheduleSlot, Semester, SessionKind } from './types'
+import type {
+  CalendarEvent,
+  ID,
+  ISODate,
+  Module,
+  ScheduleSlot,
+  Semester,
+  SessionKind,
+} from './types'
 
 export const SESSION_LABELS: Record<SessionKind, string> = {
   lecture: 'Vorlesung',
@@ -19,15 +27,21 @@ export interface Occurrence {
   start: string
   end: string
   room: string
-  /** Laufende Nummer innerhalb des Slots (1 = erster Termin) */
+  /** Sequence number within the slot (1 = first session) */
   index: number
 }
 
 type SemesterDates = Pick<Semester, 'lectureStart' | 'lectureEnd' | 'breaks'>
 
-export function expandSlot(slot: ScheduleSlot, moduleId: ID, semester: SemesterDates): Occurrence[] {
+export function expandSlot(
+  slot: ScheduleSlot,
+  moduleId: ID,
+  semester: SemesterDates,
+): Occurrence[] {
   const from =
-    slot.firstDate && slot.firstDate > semester.lectureStart ? slot.firstDate : semester.lectureStart
+    slot.firstDate && slot.firstDate > semester.lectureStart
+      ? slot.firstDate
+      : semester.lectureStart
   const step = slot.everyTwoWeeks ? 14 : 7
   const result: Occurrence[] = []
   let index = 0
@@ -58,8 +72,11 @@ export function moduleOccurrences(module: Module, semester: SemesterDates): Occu
     .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
 }
 
-/** Ordnername nach Vorlage, z. B. '{kind} {n} · {date}' → 'Vorlesung 3 · 14.10.' */
-export function sessionFolderName(template: string, occ: Pick<Occurrence, 'kind' | 'index' | 'date'>): string {
+/** Folder name from a template, e.g. '{kind} {n} · {date}' → 'Vorlesung 3 · 14.10.' */
+export function sessionFolderName(
+  template: string,
+  occ: Pick<Occurrence, 'kind' | 'index' | 'date'>,
+): string {
   return (template || '{kind} {n} · {date}')
     .replaceAll('{kind}', SESSION_LABELS[occ.kind])
     .replaceAll('{n}', String(occ.index))
@@ -67,7 +84,10 @@ export function sessionFolderName(template: string, occ: Pick<Occurrence, 'kind'
     .trim()
 }
 
-export function findSeriesEvents(allEvents: CalendarEvent[], target: CalendarEvent): CalendarEvent[] {
+export function findSeriesEvents(
+  allEvents: CalendarEvent[],
+  target: CalendarEvent,
+): CalendarEvent[] {
   if (!target.id && !target.externalId) return []
   const baseUid = target.externalId?.includes('#') ? target.externalId.split('#')[0] : null
   const targetTitleNorm = target.title.trim().toLowerCase()
@@ -102,4 +122,3 @@ export function findSeriesEvents(allEvents: CalendarEvent[], target: CalendarEve
     return false
   })
 }
-

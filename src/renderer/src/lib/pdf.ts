@@ -1,4 +1,4 @@
-// pdf.js einrichten: Worker und Hilfsdateien (Schrift-Tabellen, Bild-Dekoder) aus /pdfjs.
+// pdf.js setup: worker and helper files (CMaps, standard fonts, image decoders) served from /pdfjs.
 import * as pdfjs from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -17,7 +17,7 @@ export function openPdf(url: string): pdfjs.PDFDocumentLoadingTask {
   })
 }
 
-/** Text aller Seiten, getrennt durch Seitenmarken – für Suche und KI */
+/** Text of all pages, separated by page markers, for search and AI. */
 export async function extractPdfText(url: string, maxPages = 400): Promise<string> {
   const task = openPdf(url)
   const pdf = await task.promise

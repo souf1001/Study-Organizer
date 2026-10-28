@@ -1,4 +1,4 @@
-// Einzelner Eintrag: Notiz oder Datei.
+// A single entry: either a note or a file.
 import type { Item } from '@shared/types'
 import { FileView } from '../file/FileView'
 import { NoteView } from '../note/NoteView'
