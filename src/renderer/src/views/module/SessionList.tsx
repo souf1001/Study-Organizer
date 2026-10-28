@@ -10,7 +10,7 @@ import { openView } from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
 import { showMenu } from '@/ui/Menu'
-import { isLab, type SessionOccurrence } from './moduleData'
+import { isLab, type SessionOccurrence } from '@shared/module-sessions'
 
 export function SessionList({
   module,

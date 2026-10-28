@@ -8,6 +8,7 @@ import {
   FilePlus,
   FileText,
   Folder as FolderIcon,
+  FolderOpen,
   FolderPlus,
   MapPin,
   MessageCircle,
@@ -20,7 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { SESSION_LABELS } from '@shared/schedule'
-import type { Folder, ID, Item } from '@shared/types'
+import type { Db, Folder, ID, Item } from '@shared/types'
 import { isoDateOf } from '@shared/dates'
 import { api } from '@/lib/api'
 import {
@@ -62,6 +63,37 @@ function ItemThumb({ item }: { item: Item }) {
   ) : (
     <FileIcon type={item.fileType} className="item-icon" />
   )
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * What a folder row shows: its subfolders and everything inside them, so a folder that only
+ * holds subfolders (like "Moodle" with one folder per course section) does not look empty.
+ */
+export function folderSummary(db: Db, folderId: ID): { label: string; title: string } {
+  const subfolders = db.folders.filter((f) => f.parentId === folderId).length
+  const tree = new Set([folderId])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const f of db.folders) {
+      if (f.parentId && tree.has(f.parentId) && !tree.has(f.id)) {
+        tree.add(f.id)
+        grew = true
+      }
+    }
+  }
+  const visible = db.items.filter((i) => !i.attachedTo && i.folderId && tree.has(i.folderId))
+  const direct = visible.filter((i) => i.folderId === folderId).length
+  const parts = [
+    subfolders > 0 ? plural(subfolders, 'Ordner', 'Ordner') : '',
+    visible.length > 0 ? plural(visible.length, 'Eintrag', 'Einträge') : '',
+  ].filter(Boolean)
+  const title =
+    subfolders > 0
+      ? `${plural(subfolders, 'Unterordner', 'Unterordner')}, ${plural(visible.length, 'Eintrag', 'Einträge')} insgesamt (${direct} direkt in diesem Ordner)`
+      : plural(visible.length, 'Eintrag', 'Einträge')
+  return { label: parts.join(' · ') || 'Leer', title }
 }
 
 /** Opens several entries side by side (at most MAX_PANES panes). */
@@ -131,6 +163,15 @@ export function FolderContents({
               label: 'Mit KI zusammenfassen',
               icon: <ScrollText />,
               onClick: () => void summarizeItems([item]),
+            },
+          ]
+        : []),
+      ...(api.revealDocument
+        ? [
+            {
+              label: 'Im Dateiordner zeigen',
+              icon: <FolderOpen />,
+              onClick: () => void api.revealDocument?.(item.id).catch(toastError),
             },
           ]
         : []),
@@ -220,7 +261,7 @@ export function FolderContents({
       ) : (
         <div className="list">
           {folders.map((f) => {
-            const count = db.items.filter((i) => i.folderId === f.id && !i.attachedTo).length
+            const summary = folderSummary(db, f.id)
             const view: View = { type: 'folder', id: f.id }
             return (
               <div
@@ -238,6 +279,18 @@ export function FolderContents({
                       onClick: () => openInNewPane(view),
                     },
                     { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameFolder(f) },
+                    ...(api.revealDocuments
+                      ? [
+                          {
+                            label: 'Im Dateiordner öffnen',
+                            icon: <FolderOpen />,
+                            onClick: () =>
+                              void api
+                                .revealDocuments?.({ moduleId: f.moduleId, folderId: f.id })
+                                .catch(toastError),
+                          },
+                        ]
+                      : []),
                     { separator: true },
                     {
                       label: 'Löschen',
@@ -251,7 +304,9 @@ export function FolderContents({
                 <span className="check-spacer" />
                 <FolderIcon className="item-icon" />
                 <span className="truncate">{f.name}</span>
-                <span className="meta">{count} Einträge</span>
+                <span className="meta" title={summary.title}>
+                  {summary.label}
+                </span>
               </div>
             )
           })}
@@ -309,6 +364,18 @@ export function FolderView({ folder }: { folder: Folder }) {
         onClick: () => void createFolder(folder.moduleId, folder.id),
       },
       { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameFolder(folder) },
+      ...(api.revealDocuments
+        ? [
+            {
+              label: 'Im Dateiordner öffnen',
+              icon: <FolderOpen />,
+              onClick: () =>
+                void api
+                  .revealDocuments?.({ moduleId: folder.moduleId, folderId: folder.id })
+                  .catch(toastError),
+            },
+          ]
+        : []),
       { separator: true },
       {
         label: 'Ordner löschen',

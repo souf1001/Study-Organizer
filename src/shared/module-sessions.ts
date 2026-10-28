@@ -1,6 +1,7 @@
-// Derived data for the module page: merged session list and linked Moodle discussions.
-import { isoDateOf } from '@shared/dates'
-import { moduleOccurrences, type Occurrence } from '@shared/schedule'
+// Derived module data (used by the module page and the AI): merged session list and linked
+// Moodle discussions.
+import { isoDateOf } from './dates'
+import { moduleOccurrences, type Occurrence } from './schedule'
 import type {
   CalendarEvent,
   Db,
@@ -9,7 +10,7 @@ import type {
   MoodleDiscussion,
   Semester,
   SessionKind,
-} from '@shared/types'
+} from './types'
 
 /** A session of the module, optionally backed by a calendar event */
 export type SessionOccurrence = Occurrence & { event?: CalendarEvent; title?: string }

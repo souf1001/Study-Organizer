@@ -95,6 +95,10 @@ const api: Api = {
   openExternal: (url) => invoke('app:openExternal', url),
   dataDir: () => invoke('app:dataDir'),
   revealDataDir: () => invoke('app:revealDataDir'),
+  documentsDir: () => invoke('app:documentsDir'),
+  revealDocuments: (target) => invoke('app:revealDocuments', target),
+  revealDocument: (itemId) => invoke('app:revealDocument', itemId),
+  chooseDocumentsDir: () => invoke('app:chooseDocumentsDir'),
   backup: () => invoke('app:backup'),
   resetAll: () => invoke('app:reset'),
 
