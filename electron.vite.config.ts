@@ -16,38 +16,45 @@ const stripCspInDev: Plugin = {
     html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''),
 }
 
-// The desktop renderer never talks to the internet itself (the main process does), so its CSP
-// forbids it. In the Android app the backend runs inside the WebView and must reach Moodle,
-// calendar feeds and AI providers: `--mode android` allows remote connections.
-function allowRemoteConnectionsOnAndroid(): Plugin {
-  let isAndroid = false
+// `--mode android` builds the renderer for the Android app (see npm run build:android):
+// - The desktop renderer never talks to the internet itself (the main process does), so its CSP
+//   forbids it. On Android the backend runs inside the WebView and must reach Moodle, calendar
+//   feeds and AI providers, so remote connections are allowed.
+// - Electron always ships a current Chromium, but a tablet's WebView can be older: the Android
+//   build is transpiled for an older engine.
+const ANDROID_WEBVIEW_TARGET = 'chrome100'
+
+function allowRemoteConnections(): Plugin {
   return {
-    name: 'allow-remote-connections-on-android',
-    configResolved: (config) => {
-      isAndroid = config.mode === 'android'
-    },
+    name: 'allow-remote-connections',
     transformIndexHtml: (html) =>
-      isAndroid ? html.replace("connect-src 'self'", "connect-src 'self' https: http:") : html,
+      html.replace("connect-src 'self'", "connect-src 'self' https: http:"),
   }
 }
 
-export default defineConfig({
-  main: {
-    resolve: { alias },
-    build: { externalizeDeps: true },
-  },
-  preload: {
-    resolve: { alias },
-    build: {
-      externalizeDeps: true,
-      // Sandboxed preload scripts must be CommonJS
-      rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } },
+export default defineConfig(({ mode }) => {
+  const isAndroid = mode === 'android'
+  return {
+    main: {
+      resolve: { alias },
+      build: { externalizeDeps: true },
     },
-  },
-  renderer: {
-    root: 'src/renderer',
-    resolve: { alias: { ...alias, '@': resolve('src/renderer/src') } },
-    plugins: [react(), stripCspInDev, allowRemoteConnectionsOnAndroid()],
-    define: { __APP_VERSION__: JSON.stringify(version) },
-  },
+    preload: {
+      resolve: { alias },
+      build: {
+        externalizeDeps: true,
+        // Sandboxed preload scripts must be CommonJS
+        rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } },
+      },
+    },
+    renderer: {
+      root: 'src/renderer',
+      resolve: { alias: { ...alias, '@': resolve('src/renderer/src') } },
+      plugins: [react(), stripCspInDev, ...(isAndroid ? [allowRemoteConnections()] : [])],
+      define: { __APP_VERSION__: JSON.stringify(version) },
+      // The pdf.js worker is an ES module (see lib/pdf.ts)
+      worker: { format: 'es' as const },
+      ...(isAndroid ? { build: { target: ANDROID_WEBVIEW_TARGET } } : {}),
+    },
+  }
 })

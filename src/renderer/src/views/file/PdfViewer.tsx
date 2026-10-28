@@ -9,7 +9,7 @@ import {
   type CSSProperties,
 } from 'react'
 import { ExternalLink, Minus, PenLine, Plus, ScanLine } from 'lucide-react'
-import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
+import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { Annotations, Item, Stroke } from '@shared/types'
 import { api } from '@/lib/api'
 import { openPdf, pdfjs } from '@/lib/pdf'
