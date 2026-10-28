@@ -34,5 +34,7 @@ export default defineConfig({
     resolve: { alias: { ...alias, '@': resolve('src/renderer/src') } },
     plugins: [react(), stripCspInDev],
     define: { __APP_VERSION__: JSON.stringify(version) },
+    // The pdf.js worker is an ES module (see lib/pdf.ts)
+    worker: { format: 'es' as const },
   },
 })

@@ -1,8 +1,18 @@
 // pdf.js setup: worker and helper files (CMaps, standard fonts, image decoders) served from /pdfjs.
-import * as pdfjs from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+//
+// The legacy build is used on purpose: the regular pdf.js build relies on very new browser
+// functions (Map.getOrInsert, Math.sumPrecise, URL.parse …). Electron always has them, but the
+// Android WebView of a tablet may be older, and PDFs then failed to open with
+// "… is not a function". The legacy build brings replacements for most of these functions;
+// polyfills.ts adds the rest.
+//
+// The worker runs our own entry point, so the polyfills are loaded there too. One worker serves
+// all documents.
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+pdfjs.GlobalWorkerOptions.workerPort = new Worker(new URL('./pdf-worker.ts', import.meta.url), {
+  type: 'module',
+})
 
 const assets = new URL('pdfjs/', document.baseURI).href
 
