@@ -151,8 +151,8 @@ Other commands:
 **Publishing a new version:** bump the version in `package.json`, commit, then
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 GitHub then builds the `.exe`, `.dmg` and `.AppImage` and creates a release.
