@@ -2,14 +2,14 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, Menu, nativeTheme, session, shell } from 'electron'
-import { createService, type Service } from '../backend/service'
+import { startBackgroundSync } from '../backend/background-sync'
+import { createService } from '../backend/service'
 import { Store } from '../backend/store'
 import { registerIpc } from './ipc'
 import { handleFileProtocol, registerSchemePrivileges } from './protocol'
 import { createSecrets } from './secrets'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const HOUR = 60 * 60 * 1000
 
 // Custom data folder (e.g. for tests or a portable installation): the browser profile and the
 // encrypted keys then live there as well instead of in the user profile.
@@ -84,45 +84,6 @@ function setupMenu(): void {
   )
 }
 
-function startBackgroundSync(service: Service, store: Store): void {
-  const notifyRenderer = () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('db:changed')
-  }
-
-  const runAll = async (): Promise<void> => {
-    await service.syncAll().catch(() => undefined)
-    notifyRenderer()
-  }
-
-  const runMoodle = async (): Promise<void> => {
-    if (store.get().settings.moodle.url) {
-      await service.moodleSync().catch(() => undefined)
-      notifyRenderer()
-    }
-  }
-
-  setTimeout(() => void runAll(), 5_000)
-
-  let lastCalendarRun = Date.now()
-  let lastMoodleRun = Date.now()
-
-  // Check once a minute whether a sync is due
-  setInterval(() => {
-    const settings = store.get().settings
-    const moodleInterval = settings.moodle.syncIntervalMinutes ?? 10
-    if (moodleInterval > 0 && Date.now() - lastMoodleRun >= moodleInterval * 60 * 1000) {
-      lastMoodleRun = Date.now()
-      void runMoodle()
-    }
-
-    const hours = settings.calendar.syncIntervalHours
-    if (hours > 0 && Date.now() - lastCalendarRun >= hours * HOUR) {
-      lastCalendarRun = Date.now()
-      void runAll()
-    }
-  }, 60 * 1000)
-}
-
 async function main(): Promise<void> {
   if (!app.requestSingleInstanceLock()) {
     app.quit()
@@ -145,7 +106,9 @@ async function main(): Promise<void> {
     session.defaultSession.setSpellCheckerLanguages(['de-DE', 'en-US'])
 
   mainWindow = createWindow()
-  startBackgroundSync(service, store)
+  startBackgroundSync(service, store, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('db:changed')
+  })
 
   app.on('second-instance', () => {
     if (!mainWindow) mainWindow = createWindow()

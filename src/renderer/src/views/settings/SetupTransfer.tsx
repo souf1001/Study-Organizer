@@ -4,13 +4,14 @@ import { useState } from 'react'
 import { FileDown, FileUp } from 'lucide-react'
 import {
   SETUP_FILE_EXTENSION,
+  openSetupFile,
   summarizeSetupFile,
   type SetupImportResult,
   type SetupScope,
 } from '@shared/setup-bundle'
 import { api } from '@/lib/api'
 import { pickFiles } from '@/lib/actions'
-import { loadDb } from '@/lib/db'
+import { getDb, loadDb } from '@/lib/db'
 import { Button } from '@/ui/Button'
 import { confirm } from '@/ui/Dialogs'
 import { Field, Input, Segmented, Switch } from '@/ui/Field'
@@ -169,7 +170,6 @@ export function SetupImportButton({
   const [busy, setBusy] = useState(false)
 
   const apply = async (content: string, password?: string) => {
-    setPendingFile(null)
     setBusy(true)
     try {
       const result = await api.setup.import(content, password)
@@ -183,24 +183,42 @@ export function SetupImportButton({
     }
   }
 
+  /** Files with study data replace everything; ask first unless this device is still empty */
+  const confirmAndApply = async (content: string, scope: SetupScope, password?: string) => {
+    const { modules, items } = getDb()
+    const hasLocalData = modules.length > 0 || items.length > 0
+    if (scope !== 'settings' && hasLocalData) {
+      const ok = await confirm({
+        title: 'Daten auf diesem Gerät ersetzen?',
+        message:
+          'Die Datei enthält Studiendaten. Alle Module, Termine und Notizen auf diesem Gerät werden durch den Inhalt der Datei ersetzt.',
+        confirmLabel: 'Ersetzen',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    await apply(content, password)
+  }
+
   const choose = async () => {
     const [file] = await pickFiles(`${SETUP_FILE_EXTENSION},application/json,.json`)
     if (!file) return
     try {
       const content = await file.text()
       const summary = summarizeSetupFile(content)
-      if (summary.scope && summary.scope !== 'settings') {
-        const ok = await confirm({
-          title: 'Daten auf diesem Gerät ersetzen?',
-          message:
-            'Die Datei enthält Studiendaten. Alle Module, Termine und Notizen auf diesem Gerät werden durch den Inhalt der Datei ersetzt.',
-          confirmLabel: 'Ersetzen',
-          danger: true,
-        })
-        if (!ok) return
-      }
-      if (summary.encrypted) setPendingFile(content)
-      else await apply(content)
+      if (summary.scope) await confirmAndApply(content, summary.scope)
+      else setPendingFile(content)
+    } catch (error) {
+      toastError(error)
+    }
+  }
+
+  const unlock = async (content: string, password: string) => {
+    try {
+      // Decrypting here first tells us the scope and catches a wrong password early
+      const { scope } = await openSetupFile(content, password)
+      setPendingFile(null)
+      await confirmAndApply(content, scope, password)
     } catch (error) {
       toastError(error)
     }
@@ -214,7 +232,7 @@ export function SetupImportButton({
       {pendingFile && (
         <PasswordDialog
           onClose={() => setPendingFile(null)}
-          onSubmit={(password) => void apply(pendingFile, password)}
+          onSubmit={(password) => void unlock(pendingFile, password)}
         />
       )}
     </>

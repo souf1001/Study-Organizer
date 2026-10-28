@@ -65,6 +65,9 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
           <Input
             value={url}
             placeholder="moodle.meine-hochschule.de"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void check()}
           />
@@ -76,6 +79,9 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
     )
   }
 
+  const showSso = info.ssoRequired && Boolean(api.moodle.connectSso)
+  const canSubmitPassword = Boolean(username && password) && !busy
+
   return (
     <>
       <SettingRow label={info.siteName} description={info.url}>
@@ -83,7 +89,7 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
           Ändern
         </Button>
       </SettingRow>
-      {info.ssoRequired && api.moodle.connectSso ? (
+      {showSso && (
         <SettingRow
           label="Mit Hochschul-Login anmelden"
           description="Es öffnet sich das Anmeldefenster deiner Hochschule. Dein Passwort wird nicht gespeichert."
@@ -97,40 +103,50 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
             Anmelden
           </Button>
         </SettingRow>
-      ) : (
-        <SettingRow
-          label="Anmelden"
-          description="Das Passwort wird nur einmal an Moodle geschickt und nicht gespeichert – gespeichert wird nur ein Zugangs-Token."
-          stacked
-        >
-          <div className="inline-form">
-            <div className="row">
-              <Input
-                value={username}
-                placeholder="Benutzername"
-                autoComplete="username"
-                onChange={(e) => setUsername(e.target.value)}
-              />
-              <Input
-                value={password}
-                placeholder="Passwort"
-                type="password"
-                autoComplete="current-password"
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <Button
-                variant="primary"
-                disabled={!username || !password || busy}
-                onClick={() =>
-                  void run(() => api.moodle.connect({ url: info.url, username, password }))
-                }
-              >
-                Anmelden
-              </Button>
-            </div>
-          </div>
-        </SettingRow>
       )}
+      <SettingRow
+        label={showSso ? 'Oder: Benutzername und Passwort' : 'Anmelden'}
+        description={
+          info.ssoRequired
+            ? 'Klappt nur, wenn deine Hochschule die Anmeldung mit Passwort für die Moodle-App erlaubt. Das Passwort wird nicht gespeichert, nur ein Zugangs-Token.'
+            : 'Das Passwort wird nur einmal an Moodle geschickt und nicht gespeichert – gespeichert wird nur ein Zugangs-Token.'
+        }
+        stacked
+      >
+        <form
+          className="inline-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (canSubmitPassword)
+              void run(() => api.moodle.connect({ url: info.url, username, password }))
+          }}
+        >
+          <div className="row">
+            <Input
+              value={username}
+              placeholder="Benutzername"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              onChange={(e) => setUsername(e.target.value)}
+            />
+            <Input
+              value={password}
+              placeholder="Passwort"
+              type="password"
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button
+              type="submit"
+              variant={showSso ? 'default' : 'primary'}
+              disabled={!canSubmitPassword}
+            >
+              Anmelden
+            </Button>
+          </div>
+        </form>
+      </SettingRow>
       <SettingRow
         label="Oder: Sicherheitsschlüssel"
         description="Falls deine Hochschule ihn freigibt: Moodle → Einstellungen → Sicherheitsschlüssel → „Moodle mobile web service“."
