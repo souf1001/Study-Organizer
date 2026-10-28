@@ -1,6 +1,7 @@
 # Builds the Android APK.
 # - Every push to mobile-android: the APK is available under "Actions → run → Artifacts".
 # - A tag like v0.3.0 additionally attaches the APK to the GitHub release of that tag.
+# - Started by hand with a release tag, it creates that tag and release for the chosen branch.
 name: Android APK
 
 on:
@@ -8,6 +9,11 @@ on:
     branches: [mobile-android]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Attach the APK to a release with this tag (e.g. v0.3.0); leave empty for a plain build'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -15,6 +21,9 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.release_tag || github.ref_name }}
+      IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -37,9 +46,11 @@ jobs:
           path: release/*.apk
           if-no-files-found: error
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.IS_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: release/*.apk
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          make_latest: ${{ !contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.TAG, '-') }}
+          make_latest: ${{ !contains(env.TAG, '-') }}
