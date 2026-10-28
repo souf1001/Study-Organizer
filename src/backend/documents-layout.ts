@@ -245,6 +245,29 @@ export async function syncLayout(
   return { entries, dirs: plan.dirs }
 }
 
+/**
+ * Runs `task` one at a time. A call during a run queues exactly one more run, which starts
+ * after the current one and sees all changes made until then. `task` must not reject.
+ */
+export function serialized(task: () => Promise<void>): () => Promise<void> {
+  let running: Promise<void> | null = null
+  let queued: Promise<void> | null = null
+  const start = (): Promise<void> => {
+    if (!running) {
+      running = task().finally(() => {
+        running = null
+      })
+      return running
+    }
+    queued ??= running.then(() => {
+      queued = null
+      return start()
+    })
+    return queued
+  }
+  return start
+}
+
 /** Deletes all files and folders the app placed in the documents folder (used by "reset") */
 export async function clearLayout(state: LayoutState, fs: LayoutFs): Promise<void> {
   for (const rel of Object.values(state.entries)) await fs.remove(rel).catch(() => undefined)
