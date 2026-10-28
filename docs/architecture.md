@@ -44,7 +44,7 @@ The service depends on two interfaces instead of concrete storage:
 - `DataStore` (`data-store.ts`): metadata access (`get`, `put`, `replaceMany`, `update`, `remove`, `replaceDb`), note/annotation/text/file content, search, `flush` and `reset`.
 - `Secrets` (`secrets.ts`): `get`/`set`/`remove` for secret values kept outside the database.
 
-On desktop, `DataStore` is implemented by `store.ts`:
+The platform-independent part (in-memory `Db`, delayed saving, cascading deletes, search) lives in the abstract `RecordStore` (`record-store.ts`). Subclasses only implement persistence. On desktop that is `store.ts`:
 
 ```
 <dir>/db.json               metadata (semesters, modules, folders, items, events, tasks, settings, ...)
