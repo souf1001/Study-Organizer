@@ -23,8 +23,8 @@
     "dist:win": "npm run build && electron-builder --win --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
-    "build:android": "npm run build && npx cap sync android",
-    "dist:android": "npm run build && npx cap sync android && node scripts/build-android.mjs",
+    "build:android": "node scripts/copy-assets.mjs && electron-vite build --mode android && npx cap sync android",
+    "dist:android": "npm run build:android && node scripts/build-android.mjs",
     "postinstall": "node scripts/copy-assets.mjs",
     "test:e2e": "playwright test",
     "icon": "node scripts/render-icon.mjs"

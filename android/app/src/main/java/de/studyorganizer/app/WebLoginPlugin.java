@@ -8,10 +8,13 @@ import android.os.Looper;
 import android.util.Base64;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -113,8 +116,8 @@ public class WebLoginPlugin extends Plugin {
             dialog.setOnDismissListener(d -> finishCancelled());
             dialog.setOnKeyListener((d, keyCode, event) -> {
                 // The back button navigates inside the login pages before it closes the browser
-                if (keyCode == android.view.KeyEvent.KEYCODE_BACK
-                        && event.getAction() == android.view.KeyEvent.ACTION_UP
+                if (keyCode == KeyEvent.KEYCODE_BACK
+                        && event.getAction() == KeyEvent.ACTION_UP
                         && webView.canGoBack()) {
                     webView.goBack();
                     return true;
@@ -148,7 +151,7 @@ public class WebLoginPlugin extends Plugin {
             doneButton.setText("Fertig");
             doneButton.setEnabled(false);
             doneButton.setOnClickListener(v -> finishWithDownloads());
-            if (!captureDownloads) doneButton.setVisibility(android.view.View.INVISIBLE);
+            if (!captureDownloads) doneButton.setVisibility(View.INVISIBLE);
             bar.addView(doneButton);
             return bar;
         }
@@ -191,7 +194,7 @@ public class WebLoginPlugin extends Plugin {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request,
-                                        android.webkit.WebResourceError error) {
+                                        WebResourceError error) {
                 // Some pages redirect to the custom scheme in a way that only shows up as an error
                 if (request.isForMainFrame()) intercept(request.getUrl().toString());
             }

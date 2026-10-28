@@ -68,12 +68,12 @@ export function Shell() {
   const sidebarOpen = useWorkspace((s) => s.sidebarOpen)
   const toggleSidebar = useWorkspace((s) => s.toggleSidebar)
   const isPhone = useDevice((s) => s.isPhone)
-  const isDrawer = sidebarOpen && isPhone
+  const isDrawerOpen = sidebarOpen && isPhone
   useShortcuts()
-  useBackHandler(toggleSidebar, isDrawer)
+  useBackHandler(toggleSidebar, isDrawerOpen)
   return (
     <div className={`shell ${sidebarOpen ? '' : 'sidebar-closed'}`}>
-      {isDrawer && <div className="sidebar-backdrop" onClick={toggleSidebar} />}
+      {isDrawerOpen && <div className="sidebar-backdrop" onClick={toggleSidebar} />}
       {sidebarOpen && <Sidebar />}
       <Workspace />
       {isPhone && <MobileNav />}

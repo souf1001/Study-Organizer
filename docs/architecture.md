@@ -106,10 +106,13 @@ main process: the backend service runs inside the WebView.
 - Storage: `backend/browser-store.ts` (`BrowserStore extends RecordStore`) on top of the small
   `KeyValueStore` in `backend/key-value.ts` (IndexedDB in the app, in-memory in tests).
   Files are Blobs shown through object URLs. Secrets live in the app's private IndexedDB.
-- Network: Capacitor's native HTTP replaces `fetch`, so there are no CORS restrictions.
+- Network: Capacitor's native HTTP replaces `fetch`, so there are no CORS restrictions. The
+  Android build (`electron-vite build --mode android`) is the only one whose CSP allows remote
+  connections; the desktop renderer never connects to the internet itself.
 - Logins: `android/.../WebLoginPlugin.java` is a full-screen in-app browser
   (`renderer/src/mobile/web-login.ts`). It ends on a redirect prefix (Moodle SSO,
   `moodlemobile://token=…`) or captures downloads with the session cookies (TUCaN `.ics` export).
+  The two flows live in `renderer/src/mobile/university-logins.ts`.
 - Layout: `renderer/src/lib/device.ts` classifies phone/tablet by the *screen* size, so the
   on-screen keyboard cannot switch layouts while typing. Phones get a bottom navigation
   (`shell/MobileNav.tsx`) and a sidebar drawer.

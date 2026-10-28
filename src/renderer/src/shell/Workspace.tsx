@@ -6,8 +6,8 @@ import type { Db, Folder } from '@shared/types'
 import { folderPath } from '@/lib/actions'
 import { useDb } from '@/lib/db'
 import { modKey } from '@/lib/format'
-import { DRAG_VIEW_TYPE, MAX_PANES, useWorkspace, type Pane, type View } from '@/lib/workspace'
 import { useDevice } from '@/lib/device'
+import { DRAG_VIEW_TYPE, MAX_PANES, useWorkspace, type Pane, type View } from '@/lib/workspace'
 import { IconButton } from '@/ui/Button'
 import { Empty } from '@/ui/Empty'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
@@ -115,7 +115,8 @@ function PaneHeader({ pane, count }: { pane: Pane; count: number }) {
   const db = useDb()
   const { back, forward, close, open, sidebarOpen, toggleSidebar } = useWorkspace()
   const isFirst = useWorkspace((s) => s.panes[0]?.id === pane.id)
-  const isPhone = useDevice((s) => s.isPhone)
+  // Phones show a single pane, so there is nothing to split or close
+  const canSplit = !useDevice((s) => s.isPhone)
   const crumbs = crumbsFor(db, pane.view)
 
   return (
@@ -142,7 +143,7 @@ function PaneHeader({ pane, count }: { pane: Pane; count: number }) {
           </Fragment>
         ))}
       </nav>
-      {!isPhone && (
+      {canSplit && (
         <IconButton
           label="Neuen Bereich daneben öffnen"
           disabled={count >= MAX_PANES}
@@ -151,7 +152,7 @@ function PaneHeader({ pane, count }: { pane: Pane; count: number }) {
           <Columns2 />
         </IconButton>
       )}
-      {!isPhone && count > 1 && (
+      {canSplit && count > 1 && (
         <IconButton label="Bereich schließen" onClick={() => close(pane.id)}>
           <X />
         </IconButton>
@@ -214,20 +215,21 @@ function Row({ panes, count }: { panes: Pane[]; count: number }): ReactNode {
   )
 }
 
+/** Phones show only the active pane; the other panes stay open in the background */
+function PhoneWorkspace() {
+  const pane = useWorkspace((s) => s.panes.find((p) => p.id === s.activeId) ?? s.panes[0])
+  return (
+    <main className="workspace mobile-workspace">
+      <PaneView pane={pane} count={1} />
+    </main>
+  )
+}
+
 export function Workspace() {
   const panes = useWorkspace((s) => s.panes)
-  const activeId = useWorkspace((s) => s.activeId)
   const count = panes.length
   const isPhone = useDevice((s) => s.isPhone)
-
-  if (isPhone) {
-    const activePane = panes.find((p) => p.id === activeId) ?? panes[0]
-    return (
-      <main className="workspace mobile-workspace">
-        <PaneView pane={activePane} count={1} />
-      </main>
-    )
-  }
+  if (isPhone) return <PhoneWorkspace />
 
   return (
     <main className="workspace">

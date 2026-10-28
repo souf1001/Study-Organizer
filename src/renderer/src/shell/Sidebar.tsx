@@ -41,8 +41,8 @@ import {
 } from '@/lib/actions'
 import { updateDb, useDb } from '@/lib/db'
 import { modKey } from '@/lib/format'
-import { DRAG_VIEW_TYPE, openInNewPane, openView, useWorkspace, type View } from '@/lib/workspace'
 import { useDevice } from '@/lib/device'
+import { DRAG_VIEW_TYPE, openInNewPane, openView, useWorkspace, type View } from '@/lib/workspace'
 import { IconButton } from '@/ui/Button'
 import { showMenu } from '@/ui/Menu'
 import { FileIcon } from '@/views/file/FileIcon'
@@ -351,7 +351,8 @@ export function Sidebar() {
   const [semesterDialog, setSemesterDialog] = useState(false)
 
   const { width, setWidth } = useSidebarWidth()
-  const isPhone = useDevice((s) => s.isPhone)
+  // On phones the sidebar is a drawer with a width from CSS
+  const isDrawer = useDevice((s) => s.isPhone)
   const [resizing, setResizing] = useState(false)
 
   const startResize = (e: React.MouseEvent) => {
@@ -399,7 +400,7 @@ export function Sidebar() {
   return (
     <aside
       className={`sidebar ${resizing ? 'resizing' : ''}`}
-      style={isPhone ? undefined : { width: `${width}px` }}
+      style={isDrawer ? undefined : { width: `${width}px` }}
     >
       <div className="sidebar-top drag">
         <button type="button" className="semester-switch" onClick={semesterMenu}>

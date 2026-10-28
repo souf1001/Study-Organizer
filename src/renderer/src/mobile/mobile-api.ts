@@ -2,41 +2,39 @@
 // the WebView: data in IndexedDB, network requests through Capacitor's native HTTP (no CORS),
 // and university logins through the native WebLogin browser.
 import type { Api } from '@shared/api'
-import {
-  MOODLE_LAUNCH_SCHEME,
-  createPassport,
-  moodleLaunchUrl,
-  parseLaunchToken,
-} from '@shared/moodle-launch'
-import { base64ToBytes, bytesToBase64, setupFileName } from '@shared/setup-bundle'
+import { bytesToBase64, setupFileName, type SetupFile } from '@shared/setup-bundle'
 import { startBackgroundSync } from '@backend/background-sync'
 import { BrowserStore, KeyValueSecrets } from '@backend/browser-store'
-import { combineIcs } from '@backend/ics'
 import { createService } from '@backend/service'
 import { isAndroid } from '@/lib/platform'
 import { shareFile } from './share-file'
-import { WebLogin, type CapturedDownload } from './web-login'
+import { connectMoodleWithSso, importTucanTimetable } from './university-logins'
 
-const TUCAN_URL = 'https://www.tucan.tu-darmstadt.de/'
-const TUCAN_IMPORT_NAME = 'tucan-stundenplan.ics'
+/** Android may suspend or kill the app once it is in the background: save pending changes */
+function saveWhenLeaving(store: BrowserStore): void {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void store.flush()
+  })
+  window.addEventListener('pagehide', () => void store.flush())
+}
 
-const isCalendarFile = (file: CapturedDownload) =>
-  file.fileName.toLowerCase().endsWith('.ics') || file.mimeType.includes('calendar')
+/** Offers a setup file through the share sheet; resolves to its name, or null if cancelled */
+async function shareSetupFile(file: SetupFile, fileName: string, title: string) {
+  const shared = await shareFile(fileName, { text: JSON.stringify(file) }, title)
+  return shared ? fileName : null
+}
 
 export async function createMobileApi(): Promise<Api> {
   const store = await BrowserStore.open()
   const secrets = new KeyValueSecrets(store.storage)
   const service = createService(store, secrets, { platform: isAndroid ? 'android' : 'web' })
 
+  saveWhenLeaving(store)
+
   // Like on desktop, only changes the backend makes on its own (background sync) are reported.
   // The UI applies its own changes optimistically; reloading after every write would reset
   // text fields while the user is typing.
   const listeners = new Set<() => void>()
-  // Android may suspend or kill the app once it is in the background: save pending changes
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') void store.flush()
-  })
-  window.addEventListener('pagehide', () => void store.flush())
   startBackgroundSync(service, store, () => {
     for (const listener of listeners) listener()
   })
@@ -96,46 +94,13 @@ export async function createMobileApi(): Promise<Api> {
     },
 
     tucan: {
-      // TUCaN has no API: the user signs in and exports the timetable in the in-app browser,
-      // which captures the .ics downloads.
-      startWizard: async () => {
-        let downloads: CapturedDownload[]
-        try {
-          ;({ downloads } = await WebLogin.open({
-            url: TUCAN_URL,
-            title: 'TUCaN',
-            hint: 'Anmelden → Veranstaltungen → Stundenplan → „Export“ (.ics). Du kannst mehrere Monate exportieren und tippst dann auf „Fertig“.',
-            captureDownloads: true,
-          }))
-        } catch (error) {
-          return { success: false, error: (error as Error).message }
-        }
-        const calendars = downloads.filter(isCalendarFile)
-        if (calendars.length === 0) {
-          return { success: false, error: 'Es wurde keine Kalenderdatei (.ics) heruntergeladen.' }
-        }
-        const combined = combineIcs(calendars.map((file) => base64ToBytes(file.data)))
-        const result = await service.calendarImportFile(TUCAN_IMPORT_NAME, combined)
-        return { success: true, count: result.count }
-      },
+      startWizard: () => importTucanTimetable(service),
     },
 
     moodle: {
       siteInfo: (url) => service.moodleSiteInfo(url),
       connect: (input) => service.moodleConnect(input),
-      connectSso: async (url) => {
-        const { url: site } = await service.moodleSiteInfo(url)
-        const passport = createPassport()
-        const { redirectUrl } = await WebLogin.open({
-          url: moodleLaunchUrl(site, passport),
-          title: 'Moodle-Anmeldung',
-          hint: 'Melde dich mit deinem Hochschul-Login an. Dein Passwort wird nicht gespeichert.',
-          interceptPrefix: MOODLE_LAUNCH_SCHEME,
-        })
-        const token = parseLaunchToken(redirectUrl ?? '', site, passport)
-        if (!token) throw new Error('Moodle hat keinen Zugang zurückgegeben.')
-        return service.moodleConnect({ url: site, token })
-      },
+      connectSso: (url) => connectMoodleWithSso(service, url),
       courses: () => service.moodleCourses(),
       sync: () => service.moodleSync(),
       posts: (discussionId) => service.moodlePosts(discussionId),
@@ -159,8 +124,7 @@ export async function createMobileApi(): Promise<Api> {
     backup: async () => {
       const file = await service.setupExport({ scope: 'everything', includeCredentials: false })
       const fileName = setupFileName().replace('Einrichtung', 'Backup')
-      const shared = await shareFile(fileName, { text: JSON.stringify(file) }, 'Backup speichern')
-      return shared ? fileName : null
+      return shareSetupFile(file, fileName, 'Backup speichern')
     },
     resetAll: async () => {
       await store.reset()
@@ -168,16 +132,12 @@ export async function createMobileApi(): Promise<Api> {
     },
 
     setup: {
-      export: async (options) => {
-        const file = await service.setupExport(options)
-        const fileName = setupFileName()
-        const shared = await shareFile(
-          fileName,
-          { text: JSON.stringify(file) },
+      export: async (options) =>
+        shareSetupFile(
+          await service.setupExport(options),
+          setupFileName(),
           'Einrichtung speichern',
-        )
-        return shared ? fileName : null
-      },
+        ),
       import: (content, password) => service.setupImport(content, password),
     },
   }

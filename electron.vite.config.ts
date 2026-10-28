@@ -16,6 +16,21 @@ const stripCspInDev: Plugin = {
     html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''),
 }
 
+// The desktop renderer never talks to the internet itself (the main process does), so its CSP
+// forbids it. In the Android app the backend runs inside the WebView and must reach Moodle,
+// calendar feeds and AI providers: `--mode android` allows remote connections.
+function allowRemoteConnectionsOnAndroid(): Plugin {
+  let isAndroid = false
+  return {
+    name: 'allow-remote-connections-on-android',
+    configResolved: (config) => {
+      isAndroid = config.mode === 'android'
+    },
+    transformIndexHtml: (html) =>
+      isAndroid ? html.replace("connect-src 'self'", "connect-src 'self' https: http:") : html,
+  }
+}
+
 export default defineConfig({
   main: {
     resolve: { alias },
@@ -32,7 +47,7 @@ export default defineConfig({
   renderer: {
     root: 'src/renderer',
     resolve: { alias: { ...alias, '@': resolve('src/renderer/src') } },
-    plugins: [react(), stripCspInDev],
+    plugins: [react(), stripCspInDev, allowRemoteConnectionsOnAndroid()],
     define: { __APP_VERSION__: JSON.stringify(version) },
   },
 })
