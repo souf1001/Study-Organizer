@@ -131,7 +131,7 @@ export function startTucanWizard(
             : (raw?.total ?? icsList.length)
           const unitPlural: string = Array.isArray(raw)
             ? 'Abschnitte'
-            : (raw?.unit || (raw?.isMonth ? 'Monate' : 'Abschnitte'))
+            : raw?.unit || (raw?.isMonth ? 'Monate' : 'Abschnitte')
 
           if (Array.isArray(icsList) && icsList.length > 0) {
             let count = 0
@@ -144,7 +144,9 @@ export function startTucanWizard(
             }
 
             if (!window.isDestroyed()) {
-              await window.webContents.executeJavaScript(`
+              await window.webContents
+                .executeJavaScript(
+                  `
                 (() => {
                   const status = document.getElementById('study-organizer-crawl-status');
                   const btn = document.getElementById('study-organizer-crawl-btn');
@@ -159,11 +161,15 @@ export function startTucanWizard(
                     btn.onclick = () => window.close();
                   }
                 })()
-              `).catch(() => undefined)
+              `,
+                )
+                .catch(() => undefined)
             }
           } else {
             if (!window.isDestroyed()) {
-              await window.webContents.executeJavaScript(`
+              await window.webContents
+                .executeJavaScript(
+                  `
                 (() => {
                   const status = document.getElementById('study-organizer-crawl-status');
                   const btn = document.getElementById('study-organizer-crawl-btn');
@@ -174,13 +180,17 @@ export function startTucanWizard(
                     btn.textContent = '⚡ Erneut versuchen';
                   }
                 })()
-              `).catch(() => undefined)
+              `,
+                )
+                .catch(() => undefined)
             }
           }
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err)
           if (!window.isDestroyed()) {
-            await window.webContents.executeJavaScript(`
+            await window.webContents
+              .executeJavaScript(
+                `
               (() => {
                 const status = document.getElementById('study-organizer-crawl-status');
                 const btn = document.getElementById('study-organizer-crawl-btn');
@@ -191,7 +201,9 @@ export function startTucanWizard(
                   btn.textContent = '⚡ Erneut versuchen';
                 }
               })()
-            `).catch(() => undefined)
+            `,
+              )
+              .catch(() => undefined)
           }
         }
       } else if (typeof message === 'string' && message.startsWith('STUDY_ORGANIZER_CRAWLER:')) {
@@ -211,7 +223,8 @@ export function startTucanWizard(
     // are physically rendered BELOW this tutorial header and never obscured.
     window.webContents.on('dom-ready', () => {
       window.webContents
-        .executeJavaScript(`
+        .executeJavaScript(
+          `
           (() => {
             if (document.getElementById('study-organizer-tucan-banner')) return;
             const banner = document.createElement('div');
@@ -274,7 +287,7 @@ export function startTucanWizard(
                    );
             };
 
-            // In-Page Abruf eines einzelnen Monats oder Semester-Abschnitts ohne Seiten-Reload
+            // Fetches a single month or semester section in-page, without reloading the page
             const fetchIcsOption = async (form, select, opt) => {
               const actionUrl = form.action || window.location.href;
               const isMultipart = form.enctype && form.enctype.toLowerCase().includes('multipart');
@@ -329,7 +342,7 @@ export function startTucanWizard(
                 return text;
               }
 
-              // Nicht direkt ICS, parse HTML nach Download-Link
+              // Not ICS directly: look for a download link in the HTML
               const parser = new DOMParser();
               const doc = parser.parseFromString(text, 'text/html');
               const elements = Array.from(doc.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
@@ -367,7 +380,7 @@ export function startTucanWizard(
                 }
               }
 
-              // Prüfe Meta-Refresh
+              // Follow a meta refresh
               const meta = doc.querySelector('meta[http-equiv="refresh" i]');
               if (meta) {
                 const content = meta.getAttribute('content') || '';
@@ -382,7 +395,7 @@ export function startTucanWizard(
                 }
               }
 
-              // Prüfe Zwischenformular
+              // Submit an intermediate form
               const subForm = doc.querySelector('form');
               if (subForm && subForm.action) {
                 const subAction = new URL(subForm.action, resp.url || actionUrl).href;
@@ -419,7 +432,7 @@ export function startTucanWizard(
               return null;
             };
 
-            // Fortsetzung eines laufenden Fallback-Crawls nach Seiten-Reload / Navigation
+            // Resume a running fallback crawl after a page reload / navigation
             let rawState = null;
             try { rawState = sessionStorage.getItem('study_organizer_crawler_state'); } catch(e) {}
             if (rawState) {
@@ -524,7 +537,7 @@ export function startTucanWizard(
                   const unitName = isMonth ? 'Monat' : 'Abschnitt';
                   const unitPlural = isMonth ? 'Monate' : 'Abschnitte';
 
-                  // In-Page Fetch Schleife (ohne die Seite zu verlassen oder Navigationen auszulösen)
+                  // In-page fetch loop (does not leave the page or trigger navigation)
                   if (form && targetOptions.length > 0) {
                     status.textContent = 'Starte Abruf für ' + targetOptions.length + ' ' + unitPlural + '…';
                     const icsList = [];
@@ -559,7 +572,7 @@ export function startTucanWizard(
                     }
                   }
 
-                  // Fallback: Klick-basierter Standardexport falls In-Page-Fetch nicht möglich
+                  // Fallback: click-based standard export if the in-page fetch is not possible
                   status.textContent = 'Nutze Standard-Download…';
                   if (targetOptions.length > 0) {
                     const fallbackCrawlerState = {
@@ -585,7 +598,7 @@ export function startTucanWizard(
                   }
                 }
 
-                // Navigationshilfen
+                // Navigation helpers
                 const exportLink = Array.from(document.querySelectorAll('a')).find(a => 
                   /^\\s*(?:Export|Exportieren)\\s*$/i.test(a.textContent || '')
                 );
@@ -610,7 +623,8 @@ export function startTucanWizard(
               });
             }
           })();
-        `)
+        `,
+        )
         .catch(() => undefined)
     })
 
@@ -663,9 +677,7 @@ export function startTucanWizard(
 
             if (service) {
               const contentToImport =
-                accumulatedIcsBuffers.length > 1
-                  ? combineIcs(accumulatedIcsBuffers)
-                  : buffer
+                accumulatedIcsBuffers.length > 1 ? combineIcs(accumulatedIcsBuffers) : buffer
               const res = await service.calendarImportFile(originalFilename, contentToImport)
               totalImportedCount = res.count ?? 0
               hasCompletedImport = true
@@ -674,8 +686,10 @@ export function startTucanWizard(
             if (isCrawling && crawlerState) {
               crawlerState.monthIndex++
               if (crawlerState.monthIndex < crawlerState.totalMonths) {
-                // Update State im WebContents
-                await window.webContents.executeJavaScript(`
+                // Update the crawler state stored in the page
+                await window.webContents
+                  .executeJavaScript(
+                    `
                   (() => {
                     try {
                       const raw = sessionStorage.getItem('study_organizer_crawler_state');
@@ -686,9 +700,11 @@ export function startTucanWizard(
                       }
                     } catch {}
                   })()
-                `).catch(() => undefined)
+                `,
+                  )
+                  .catch(() => undefined)
 
-                // Zurück zur Export-Seite navigieren für den nächsten Monat
+                // Navigate back to the export page for the next month
                 const targetUrl = crawlerState.exportUrl
                 setTimeout(() => {
                   if (!window.isDestroyed()) {
@@ -703,9 +719,11 @@ export function startTucanWizard(
                 }, 800)
                 return
               } else {
-                // Alle Monate fertiggestellt
+                // All months done
                 crawlerState.active = false
-                await window.webContents.executeJavaScript(`
+                await window.webContents
+                  .executeJavaScript(
+                    `
                   (() => {
                     sessionStorage.removeItem('study_organizer_crawler_state');
                     sessionStorage.setItem('study_organizer_crawler_done', 'true');
@@ -720,7 +738,9 @@ export function startTucanWizard(
                       btn.onclick = () => window.close();
                     }
                   })()
-                `).catch(() => undefined)
+                `,
+                  )
+                  .catch(() => undefined)
                 return
               }
             }

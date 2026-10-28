@@ -118,7 +118,7 @@ p {
   flex: 1;
 }
 
-/* Fensterleiste unter macOS verschiebbar machen */
+/* Make the title bar draggable on macOS */
 .drag {
   -webkit-app-region: drag;
 }
@@ -131,7 +131,7 @@ p {
   -webkit-app-region: no-drag;
 }
 
-/* Modul-Farbpunkt */
+/* Module color dot */
 .dot {
   width: 8px;
   height: 8px;
@@ -140,17 +140,44 @@ p {
   background: var(--dot, var(--c-gray));
 }
 
-.color-gray { --dot: var(--c-gray); --dot-bg: var(--c-gray-bg); }
-.color-brown { --dot: var(--c-brown); --dot-bg: var(--c-brown-bg); }
-.color-orange { --dot: var(--c-orange); --dot-bg: var(--c-orange-bg); }
-.color-yellow { --dot: var(--c-yellow); --dot-bg: var(--c-yellow-bg); }
-.color-green { --dot: var(--c-green); --dot-bg: var(--c-green-bg); }
-.color-blue { --dot: var(--c-blue); --dot-bg: var(--c-blue-bg); }
-.color-purple { --dot: var(--c-purple); --dot-bg: var(--c-purple-bg); }
-.color-pink { --dot: var(--c-pink); --dot-bg: var(--c-pink-bg); }
-.color-red { --dot: var(--c-red); --dot-bg: var(--c-red-bg); }
+.color-gray {
+  --dot: var(--c-gray);
+  --dot-bg: var(--c-gray-bg);
+}
+.color-brown {
+  --dot: var(--c-brown);
+  --dot-bg: var(--c-brown-bg);
+}
+.color-orange {
+  --dot: var(--c-orange);
+  --dot-bg: var(--c-orange-bg);
+}
+.color-yellow {
+  --dot: var(--c-yellow);
+  --dot-bg: var(--c-yellow-bg);
+}
+.color-green {
+  --dot: var(--c-green);
+  --dot-bg: var(--c-green-bg);
+}
+.color-blue {
+  --dot: var(--c-blue);
+  --dot-bg: var(--c-blue-bg);
+}
+.color-purple {
+  --dot: var(--c-purple);
+  --dot-bg: var(--c-purple-bg);
+}
+.color-pink {
+  --dot: var(--c-pink);
+  --dot-bg: var(--c-pink-bg);
+}
+.color-red {
+  --dot: var(--c-red);
+  --dot-bg: var(--c-red-bg);
+}
 
-/* Seitenlayout für Ansichten */
+/* Page layout for views */
 .page {
   height: 100%;
   overflow: auto;

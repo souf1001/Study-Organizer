@@ -7,9 +7,7 @@ import { Store } from '../src/backend/store'
 import { createService } from '../src/backend/service'
 import { newModule } from '../src/shared/defaults'
 
-function fakeFetch(
-  handler: (wsfunction: string, body: URLSearchParams) => unknown,
-): typeof fetch {
+function fakeFetch(handler: (wsfunction: string, body: URLSearchParams) => unknown): typeof fetch {
   return (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = new URLSearchParams(init?.body as string)
     const fn = body.get('wsfunction') ?? ''
@@ -21,11 +19,11 @@ function fakeFetch(
   }) as typeof fetch
 }
 
-describe('Moodle Foren Robustness & Fallbacks', () => {
-  it('fällt bei Fehlschlag von mod_forum_get_forums_by_courses zuverlässig auf core_course_get_contents zurück', async () => {
+describe('Moodle forum robustness & fallbacks', () => {
+  it('falls back to core_course_get_contents when mod_forum_get_forums_by_courses fails', async () => {
     const fetchImpl = fakeFetch((fn, body) => {
       if (fn === 'mod_forum_get_forums_by_courses') {
-        // Simuliere: Batch-Aufruf wird von Moodle wegen unzureichender Berechtigungen blockiert
+        // Simulate: Moodle blocks the batch call due to insufficient permissions
         return {
           exception: 'moodle_exception',
           errorcode: 'nopermissions',
@@ -102,7 +100,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('bewahrt vorhandene discussion-message bei nachfolgendem Abgleich', async () => {
+  it('keeps an existing discussion message on a subsequent sync', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'mod_forum_get_forums_by_courses') {
         return [{ id: 5, course: 202, type: 'general', name: 'Diskussionen' }]
@@ -170,7 +168,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('rematchMoodleDiscussions ordnet Diskussionen bei nachträglicher Modulzuordnung zu', async () => {
+  it('rematchMoodleDiscussions assigns discussions when a module is mapped later', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-rematch-test-'))
     const secrets = {
       get: async () => null,
@@ -201,7 +199,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
         ],
       })
 
-      // Erstelle ein Modul und mappe den Kurs
+      // Create a module and map the course
       const mod = newModule('sem1', { name: 'Physik' })
       service.put('modules', mod)
       service.update({
@@ -222,17 +220,17 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('probiert paginated weiter wenn mod_forum_get_forum_discussions leer zurückkehrt', async () => {
+  it('tries the paginated API when mod_forum_get_forum_discussions returns empty', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'mod_forum_get_forums_by_courses') {
         return [{ id: 42, course: 404, type: 'general', name: 'Übungsforum' }]
       }
       if (fn === 'mod_forum_get_forum_discussions') {
-        // Simuliere: Leeres discussions Array in moderner API
+        // Simulate: empty discussions array in the modern API
         return { discussions: [] }
       }
       if (fn === 'mod_forum_get_forum_discussions_paginated') {
-        // Die paginated API liefert die Diskussionen mit firstpostfullname
+        // The paginated API returns the discussions with firstpostfullname
         return {
           discussions: [
             {
@@ -283,7 +281,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('behält Diskussionen anderer Kurse bei erneutem Abgleich bei', async () => {
+  it('keeps discussions of other courses on a repeated sync', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'mod_forum_get_forums_by_courses') {
         return [{ id: 50, course: 505, type: 'general', name: 'Neuer Kurs Forum' }]
@@ -319,7 +317,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
           ...store.get().settings,
           moodle: {
             ...store.get().settings.moodle,
-            courseMap: { '505': mod2.id }, // Nur Kurs 505 wird in diesem Durchlauf abgeglichen
+            courseMap: { '505': mod2.id }, // Only course 505 is synced in this run
           },
         },
         moodleDiscussions: [
@@ -328,7 +326,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
             discussionId: 1111,
             firstPostId: 111,
             forumId: 10,
-            courseId: 999, // Anderer Kurs
+            courseId: 999, // Other course
             moduleId: mod1.id,
             forumName: 'Altes Forum',
             subject: 'Altes Thema bleibt erhalten',
@@ -355,35 +353,37 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('matchCourseToModules ordnet Moodle-Kurse nach Code, Name und Substring robust Modulen zu', () => {
-    const modAlgo = newModule('sem1', { id: 'm1', name: 'Algorithmen und Datenstrukturen', code: 'CS-101' })
+  it('matchCourseToModules matches Moodle courses to modules by code, name and substring', () => {
+    const modAlgo = newModule('sem1', {
+      id: 'm1',
+      name: 'Algorithmen und Datenstrukturen',
+      code: 'CS-101',
+    })
     const modMathe = newModule('sem1', { id: 'm2', name: 'Mathematik 1', code: 'MA-01' })
     const modEnglisch = newModule('sem1', { id: 'm3', name: 'Technisches Englisch' })
     const modules = [modAlgo, modMathe, modEnglisch]
 
-    // 1. Match über Modulcode im shortname
+    // 1. Match via module code in shortname
     const c1 = { id: 1, fullname: 'AuD WiSe 2026/27', shortname: 'CS-101' }
     expect(matchCourseToModules(c1, modules)?.id).toBe('m1')
 
-    // 2. Match über Modulcode im fullname
+    // 2. Match via module code in fullname
     const c2 = { id: 2, fullname: 'Vorlesung MA-01 (Prof. Gauss)', shortname: 'V-MA' }
     expect(matchCourseToModules(c2, modules)?.id).toBe('m2')
 
-    // 3. Match über Substring des Modulnamens
+    // 3. Match via substring of the module name
     const c3 = { id: 3, fullname: 'Technisches Englisch für Ingenieure (B.Sc.)', shortname: 'ENG' }
     expect(matchCourseToModules(c3, modules)?.id).toBe('m3')
 
-    // 4. Keine Übereinstimmung
+    // 4. No match
     const c4 = { id: 4, fullname: 'Physikalisches Praktikum', shortname: 'PHY' }
     expect(matchCourseToModules(c4, modules)).toBeNull()
   })
 
-  it('syncMoodle ordnet ungemappte Kurse automatisch zu, wenn courseMap leer ist', async () => {
+  it('syncMoodle auto-maps unmapped courses when courseMap is empty', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'core_enrol_get_users_courses') {
-        return [
-          { id: 201, fullname: 'Lineare Algebra I', shortname: 'LA1' },
-        ]
+        return [{ id: 201, fullname: 'Lineare Algebra I', shortname: 'LA1' }]
       }
       if (fn === 'mod_forum_get_forums_by_courses') {
         return [{ id: 42, course: 201, type: 'general', name: 'Ankündigungen LA1' }]
@@ -391,7 +391,13 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
       if (fn === 'mod_forum_get_forum_discussions') {
         return {
           discussions: [
-            { id: 777, name: 'Willkommen zu LA1', firstpost: 1, userfullname: 'Prof. X', timemodified: 1_700_000_000 },
+            {
+              id: 777,
+              name: 'Willkommen zu LA1',
+              firstpost: 1,
+              userfullname: 'Prof. X',
+              timemodified: 1_700_000_000,
+            },
           ],
         }
       }
@@ -428,7 +434,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('syncMoodle überschreibt bei erneutem Sync keine benutzerdefinierten Modulzuweisungen oder Notizen von Terminen', async () => {
+  it('syncMoodle does not overwrite user-defined module assignments or event notes on re-sync', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'core_calendar_get_calendar_events') {
         return {
@@ -507,7 +513,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('service.moodleReply verwendet vorhandene firstPostId direkt, wenn User mit Diskussions-ID antwortet', async () => {
+  it('service.moodleReply uses a known firstPostId directly when the user replies with the discussion ID', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-firstpost-direct-'))
     const store = await Store.open(dir)
     try {
@@ -517,7 +523,10 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
         set: async (n: string, v: string) => void secretsData.set(n, v),
         remove: async (n: string) => void secretsData.delete(n),
       }
-      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      await secrets.set(
+        'moodle',
+        JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }),
+      )
       store.update({
         settings: {
           ...store.get().settings,
@@ -531,7 +540,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
           {
             id: 300,
             discussionId: 300,
-            firstPostId: 6543, // Bereits bekannt und unterschiedlich von 300
+            firstPostId: 6543, // Already known and different from 300
             forumId: 20,
             courseId: 101,
             moduleId: null,
@@ -558,10 +567,10 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
       })
 
       const service = createService(store, secrets, { fetchImpl })
-      // User ruft moodleReply mit der Diskussions-ID (300) auf:
+      // User calls moodleReply with the discussion ID (300):
       const res = await service.moodleReply(300, 'Re: Frage zu Projekt', 'Meine Antwort')
       expect(res.postId).toBe(7777)
-      // Muss direkt an die bekannte firstPostId (6543) gesendet worden sein!
+      // Must have been sent directly to the known firstPostId (6543)!
       expect(postedToPostId).toBe('6543')
     } finally {
       await store.flush()
@@ -569,7 +578,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('service.moodleReply fällt auf Forenliste zurück wenn discussionPosts fehlschlägt', async () => {
+  it('service.moodleReply falls back to the forum list when discussionPosts fails', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-fallback-forum-'))
     const store = await Store.open(dir)
     try {
@@ -579,7 +588,10 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
         set: async (n: string, v: string) => void secretsData.set(n, v),
         remove: async (n: string) => void secretsData.delete(n),
       }
-      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      await secrets.set(
+        'moodle',
+        JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }),
+      )
       store.update({
         settings: {
           ...store.get().settings,
@@ -593,7 +605,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
           {
             id: 400,
             discussionId: 400,
-            firstPostId: 400, // Noch fälschlicherweise gleich Diskussions-ID
+            firstPostId: 400, // Still wrongly equal to the discussion ID
             forumId: 25,
             courseId: 101,
             moduleId: null,
@@ -613,11 +625,11 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
       let postedToPostId = ''
       const fetchImpl = fakeFetch((fn, body) => {
         if (fn === 'mod_forum_get_discussion_posts') {
-          // Simuliere: Post-Abruf via discussionPosts wird blockiert / liefert leer
+          // Simulate: fetching posts via discussionPosts is blocked / returns empty
           return { posts: [] }
         }
         if (fn === 'mod_forum_get_forum_discussions') {
-          // Forenabruf liefert jedoch die korrekte firstpost ID
+          // The forum fetch, however, returns the correct firstpost ID
           return {
             discussions: [
               {
@@ -647,7 +659,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
     }
   })
 
-  it('service.moodlePosts synthetisiert Eröffnungsbeitrag wenn Moodle-Server keine Posts liefert', async () => {
+  it('service.moodlePosts synthesizes the opening post when the Moodle server returns no posts', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-posts-synthesize-'))
     const store = await Store.open(dir)
     try {
@@ -657,7 +669,10 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
         set: async (n: string, v: string) => void secretsData.set(n, v),
         remove: async (n: string) => void secretsData.delete(n),
       }
-      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      await secrets.set(
+        'moodle',
+        JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }),
+      )
       store.update({
         settings: {
           ...store.get().settings,
@@ -690,7 +705,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
 
       const fetchImpl = fakeFetch((fn) => {
         if (fn === 'mod_forum_get_discussion_posts') {
-          // Simuliere: Server blockiert API (z. B. unzureichende Web-Service-Rolle)
+          // Simulate: server blocks the API (e.g. insufficient web service role)
           return { exception: 'webservice_access_exception', message: 'Access control exception' }
         }
         if (fn === 'mod_forum_get_forum_discussion_posts') {
@@ -701,7 +716,7 @@ describe('Moodle Foren Robustness & Fallbacks', () => {
 
       const service = createService(store, secrets, { fetchImpl })
       const posts = await service.moodlePosts(500)
-      // Darf NIEMALS leer sein, wenn die Diskussion Text im Store hat!
+      // Must NEVER be empty when the discussion has text in the store!
       expect(posts).toHaveLength(1)
       expect(posts[0].id).toBe(12345)
       expect(posts[0].subject).toBe('Wichtige Ankündigung')

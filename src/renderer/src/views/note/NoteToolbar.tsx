@@ -1,4 +1,4 @@
-// Werkzeugleiste der Notiz: Textformatierung oder Zeichenwerkzeuge.
+// Note toolbar: text formatting or drawing tools.
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState, type Editor } from '@tiptap/react'
@@ -84,7 +84,13 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
       bullet: e.isActive('bulletList'),
       ordered: e.isActive('orderedList'),
       task: e.isActive('taskList'),
-      block: e.isActive('heading', { level: 1 }) ? 'h1' : e.isActive('heading', { level: 2 }) ? 'h2' : e.isActive('heading', { level: 3 }) ? 'h3' : 'p',
+      block: e.isActive('heading', { level: 1 })
+        ? 'h1'
+        : e.isActive('heading', { level: 2 })
+          ? 'h2'
+          : e.isActive('heading', { level: 3 })
+            ? 'h3'
+            : 'p',
       font: (e.getAttributes('textStyle').fontFamily as string | undefined) ?? '',
       size: (e.getAttributes('textStyle').fontSize as string | undefined) ?? '',
       canUndo: e.can().undo(),
@@ -95,7 +101,11 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
 
   const setLink = async () => {
     const previous = editor.getAttributes('link').href as string | undefined
-    const url = await prompt({ title: 'Link', initial: previous ?? 'https://', confirmLabel: 'Übernehmen' })
+    const url = await prompt({
+      title: 'Link',
+      initial: previous ?? 'https://',
+      confirmLabel: 'Übernehmen',
+    })
     if (url === null) return
     if (!url || url === 'https://') chain().extendMarkRange('link').unsetLink().run()
     else chain().extendMarkRange('link').setLink({ href: url }).run()
@@ -110,7 +120,10 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
         onChange={(e) => {
           const v = e.target.value
           if (v === 'p') chain().setParagraph().run()
-          else chain().setHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run()
+          else
+            chain()
+              .setHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 })
+              .run()
         }}
       >
         <option value="p">Text</option>
@@ -122,7 +135,11 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
         className="toolbar-select"
         aria-label="Schriftart"
         value={state.font}
-        onChange={(e) => (e.target.value ? chain().setFontFamily(e.target.value).run() : chain().unsetFontFamily().run())}
+        onChange={(e) =>
+          e.target.value
+            ? chain().setFontFamily(e.target.value).run()
+            : chain().unsetFontFamily().run()
+        }
       >
         <option value="">Schrift</option>
         {FONTS.map((f) => (
@@ -135,7 +152,9 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
         className="toolbar-select narrow"
         aria-label="Schriftgröße"
         value={state.size}
-        onChange={(e) => (e.target.value ? chain().setFontSize(e.target.value).run() : chain().unsetFontSize().run())}
+        onChange={(e) =>
+          e.target.value ? chain().setFontSize(e.target.value).run() : chain().unsetFontSize().run()
+        }
       >
         {SIZES.map((s) => (
           <option key={s} value={s}>
@@ -144,18 +163,42 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
         ))}
       </select>
       <span className="toolbar-sep" />
-      <IconButton label="Fett" pressed={state.bold} onClick={() => chain().toggleBold().run()}><Bold /></IconButton>
-      <IconButton label="Kursiv" pressed={state.italic} onClick={() => chain().toggleItalic().run()}><Italic /></IconButton>
-      <IconButton label="Unterstrichen" pressed={state.underline} onClick={() => chain().toggleUnderline().run()}><Underline /></IconButton>
-      <IconButton label="Durchgestrichen" pressed={state.strike} onClick={() => chain().toggleStrike().run()}><Strikethrough /></IconButton>
+      <IconButton label="Fett" pressed={state.bold} onClick={() => chain().toggleBold().run()}>
+        <Bold />
+      </IconButton>
+      <IconButton
+        label="Kursiv"
+        pressed={state.italic}
+        onClick={() => chain().toggleItalic().run()}
+      >
+        <Italic />
+      </IconButton>
+      <IconButton
+        label="Unterstrichen"
+        pressed={state.underline}
+        onClick={() => chain().toggleUnderline().run()}
+      >
+        <Underline />
+      </IconButton>
+      <IconButton
+        label="Durchgestrichen"
+        pressed={state.strike}
+        onClick={() => chain().toggleStrike().run()}
+      >
+        <Strikethrough />
+      </IconButton>
       <IconButton
         label="Textfarbe"
         onClick={(e) =>
-          showMenu(e.currentTarget, TEXT_COLORS.map((c) => ({
-            label: c.label,
-            icon: <Swatch color={c.value} />,
-            onClick: () => (c.value ? chain().setColor(c.value).run() : chain().unsetColor().run()),
-          })))
+          showMenu(
+            e.currentTarget,
+            TEXT_COLORS.map((c) => ({
+              label: c.label,
+              icon: <Swatch color={c.value} />,
+              onClick: () =>
+                c.value ? chain().setColor(c.value).run() : chain().unsetColor().run(),
+            })),
+          )
         }
       >
         <Baseline />
@@ -163,26 +206,62 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
       <IconButton
         label="Markieren"
         onClick={(e) =>
-          showMenu(e.currentTarget, HIGHLIGHTS.map((c) => ({
-            label: c.label,
-            icon: <Swatch color={c.value} />,
-            onClick: () => (c.value ? chain().setHighlight({ color: c.value }).run() : chain().unsetHighlight().run()),
-          })))
+          showMenu(
+            e.currentTarget,
+            HIGHLIGHTS.map((c) => ({
+              label: c.label,
+              icon: <Swatch color={c.value} />,
+              onClick: () =>
+                c.value
+                  ? chain().setHighlight({ color: c.value }).run()
+                  : chain().unsetHighlight().run(),
+            })),
+          )
         }
       >
         <Highlighter />
       </IconButton>
       <span className="toolbar-sep" />
-      <IconButton label="Aufzählung" pressed={state.bullet} onClick={() => chain().toggleBulletList().run()}><List /></IconButton>
-      <IconButton label="Nummerierte Liste" pressed={state.ordered} onClick={() => chain().toggleOrderedList().run()}><ListOrdered /></IconButton>
-      <IconButton label="Checkliste" pressed={state.task} onClick={() => chain().toggleTaskList().run()}><CheckSquare /></IconButton>
+      <IconButton
+        label="Aufzählung"
+        pressed={state.bullet}
+        onClick={() => chain().toggleBulletList().run()}
+      >
+        <List />
+      </IconButton>
+      <IconButton
+        label="Nummerierte Liste"
+        pressed={state.ordered}
+        onClick={() => chain().toggleOrderedList().run()}
+      >
+        <ListOrdered />
+      </IconButton>
+      <IconButton
+        label="Checkliste"
+        pressed={state.task}
+        onClick={() => chain().toggleTaskList().run()}
+      >
+        <CheckSquare />
+      </IconButton>
       <IconButton
         label="Ausrichtung"
         onClick={(e) =>
           showMenu(e.currentTarget, [
-            { label: 'Links', icon: <AlignLeft />, onClick: () => chain().setTextAlign('left').run() },
-            { label: 'Zentriert', icon: <AlignCenter />, onClick: () => chain().setTextAlign('center').run() },
-            { label: 'Rechts', icon: <AlignRight />, onClick: () => chain().setTextAlign('right').run() },
+            {
+              label: 'Links',
+              icon: <AlignLeft />,
+              onClick: () => chain().setTextAlign('left').run(),
+            },
+            {
+              label: 'Zentriert',
+              icon: <AlignCenter />,
+              onClick: () => chain().setTextAlign('center').run(),
+            },
+            {
+              label: 'Rechts',
+              icon: <AlignRight />,
+              onClick: () => chain().setTextAlign('right').run(),
+            },
           ])
         }
       >
@@ -193,24 +272,48 @@ function TextTools({ editor, actions }: { editor: Editor; actions: EditorActions
         onClick={(e) =>
           showMenu(e.currentTarget, [
             { label: 'Bild', icon: <ImageIcon />, onClick: actions.insertImage },
-            { label: 'Tabelle', icon: <Table />, onClick: () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+            {
+              label: 'Tabelle',
+              icon: <Table />,
+              onClick: () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+            },
             { label: 'Formel', icon: <Sigma />, onClick: () => actions.editMath('block') },
             { label: 'Formel im Text', icon: <Sigma />, onClick: () => actions.editMath('inline') },
             { label: 'Link', icon: <Link />, onClick: () => void setLink() },
             { label: 'Zitat', icon: <Quote />, onClick: () => chain().toggleBlockquote().run() },
             { label: 'Code', icon: <Code />, onClick: () => chain().toggleCodeBlock().run() },
-            { label: 'Trennlinie', icon: <Minus />, onClick: () => chain().setHorizontalRule().run() },
+            {
+              label: 'Trennlinie',
+              icon: <Minus />,
+              onClick: () => chain().setHorizontalRule().run(),
+            },
             { separator: true },
-            { label: 'Tiefgestellt', icon: <Subscript />, onClick: () => chain().toggleSubscript().run() },
-            { label: 'Hochgestellt', icon: <Superscript />, onClick: () => chain().toggleSuperscript().run() },
+            {
+              label: 'Tiefgestellt',
+              icon: <Subscript />,
+              onClick: () => chain().toggleSubscript().run(),
+            },
+            {
+              label: 'Hochgestellt',
+              icon: <Superscript />,
+              onClick: () => chain().toggleSuperscript().run(),
+            },
           ])
         }
       >
         <Plus />
       </IconButton>
       <span className="toolbar-sep" />
-      <IconButton label="Rückgängig" disabled={!state.canUndo} onClick={() => chain().undo().run()}><Undo2 /></IconButton>
-      <IconButton label="Wiederholen" disabled={!state.canRedo} onClick={() => chain().redo().run()}><Redo2 /></IconButton>
+      <IconButton label="Rückgängig" disabled={!state.canUndo} onClick={() => chain().undo().run()}>
+        <Undo2 />
+      </IconButton>
+      <IconButton
+        label="Wiederholen"
+        disabled={!state.canRedo}
+        onClick={() => chain().redo().run()}
+      >
+        <Redo2 />
+      </IconButton>
     </>
   )
 }
@@ -231,13 +334,35 @@ interface DrawToolsProps {
 function DrawTools(p: DrawToolsProps) {
   const set = (values: Partial<InkTool>) => p.onTool({ ...p.tool, ...values })
   const pick = (id: InkToolId) =>
-    set({ tool: id, color: id === 'marker' && !MARKER_COLORS.includes(p.tool.color) ? MARKER_COLORS[0] : id === 'pen' && MARKER_COLORS.includes(p.tool.color) ? 'ink' : p.tool.color })
+    set({
+      tool: id,
+      color:
+        id === 'marker' && !MARKER_COLORS.includes(p.tool.color)
+          ? MARKER_COLORS[0]
+          : id === 'pen' && MARKER_COLORS.includes(p.tool.color)
+            ? 'ink'
+            : p.tool.color,
+    })
   const colors = p.tool.tool === 'marker' ? MARKER_COLORS : PEN_COLORS
   return (
     <>
-      <IconButton label="Stift" pressed={p.tool.tool === 'pen'} onClick={() => pick('pen')}><PenLine /></IconButton>
-      <IconButton label="Textmarker" pressed={p.tool.tool === 'marker'} onClick={() => pick('marker')}><Highlighter /></IconButton>
-      <IconButton label="Radierer" pressed={p.tool.tool === 'eraser'} onClick={() => pick('eraser')}><Eraser /></IconButton>
+      <IconButton label="Stift" pressed={p.tool.tool === 'pen'} onClick={() => pick('pen')}>
+        <PenLine />
+      </IconButton>
+      <IconButton
+        label="Textmarker"
+        pressed={p.tool.tool === 'marker'}
+        onClick={() => pick('marker')}
+      >
+        <Highlighter />
+      </IconButton>
+      <IconButton
+        label="Radierer"
+        pressed={p.tool.tool === 'eraser'}
+        onClick={() => pick('eraser')}
+      >
+        <Eraser />
+      </IconButton>
       <span className="toolbar-sep" />
       {p.tool.tool !== 'eraser' &&
         colors.map((c) => (
@@ -253,16 +378,37 @@ function DrawTools(p: DrawToolsProps) {
         ))}
       <span className="toolbar-sep" />
       {PEN_SIZES.map((s) => (
-        <button key={s} type="button" className="ink-size" aria-label={`Stärke ${s}`} aria-pressed={p.tool.size === s} onClick={() => set({ size: s })}>
+        <button
+          key={s}
+          type="button"
+          className="ink-size"
+          aria-label={`Stärke ${s}`}
+          aria-pressed={p.tool.size === s}
+          onClick={() => set({ size: s })}
+        >
           <span style={{ width: s + 2, height: s + 2 }} />
         </button>
       ))}
       <span className="toolbar-sep" />
-      <IconButton label="Nur Stift zeichnet (Finger scrollt)" pressed={p.penOnly} onClick={() => p.onPenOnly(!p.penOnly)}><Hand /></IconButton>
-      <IconButton label="Rückgängig" disabled={!p.canUndo} onClick={p.onUndo}><Undo2 /></IconButton>
-      <IconButton label="Wiederholen" disabled={!p.canRedo} onClick={p.onRedo}><Redo2 /></IconButton>
-      <IconButton label="Seite verlängern" onClick={p.onExtend}><ArrowDownToLine /></IconButton>
-      <IconButton label="Alle Zeichnungen löschen" onClick={p.onClear}><Trash2 /></IconButton>
+      <IconButton
+        label="Nur Stift zeichnet (Finger scrollt)"
+        pressed={p.penOnly}
+        onClick={() => p.onPenOnly(!p.penOnly)}
+      >
+        <Hand />
+      </IconButton>
+      <IconButton label="Rückgängig" disabled={!p.canUndo} onClick={p.onUndo}>
+        <Undo2 />
+      </IconButton>
+      <IconButton label="Wiederholen" disabled={!p.canRedo} onClick={p.onRedo}>
+        <Redo2 />
+      </IconButton>
+      <IconButton label="Seite verlängern" onClick={p.onExtend}>
+        <ArrowDownToLine />
+      </IconButton>
+      <IconButton label="Alle Zeichnungen löschen" onClick={p.onClear}>
+        <Trash2 />
+      </IconButton>
     </>
   )
 }
@@ -273,23 +419,48 @@ interface PaperSettings {
   font: FontId
 }
 
-function PaperButton({ value, onChange }: { value: PaperSettings; onChange: (v: Partial<PaperSettings>) => void }) {
+function PaperButton({
+  value,
+  onChange,
+}: {
+  value: PaperSettings
+  onChange: (v: Partial<PaperSettings>) => void
+}) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   return (
     <>
-      <IconButton label="Papier & Schrift" onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}>
+      <IconButton
+        label="Papier & Schrift"
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
+      >
         <StickyNote />
       </IconButton>
       {anchor &&
         createPortal(
-          <div className="overlay transparent" onMouseDown={(e) => e.target === e.currentTarget && setAnchor(null)}>
-            <div className="popover paper-popover" style={{ top: anchor.bottom + 6, right: Math.max(8, window.innerWidth - anchor.right) }}>
+          <div
+            className="overlay transparent"
+            onMouseDown={(e) => e.target === e.currentTarget && setAnchor(null)}
+          >
+            <div
+              className="popover paper-popover"
+              style={{
+                top: anchor.bottom + 6,
+                right: Math.max(8, window.innerWidth - anchor.right),
+              }}
+            >
               <div className="popover-label">Papier</div>
               <PaperPicker value={value.paper} onChange={(paper) => onChange({ paper })} />
               <div className="popover-label">Papierfarbe</div>
-              <PaperColorPicker value={value.paperColor} onChange={(paperColor) => onChange({ paperColor })} />
+              <PaperColorPicker
+                value={value.paperColor}
+                onChange={(paperColor) => onChange({ paperColor })}
+              />
               <div className="popover-label">Schrift der Notiz</div>
-              <select className="select" value={value.font} onChange={(e) => onChange({ font: e.target.value as FontId })}>
+              <select
+                className="select"
+                value={value.font}
+                onChange={(e) => onChange({ font: e.target.value as FontId })}
+              >
                 {FONTS.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.label}
@@ -328,7 +499,11 @@ export function NoteToolbar(props: NoteToolbarProps) {
       />
       <span className="toolbar-sep" />
       <div className="toolbar-tools">
-        {props.drawing ? <DrawTools {...props} /> : <TextTools editor={props.editor} actions={props.actions} />}
+        {props.drawing ? (
+          <DrawTools {...props} />
+        ) : (
+          <TextTools editor={props.editor} actions={props.actions} />
+        )}
       </div>
       <span className="spacer" />
       <PaperButton value={props.paper} onChange={props.onPaper} />

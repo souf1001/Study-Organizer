@@ -1,7 +1,7 @@
-// API-Keys und Tokens verschlüsselt ablegen (Schlüsselbund von macOS, DPAPI unter Windows, libsecret unter Linux).
+// Stores API keys and tokens encrypted (macOS Keychain, DPAPI on Windows, libsecret on Linux).
 import { promises as fs } from 'node:fs'
 import { safeStorage } from 'electron'
-import type { Secrets } from '../backend/service'
+import type { Secrets } from '../backend/secrets'
 import { writeAtomic } from '../backend/store'
 
 export function createSecrets(file: string): Secrets {
@@ -19,7 +19,7 @@ export function createSecrets(file: string): Secrets {
   }
 
   async function save(all: Record<string, string>): Promise<void> {
-    // Nur für den eigenen Benutzer lesbar
+    // Readable only by the current user
     await writeAtomic(file, JSON.stringify(all), 0o600)
   }
 
@@ -28,6 +28,7 @@ export function createSecrets(file: string): Secrets {
       ? `enc:${safeStorage.encryptString(value).toString('base64')}`
       : `raw:${value}`
 
+  // Fallback when no OS encryption is available; both prefixes are 4 characters long
   const decode = (stored: string): string =>
     stored.startsWith('enc:')
       ? safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))

@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useBackHandler } from '@/lib/back-stack'
 
 interface ModalProps {
   title: ReactNode
@@ -10,6 +11,7 @@ interface ModalProps {
 }
 
 export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
+  useBackHandler(onClose)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

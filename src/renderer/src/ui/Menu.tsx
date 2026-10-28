@@ -1,10 +1,18 @@
-// Kontext- und Dropdown-Menüs. Es ist immer höchstens ein Menü offen.
+// Context and dropdown menus. At most one menu is open at a time.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
+import { useBackHandler } from '@/lib/back-stack'
 
 export type MenuEntry =
-  | { label: string; icon?: ReactNode; onClick: () => void; danger?: boolean; shortcut?: string; disabled?: boolean }
+  | {
+      label: string
+      icon?: ReactNode
+      onClick: () => void
+      danger?: boolean
+      shortcut?: string
+      disabled?: boolean
+    }
   | { separator: true }
   | { heading: string }
 
@@ -22,18 +30,11 @@ const useMenuStore = create<MenuState>((set) => ({
   close: () => set({ position: null, entries: [] }),
 }))
 
-if (typeof window !== 'undefined') {
-  useMenuStore.subscribe((state) => {
-    if (state.position) {
-      window.__menuClose = () => useMenuStore.getState().close()
-    } else {
-      delete window.__menuClose
-    }
-  })
-}
-
-/** Öffnet ein Menü an der Mausposition oder unter einem Element */
-export function showMenu(anchor: { clientX: number; clientY: number } | HTMLElement, entries: MenuEntry[]): void {
+/** Opens a menu at the mouse position or below an element. */
+export function showMenu(
+  anchor: { clientX: number; clientY: number } | HTMLElement,
+  entries: MenuEntry[],
+): void {
   if (anchor instanceof HTMLElement) {
     const rect = anchor.getBoundingClientRect()
     useMenuStore.getState().open({ x: rect.left, y: rect.bottom + 4 }, entries)
@@ -46,13 +47,18 @@ export function MenuHost() {
   const { position, entries, close } = useMenuStore()
   const ref = useRef<HTMLDivElement>(null)
   const [place, setPlace] = useState({ x: 0, y: 0 })
+  useBackHandler(close, Boolean(position))
 
   useLayoutEffect(() => {
     if (!position || !ref.current) return
     const { width, height } = ref.current.getBoundingClientRect()
+    // Keep the menu inside the viewport: shift left, or flip above the anchor.
     setPlace({
       x: Math.min(position.x, window.innerWidth - width - 8),
-      y: position.y + height > window.innerHeight - 8 ? Math.max(8, position.y - height) : position.y,
+      y:
+        position.y + height > window.innerHeight - 8
+          ? Math.max(8, position.y - height)
+          : position.y,
     })
     ref.current.querySelector<HTMLButtonElement>('.menu-item')?.focus()
   }, [position])
@@ -66,7 +72,9 @@ export function MenuHost() {
       if (e.key === 'Escape') close()
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
-        const items = [...(ref.current?.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)') ?? [])]
+        const items = [
+          ...(ref.current?.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)') ?? []),
+        ]
         const index = items.indexOf(document.activeElement as HTMLButtonElement)
         const next = e.key === 'ArrowDown' ? index + 1 : index - 1
         items[(next + items.length) % items.length]?.focus()
@@ -87,7 +95,12 @@ export function MenuHost() {
     <div ref={ref} className="menu" role="menu" style={{ left: place.x, top: place.y }}>
       {entries.map((entry, i) => {
         if ('separator' in entry) return <div key={i} className="menu-separator" />
-        if ('heading' in entry) return <div key={i} className="menu-label">{entry.heading}</div>
+        if ('heading' in entry)
+          return (
+            <div key={i} className="menu-label">
+              {entry.heading}
+            </div>
+          )
         return (
           <button
             key={i}

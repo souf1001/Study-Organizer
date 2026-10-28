@@ -1,13 +1,26 @@
-// Schnellsuche (Cmd/Strg + K): Module, Ordner, Notizen, Dateien, Volltext und Befehle.
+// Quick search (Cmd/Ctrl + K): modules, folders, notes, files, full text and commands.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
-import { BookOpen, CalendarDays, CheckSquare, FileText, Folder, Home, MessageCircle, Moon, Search, Settings, SplitSquareHorizontal } from 'lucide-react'
+import {
+  BookOpen,
+  CalendarDays,
+  CheckSquare,
+  FileText,
+  Folder,
+  Home,
+  MessageCircle,
+  Moon,
+  Search,
+  Settings,
+  SplitSquareHorizontal,
+} from 'lucide-react'
 import type { SearchHit } from '@shared/types'
 import { api } from '@/lib/api'
 import { activeSemester } from '@/lib/actions'
 import { updateSettings, useDb } from '@/lib/db'
 import { modKey } from '@/lib/format'
+import { useBackHandler } from '@/lib/back-stack'
 import { openInNewPane, openView, useWorkspace, type View } from '@/lib/workspace'
 import { FileIcon } from '@/views/file/FileIcon'
 
@@ -28,21 +41,34 @@ interface Result {
   run?: () => void
 }
 
-const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+/** Lowercases and strips diacritics so "Ubung" matches "Übung". */
+const normalize = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 
 function Palette() {
   const db = useDb()
   const hide = usePalette((s) => s.hide)
+  useBackHandler(hide)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const [hits, setHits] = useState<SearchHit[]>([])
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Volltextsuche verzögert, damit nicht bei jedem Tastendruck gesucht wird
+  // Debounce the full-text search so it does not run on every keystroke.
   useEffect(() => {
     const q = query.trim()
     if (q.length < 3) return setHits([])
-    const timer = setTimeout(() => void api.search(q).then(setHits).catch(() => setHits([])), 180)
+    const timer = setTimeout(
+      () =>
+        void api
+          .search(q)
+          .then(setHits)
+          .catch(() => setHits([])),
+      180,
+    )
     return () => clearTimeout(timer)
   }, [query])
 
@@ -52,36 +78,70 @@ function Palette() {
     const semester = activeSemester(db)
     const moduleName = (id: string) => db.modules.find((m) => m.id === id)?.name ?? ''
 
-    const commands = ([
-      { key: 'home', group: 'Navigation', label: 'Heute', icon: <Home />, view: { type: 'home' } },
-      { key: 'cal', group: 'Navigation', label: 'Kalender', icon: <CalendarDays />, view: { type: 'calendar' } },
-      { key: 'tasks', group: 'Navigation', label: 'Aufgaben', icon: <CheckSquare />, view: { type: 'tasks' } },
-      ...(db.settings.ai.enabled
-        ? [{ key: 'chat', group: 'Navigation', label: 'KI-Chat', icon: <MessageCircle />, view: { type: 'chat' } satisfies View }]
-        : []),
-      { key: 'settings', group: 'Navigation', label: 'Einstellungen', icon: <Settings />, view: { type: 'settings' } },
-      {
-        key: 'theme',
-        group: 'Befehle',
-        label: 'Hell/Dunkel wechseln',
-        icon: <Moon />,
-        run: () => {
-          const dark = document.documentElement.dataset.theme === 'dark'
-          updateSettings('appearance', { theme: dark ? 'light' : 'dark' })
+    const commands = (
+      [
+        {
+          key: 'home',
+          group: 'Navigation',
+          label: 'Heute',
+          icon: <Home />,
+          view: { type: 'home' },
         },
-      },
-      {
-        key: 'split',
-        group: 'Befehle',
-        label: 'Aktuelle Ansicht nebeneinander öffnen',
-        icon: <SplitSquareHorizontal />,
-        run: () => {
-          const { panes, activeId } = useWorkspace.getState()
-          const view = panes.find((p) => p.id === activeId)?.view
-          if (view) useWorkspace.getState().open(view, { newPane: true })
+        {
+          key: 'cal',
+          group: 'Navigation',
+          label: 'Kalender',
+          icon: <CalendarDays />,
+          view: { type: 'calendar' },
         },
-      },
-    ] satisfies Result[]).filter((c) => match(c.label))
+        {
+          key: 'tasks',
+          group: 'Navigation',
+          label: 'Aufgaben',
+          icon: <CheckSquare />,
+          view: { type: 'tasks' },
+        },
+        ...(db.settings.ai.enabled
+          ? [
+              {
+                key: 'chat',
+                group: 'Navigation',
+                label: 'KI-Chat',
+                icon: <MessageCircle />,
+                view: { type: 'chat' } satisfies View,
+              },
+            ]
+          : []),
+        {
+          key: 'settings',
+          group: 'Navigation',
+          label: 'Einstellungen',
+          icon: <Settings />,
+          view: { type: 'settings' },
+        },
+        {
+          key: 'theme',
+          group: 'Befehle',
+          label: 'Hell/Dunkel wechseln',
+          icon: <Moon />,
+          run: () => {
+            const dark = document.documentElement.dataset.theme === 'dark'
+            updateSettings('appearance', { theme: dark ? 'light' : 'dark' })
+          },
+        },
+        {
+          key: 'split',
+          group: 'Befehle',
+          label: 'Aktuelle Ansicht nebeneinander öffnen',
+          icon: <SplitSquareHorizontal />,
+          run: () => {
+            const { panes, activeId } = useWorkspace.getState()
+            const view = panes.find((p) => p.id === activeId)?.view
+            if (view) useWorkspace.getState().open(view, { newPane: true })
+          },
+        },
+      ] satisfies Result[]
+    ).filter((c) => match(c.label))
 
     const modules: Result[] = db.modules
       .filter((m) => match(`${m.name} ${m.code}`))
@@ -100,7 +160,14 @@ function Palette() {
       ? db.folders
           .filter((f) => match(f.name))
           .slice(0, 8)
-          .map((f) => ({ key: f.id, group: 'Ordner', label: f.name, hint: moduleName(f.moduleId), icon: <Folder />, view: { type: 'folder', id: f.id } }))
+          .map((f) => ({
+            key: f.id,
+            group: 'Ordner',
+            label: f.name,
+            hint: moduleName(f.moduleId),
+            icon: <Folder />,
+            view: { type: 'folder', id: f.id },
+          }))
       : []
 
     const items: Result[] = db.items
@@ -134,10 +201,22 @@ function Palette() {
       .flatMap((h) => {
         const item = db.items.find((i) => i.id === h.itemId)
         if (!item) return []
-        return [{ key: `t-${h.itemId}`, group: 'Im Inhalt gefunden', label: item.title, snippet: h.snippet, hint: moduleName(item.moduleId), icon: <Search />, view: { type: 'item', id: item.id } }]
+        return [
+          {
+            key: `t-${h.itemId}`,
+            group: 'Im Inhalt gefunden',
+            label: item.title,
+            snippet: h.snippet,
+            hint: moduleName(item.moduleId),
+            icon: <Search />,
+            view: { type: 'item', id: item.id },
+          },
+        ]
       })
 
-    return q ? [...modules, ...folders, ...items, ...chatResults, ...fullText, ...commands] : [...items, ...chatResults, ...commands, ...modules]
+    return q
+      ? [...modules, ...folders, ...items, ...chatResults, ...fullText, ...commands]
+      : [...items, ...chatResults, ...commands, ...modules]
   }, [db, query, hits])
 
   useEffect(() => {
@@ -184,7 +263,8 @@ function Palette() {
         <div className="palette-results" ref={listRef}>
           {results.length === 0 && <div className="empty small">Nichts gefunden.</div>}
           {results.map((r, i) => {
-            const heading = r.group !== lastGroup ? <div className="palette-group">{r.group}</div> : null
+            const heading =
+              r.group !== lastGroup ? <div className="palette-group">{r.group}</div> : null
             lastGroup = r.group
             return (
               <div key={r.key}>
@@ -198,7 +278,9 @@ function Palette() {
                 >
                   {r.icon}
                   <span style={{ minWidth: 0 }}>
-                    <span className="truncate" style={{ display: 'block' }}>{r.label}</span>
+                    <span className="truncate" style={{ display: 'block' }}>
+                      {r.label}
+                    </span>
                     {r.snippet && <span className="snippet truncate">{r.snippet}</span>}
                   </span>
                   {r.hint && <span className="hint">{r.hint}</span>}

@@ -1,7 +1,19 @@
-// Verbindet die Oberfläche (Preload) mit den Backend-Funktionen.
+// Connects the UI (preload script) to the backend service.
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { BrowserWindow, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import {
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron'
+import {
+  setupFileName,
+  SETUP_FILE_EXTENSION,
+  type SetupExportOptions,
+} from '../shared/setup-bundle'
 import type { AiRequest, FileInput, FileTarget } from '../shared/types'
 import { toISODate } from '../shared/dates'
 import { isSafeToOpen } from '../backend/files'
@@ -13,7 +25,7 @@ import { startTucanWizard } from './tucan-session'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (...args: any[]) => unknown
 
-/** Nur Anfragen aus der eigenen Oberfläche annehmen */
+/** Only accept requests from our own UI */
 function assertTrustedSender(event: IpcMainInvokeEvent | IpcMainEvent): void {
   const url = event.senderFrame?.url ?? ''
   const devUrl = process.env.ELECTRON_RENDERER_URL
@@ -25,6 +37,23 @@ export function openExternalSafely(url: string): Promise<void> {
   const protocol = new URL(url).protocol
   if (!['https:', 'http:', 'mailto:'].includes(protocol)) throw new Error('Link nicht erlaubt')
   return shell.openExternal(url)
+}
+
+/** Lets the user pick a location and writes the setup file there */
+async function exportSetup(service: Service, options: SetupExportOptions): Promise<string | null> {
+  const window = BrowserWindow.getFocusedWindow()
+  const dialogOptions = {
+    title: 'Einrichtung exportieren',
+    defaultPath: setupFileName(),
+    filters: [{ name: 'Study-Organizer-Einrichtung', extensions: [SETUP_FILE_EXTENSION.slice(1)] }],
+  }
+  const result = window
+    ? await dialog.showSaveDialog(window, dialogOptions)
+    : await dialog.showSaveDialog(dialogOptions)
+  if (result.canceled || !result.filePath) return null
+  const file = await service.setupExport(options)
+  await fs.writeFile(result.filePath, JSON.stringify(file), { encoding: 'utf8', mode: 0o600 })
+  return result.filePath
 }
 
 export function registerIpc(service: Service, store: Store): void {
@@ -59,7 +88,9 @@ export function registerIpc(service: Service, store: Store): void {
           message: `„${item?.title ?? fileName}“ ist kein Dokument, sondern möglicherweise ein Programm oder Skript (.${fileName.split('.').pop()}).`,
           detail: 'Öffne solche Dateien nur, wenn du ihrer Herkunft vertraust.',
         }
-        const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
+        const { response } = window
+          ? await dialog.showMessageBox(window, options)
+          : await dialog.showMessageBox(options)
         if (response === 0) return
         if (response === 1) return shell.showItemInFolder(file)
       }
@@ -96,15 +127,25 @@ export function registerIpc(service: Service, store: Store): void {
     },
     'app:backup': async () => {
       const window = BrowserWindow.getFocusedWindow()
-      const options = { title: 'Speicherort für das Backup wählen', properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] }
-      const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+      const options = {
+        title: 'Speicherort für das Backup wählen',
+        properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[],
+      }
+      const result = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options)
       if (result.canceled || !result.filePaths[0]) return null
       await store.flush()
-      const target = path.join(result.filePaths[0], `Study-Organizer-Backup-${toISODate(new Date())}`)
+      const target = path.join(
+        result.filePaths[0],
+        `Study-Organizer-Backup-${toISODate(new Date())}`,
+      )
       await fs.cp(store.dir, target, { recursive: true })
       return target
     },
     'app:reset': () => store.reset(),
+    'setup:export': (options: SetupExportOptions) => exportSetup(service, options),
+    'setup:import': (content: string, password?: string) => service.setupImport(content, password),
   }
 
   for (const [channel, handler] of Object.entries(handlers)) {
@@ -114,7 +155,7 @@ export function registerIpc(service: Service, store: Store): void {
     })
   }
 
-  // KI-Antworten werden Stück für Stück an die Oberfläche geschickt.
+  // AI answers are streamed to the UI chunk by chunk.
   const running = new Map<string, AbortController>()
   ipcMain.handle('ai:stream', async (event, requestId: string, request: AiRequest) => {
     assertTrustedSender(event)

@@ -1,5 +1,5 @@
-// Die Oberfläche hält eine Kopie aller Metadaten. Änderungen werden sofort lokal übernommen
-// und parallel ans Backend geschickt.
+// The UI keeps a copy of all metadata. Changes are applied locally right away
+// and sent to the backend in parallel (reloading from the backend on failure).
 import { create } from 'zustand'
 import type { CollectionName, Db, DbPatch, RecordOf, Settings } from '@shared/types'
 import { toastError } from '@/ui/Toast'
@@ -11,7 +11,7 @@ interface DbState {
 
 export const useDbStore = create<DbState>(() => ({ db: null }))
 
-/** Aktueller Datenstand (erst nach `loadDb()` verfügbar) */
+/** Current data snapshot (only available after `loadDb()`). */
 export function useDb(): Db {
   const db = useDbStore((s) => s.db)
   if (!db) throw new Error('Daten noch nicht geladen')
@@ -47,7 +47,7 @@ export function putRecord<C extends CollectionName>(collection: C, record: Recor
   api.put(collection, record).catch(reloadOnError)
 }
 
-/** Löschen im Backend (inkl. abhängiger Daten), danach neu laden */
+/** Deletes in the backend (including dependent records), then reloads. */
 export async function removeRecord(collection: CollectionName, id: string): Promise<void> {
   try {
     await api.remove(collection, id)
@@ -62,8 +62,11 @@ export function updateDb(patch: DbPatch): void {
   api.update(patch).catch(reloadOnError)
 }
 
-/** Ändert einen Bereich der Einstellungen, z. B. `updateSettings('editor', { font: 'serif' })` */
-export function updateSettings<K extends keyof Settings>(section: K, values: Partial<Settings[K]>): void {
+/** Updates one settings section, e.g. `updateSettings('editor', { font: 'serif' })`. */
+export function updateSettings<K extends keyof Settings>(
+  section: K,
+  values: Partial<Settings[K]>,
+): void {
   const settings = getDb().settings
   updateDb({ settings: { ...settings, [section]: { ...settings[section], ...values } } })
 }

@@ -1,4 +1,4 @@
-// Moodle-Anbindung und Kalender-Abos (Moodle, my h_da/HISinOne, Stud.IP, ILIAS, OBS …).
+// Moodle connection and calendar subscriptions (Moodle, my h_da/HISinOne, Stud.IP, ILIAS, OBS …).
 import { useEffect, useState } from 'react'
 import {
   AlertCircle,
@@ -10,11 +10,12 @@ import {
   Trash2,
   Unplug,
 } from 'lucide-react'
+import { matchCourseToModules } from '@shared/course-matching'
 import { newModule } from '@shared/defaults'
 import type { MoodleCourse, MoodleSiteInfo, Subscription } from '@shared/types'
 import { api } from '@/lib/api'
 import { activeSemester, pickFiles } from '@/lib/actions'
-import { loadDb, putRecord, updateSettings, useDb } from '@/lib/db'
+import { getDb, loadDb, putRecord, updateSettings, useDb } from '@/lib/db'
 import { formatDateTime } from '@/lib/format'
 import { Button, IconButton } from '@/ui/Button'
 import { confirm } from '@/ui/Dialogs'
@@ -56,9 +57,20 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
 
   if (!info) {
     return (
-      <SettingRow label="Moodle-Adresse" description="Z. B. lernen.h-da.de (Hochschule Darmstadt) oder moodle.tu-darmstadt.de">
+      <SettingRow
+        label="Moodle-Adresse"
+        description="Z. B. lernen.h-da.de (Hochschule Darmstadt) oder moodle.tu-darmstadt.de"
+      >
         <div className="row">
-          <Input value={url} placeholder="moodle.meine-hochschule.de" onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void check()} />
+          <Input
+            value={url}
+            placeholder="moodle.meine-hochschule.de"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void check()}
+          />
           <Button onClick={() => void check()} disabled={!url.trim() || busy}>
             Weiter
           </Button>
@@ -67,34 +79,89 @@ function MoodleConnect({ onCourses }: { onCourses: (c: MoodleCourse[]) => void }
     )
   }
 
+  const showSso = info.ssoRequired && Boolean(api.moodle.connectSso)
+  const canSubmitPassword = Boolean(username && password) && !busy
+
   return (
     <>
       <SettingRow label={info.siteName} description={info.url}>
-        <Button variant="ghost" onClick={() => setInfo(null)}>Ändern</Button>
+        <Button variant="ghost" onClick={() => setInfo(null)}>
+          Ändern
+        </Button>
       </SettingRow>
-      {info.ssoRequired && api.moodle.connectSso ? (
-        <SettingRow label="Mit Hochschul-Login anmelden" description="Es öffnet sich das Anmeldefenster deiner Hochschule. Dein Passwort wird nicht gespeichert.">
-          <Button variant="primary" icon={<LogIn />} disabled={busy} onClick={() => void run(() => api.moodle.connectSso!(info.url))}>
+      {showSso && (
+        <SettingRow
+          label="Mit Hochschul-Login anmelden"
+          description="Es öffnet sich das Anmeldefenster deiner Hochschule. Dein Passwort wird nicht gespeichert."
+        >
+          <Button
+            variant="primary"
+            icon={<LogIn />}
+            disabled={busy}
+            onClick={() => void run(() => api.moodle.connectSso!(info.url))}
+          >
             Anmelden
           </Button>
         </SettingRow>
-      ) : (
-        <SettingRow label="Anmelden" description="Das Passwort wird nur einmal an Moodle geschickt und nicht gespeichert – gespeichert wird nur ein Zugangs-Token." stacked>
-          <div className="inline-form">
-            <div className="row">
-              <Input value={username} placeholder="Benutzername" autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
-              <Input value={password} placeholder="Passwort" type="password" autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
-              <Button variant="primary" disabled={!username || !password || busy} onClick={() => void run(() => api.moodle.connect({ url: info.url, username, password }))}>
-                Anmelden
-              </Button>
-            </div>
-          </div>
-        </SettingRow>
       )}
-      <SettingRow label="Oder: Sicherheitsschlüssel" description="Falls deine Hochschule ihn freigibt: Moodle → Einstellungen → Sicherheitsschlüssel → „Moodle mobile web service“.">
+      <SettingRow
+        label={showSso ? 'Oder: Benutzername und Passwort' : 'Anmelden'}
+        description={
+          info.ssoRequired
+            ? 'Klappt nur, wenn deine Hochschule die Anmeldung mit Passwort für die Moodle-App erlaubt. Das Passwort wird nicht gespeichert, nur ein Zugangs-Token.'
+            : 'Das Passwort wird nur einmal an Moodle geschickt und nicht gespeichert – gespeichert wird nur ein Zugangs-Token.'
+        }
+        stacked
+      >
+        <form
+          className="inline-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (canSubmitPassword)
+              void run(() => api.moodle.connect({ url: info.url, username, password }))
+          }}
+        >
+          <div className="row">
+            <Input
+              value={username}
+              placeholder="Benutzername"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              onChange={(e) => setUsername(e.target.value)}
+            />
+            <Input
+              value={password}
+              placeholder="Passwort"
+              type="password"
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button
+              type="submit"
+              variant={showSso ? 'default' : 'primary'}
+              disabled={!canSubmitPassword}
+            >
+              Anmelden
+            </Button>
+          </div>
+        </form>
+      </SettingRow>
+      <SettingRow
+        label="Oder: Sicherheitsschlüssel"
+        description="Falls deine Hochschule ihn freigibt: Moodle → Einstellungen → Sicherheitsschlüssel → „Moodle mobile web service“."
+      >
         <div className="row">
-          <Input value={token} placeholder="Schlüssel einfügen" type="password" onChange={(e) => setToken(e.target.value)} />
-          <Button disabled={!token || busy} onClick={() => void run(() => api.moodle.connect({ url: info.url, token }))}>
+          <Input
+            value={token}
+            placeholder="Schlüssel einfügen"
+            type="password"
+            onChange={(e) => setToken(e.target.value)}
+          />
+          <Button
+            disabled={!token || busy}
+            onClick={() => void run(() => api.moodle.connect({ url: info.url, token }))}
+          >
             Verbinden
           </Button>
         </div>
@@ -118,31 +185,26 @@ function MoodleSection() {
     return a.name.localeCompare(b.name)
   })
 
+  // Load the courses and map new ones to matching modules automatically
   useEffect(() => {
-    if (connected) {
-      api.moodle.courses().then((loaded) => {
+    if (!connected) return
+    api.moodle
+      .courses()
+      .then((loaded) => {
         setCourses(loaded)
-        const courseMap = { ...moodle.courseMap }
-        let updated = false
-        for (const c of loaded) {
-          if (!courseMap[c.id]) {
-            const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, ' ').trim()
-            const cFull = clean(c.fullname)
-            const cShort = clean(c.shortname || '')
-            const matched = db.modules.find((m) => {
-              if (m.code && (cShort === clean(m.code) || cFull.includes(clean(m.code)))) return true
-              const mName = clean(m.name)
-              return mName.length >= 3 && (cFull.includes(mName) || (cShort && cShort.includes(mName)))
-            })
-            if (matched) {
-              courseMap[c.id] = matched.id
-              updated = true
-            }
-          }
+        const { settings, modules } = getDb()
+        const courseMap = { ...settings.moodle.courseMap }
+        let changed = false
+        for (const course of loaded) {
+          if (courseMap[course.id]) continue
+          const module = matchCourseToModules(course, modules)
+          if (!module) continue
+          courseMap[course.id] = module.id
+          changed = true
         }
-        if (updated) updateSettings('moodle', { courseMap })
-      }).catch(toastError)
-    }
+        if (changed) updateSettings('moodle', { courseMap })
+      })
+      .catch(toastError)
   }, [connected])
 
   const map = (courseId: number, moduleId: string) => {
@@ -163,7 +225,10 @@ function MoodleSection() {
       const result = await api.moodle.sync()
       await loadDb()
       if (result.errors.length) toastError(new Error(result.errors.join(' · ')))
-      else toast(`Moodle: ${result.tasks} Abgaben, ${result.events} Termine, ${result.files} neue Dateien`)
+      else
+        toast(
+          `Moodle: ${result.tasks} Abgaben, ${result.events} Termine, ${result.files} neue Dateien`,
+        )
     } catch (error) {
       toastError(error)
     } finally {
@@ -177,18 +242,35 @@ function MoodleSection() {
         <MoodleConnect onCourses={setCourses} />
       ) : (
         <>
-          <SettingRow label={`Verbunden mit ${moodle.siteName}`} description={moodle.lastSync ? `Zuletzt abgeglichen: ${formatDateTime(moodle.lastSync)}` : 'Noch nicht abgeglichen'}>
+          <SettingRow
+            label={`Verbunden mit ${moodle.siteName}`}
+            description={
+              moodle.lastSync
+                ? `Zuletzt abgeglichen: ${formatDateTime(moodle.lastSync)}`
+                : 'Noch nicht abgeglichen'
+            }
+          >
             <div className="row">
               <Button icon={<RefreshCw />} disabled={syncing} onClick={() => void sync()}>
                 {syncing ? 'Gleiche ab …' : 'Jetzt abgleichen'}
               </Button>
-              <IconButton label="Verbindung trennen" onClick={() => void api.moodle.disconnect().then(loadDb)}>
+              <IconButton
+                label="Verbindung trennen"
+                onClick={() => void api.moodle.disconnect().then(loadDb)}
+              >
                 <Unplug />
               </IconButton>
             </div>
           </SettingRow>
-          <SettingRow label="Kursdateien herunterladen" description="Folien und Dateien aus Moodle-Kursen landen im Modul unter „Moodle“.">
-            <Switch checked={moodle.syncFiles} onChange={(syncFiles) => updateSettings('moodle', { syncFiles })} label="Kursdateien herunterladen" />
+          <SettingRow
+            label="Kursdateien herunterladen"
+            description="Folien und Dateien aus Moodle-Kursen landen im Modul unter „Moodle“."
+          >
+            <Switch
+              checked={moodle.syncFiles}
+              onChange={(syncFiles) => updateSettings('moodle', { syncFiles })}
+              label="Kursdateien herunterladen"
+            />
           </SettingRow>
           <SettingRow
             label="Automatische Synchronisierung"
@@ -207,7 +289,11 @@ function MoodleSection() {
               onChange={(val) => updateSettings('moodle', { syncIntervalMinutes: Number(val) })}
             />
           </SettingRow>
-          <SettingRow label="Kurse zuordnen" description="Abgaben, Termine und Dateien eines Kurses landen im gewählten Modul." stacked>
+          <SettingRow
+            label="Kurse zuordnen"
+            description="Abgaben, Termine und Dateien eines Kurses landen im gewählten Modul."
+            stacked
+          >
             <div className="inline-form">
               {courses.length === 0 && <span className="small muted">Kurse werden geladen …</span>}
               {courses.map((c) => (
@@ -221,7 +307,8 @@ function MoodleSection() {
                       { value: '', label: 'Nicht übernehmen' },
                       ...modules.map((m) => {
                         const sem = db.semesters.find((s) => s.id === m.semesterId)
-                        const label = sem && db.semesters.length > 1 ? `${m.name} (${sem.name})` : m.name
+                        const label =
+                          sem && db.semesters.length > 1 ? `${m.name} (${sem.name})` : m.name
                         return { value: m.id, label }
                       }),
                       { value: 'new', label: '+ Als neues Modul anlegen' },
@@ -295,7 +382,11 @@ function TucanCalendarSection() {
       return
     }
     if (!isValidFeedUrl(url)) {
-      toastError(new Error('Ungültige Kalender-URL. Erlaubte Protokolle sind webcal://, https:// oder http://.'))
+      toastError(
+        new Error(
+          'Ungültige Kalender-URL. Erlaubte Protokolle sind webcal://, https:// oder http://.',
+        ),
+      )
       return
     }
 
@@ -356,7 +447,9 @@ function TucanCalendarSection() {
     try {
       const result = await api.calendar.importFile(file.name, await file.text())
       await loadDb()
-      toast(`${result.count} ${result.count === 1 ? 'Termin' : 'Termine'} aus „${file.name}“ importiert`)
+      toast(
+        `${result.count} ${result.count === 1 ? 'Termin' : 'Termine'} aus „${file.name}“ importiert`,
+      )
     } catch (error) {
       toastError(error)
     }
@@ -390,13 +483,17 @@ function TucanCalendarSection() {
                 value={feedName}
                 placeholder="Name, z. B. Moodle"
                 onChange={(e) => setFeedName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()}
+                onKeyDown={(e) =>
+                  e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()
+                }
               />
               <Input
                 value={feedUrl}
                 placeholder="https://… oder webcal://…"
                 onChange={(e) => setFeedUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()}
+                onKeyDown={(e) =>
+                  e.key === 'Enter' && isFormValid && !subBusy && void handleSubscribe()
+                }
               />
               <Button
                 icon={<Link2 />}
@@ -430,17 +527,23 @@ function TucanCalendarSection() {
                     <span className="badge" style={{ fontSize: '11px' }}>
                       {s.kind === 'file' ? 'Datei-Import' : 'WebCal-Feed'}
                     </span>
-                    <span className="mono-path">{s.kind === 'file' ? (s.url || 'Lokale ICS-Datei') : s.url}</span>
+                    <span className="mono-path">
+                      {s.kind === 'file' ? s.url || 'Lokale ICS-Datei' : s.url}
+                    </span>
                   </div>
                   {s.lastError ? (
-                    <div className="status-error" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                    <div
+                      className="status-error"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}
+                    >
                       <AlertCircle size={13} />
                       <span>Synchronisationsfehler: {s.lastError}</span>
                     </div>
                   ) : s.lastSync ? (
                     <span className="status-ok">
-                      {s.kind === 'file' ? 'Importiert' : 'Abgeglichen'} {formatDateTime(s.lastSync)} ·{' '}
-                      {eventCount} {eventCount === 1 ? 'Termin' : 'Termine'}
+                      {s.kind === 'file' ? 'Importiert' : 'Abgeglichen'}{' '}
+                      {formatDateTime(s.lastSync)} · {eventCount}{' '}
+                      {eventCount === 1 ? 'Termin' : 'Termine'}
                     </span>
                   ) : (
                     <span className="small muted">Noch nicht abgeglichen</span>
@@ -472,12 +575,21 @@ function TucanCalendarSection() {
           <div>
             <strong>TU Darmstadt (TUCaN)</strong>
             <ol>
-              <li>Klicke oben auf <strong>„TUCaN-Assistent starten“</strong>.</li>
+              <li>
+                Klicke oben auf <strong>„TUCaN-Assistent starten“</strong>.
+              </li>
               <li>Melde dich mit deiner TU-ID im Anmeldefenster an.</li>
-              <li>Navigiere zu <strong>Veranstaltungen → Stundenplan</strong> und klicke auf <strong>„Exportieren“</strong>.</li>
-              <li>Der Study Organizer übernimmt deinen Stundenplan automatisch und schließt das Fenster.</li>
+              <li>
+                Navigiere zu <strong>Veranstaltungen → Stundenplan</strong> und klicke auf{' '}
+                <strong>„Exportieren“</strong>.
+              </li>
+              <li>
+                Der Study Organizer übernimmt deinen Stundenplan automatisch und schließt das
+                Fenster.
+              </li>
             </ol>
-            Alternativ kannst du die exportierte <code>.ics</code>-Datei direkt über „Datei wählen“ importieren oder per Drag & Drop in den Kalender ziehen.
+            Alternativ kannst du die exportierte <code>.ics</code>-Datei direkt über „Datei wählen“
+            importieren oder per Drag & Drop in den Kalender ziehen.
           </div>
         </div>
         <div className="setting-row guide">
@@ -485,26 +597,35 @@ function TucanCalendarSection() {
             <strong>Moodle</strong> (z. B. moodle.tu-darmstadt.de oder lernen.h-da.de)
             <ol>
               <li>Kalender öffnen → unten „Import und Export“ bzw. „Kalender exportieren“.</li>
-              <li>„Alle Termine“ und als Zeitraum „Eigener Bereich“ oder „Vergangene und nachfolgende 60 Tage“ wählen.</li>
-              <li>„Kalender-URL abfragen“ → URL kopieren und oben bei „Kalender abonnieren“ einfügen.</li>
+              <li>
+                „Alle Termine“ und als Zeitraum „Eigener Bereich“ oder „Vergangene und nachfolgende
+                60 Tage“ wählen.
+              </li>
+              <li>
+                „Kalender-URL abfragen“ → URL kopieren und oben bei „Kalender abonnieren“ einfügen.
+              </li>
             </ol>
             Tipp: Mit der Moodle-Anbindung oben kommen Abgaben zusätzlich als abhakbare Aufgaben.
           </div>
         </div>
         <div className="setting-row guide">
           <div>
-            <strong>my h_da / HISinOne</strong>: Studienservice → Stundenplan → „Daten für Kalender (ics) exportieren“ → Datei oben importieren. HISinOne bietet nur einen Export zum Zeitpunkt des Herunterladens – nach Änderungen neu importieren.
+            <strong>my h_da / HISinOne</strong>: Studienservice → Stundenplan → „Daten für Kalender
+            (ics) exportieren“ → Datei oben importieren. HISinOne bietet nur einen Export zum
+            Zeitpunkt des Herunterladens – nach Änderungen neu importieren.
           </div>
         </div>
         <div className="setting-row guide">
           <div>
-            <strong>h_da Informatik (OBS)</strong>: Im Online-Belegsystem den persönlichen Terminplan als Internetkalender abonnieren – die Adresse beginnt mit{' '}
+            <strong>h_da Informatik (OBS)</strong>: Im Online-Belegsystem den persönlichen
+            Terminplan als Internetkalender abonnieren – die Adresse beginnt mit{' '}
             <code>https://obs.fbi.h-da.de/obs/index.php?action=getTerminplan</code>.
           </div>
         </div>
         <div className="setting-row guide">
           <div>
-            <strong>Stud.IP & ILIAS</strong>: Planer → Terminkalender → „Kalender teilen“ bzw. ILIAS Kalender → „Abonnieren“ → WebCal-URL kopieren und oben abonnieren.
+            <strong>Stud.IP & ILIAS</strong>: Planer → Terminkalender → „Kalender teilen“ bzw. ILIAS
+            Kalender → „Abonnieren“ → WebCal-URL kopieren und oben abonnieren.
           </div>
         </div>
       </SettingGroup>

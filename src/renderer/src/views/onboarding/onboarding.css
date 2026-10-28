@@ -81,7 +81,9 @@
   height: 6px;
   border-radius: 50%;
   background: var(--border-strong);
-  transition: width var(--duration) var(--ease), background var(--duration) var(--ease);
+  transition:
+    width var(--duration) var(--ease),
+    background var(--duration) var(--ease);
 }
 
 .onb-dots span.on {
@@ -115,4 +117,13 @@
 
 .onb-toggle {
   font-weight: 500;
+}
+
+.onb-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 28px;
 }

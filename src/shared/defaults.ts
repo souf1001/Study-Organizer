@@ -1,4 +1,4 @@
-// Standardwerte und Fabrikfunktionen für neue Datensätze.
+// Default values and factory functions for new records.
 import type {
   AiMessage,
   CalendarEvent,
@@ -48,9 +48,31 @@ export const DEFAULT_SETTINGS: Settings = {
     askForNewSemester: true,
     sessionFolderName: '{kind} {n} · {date}',
   },
-  calendar: { startHour: 8, endHour: 20, showWeekends: false, defaultView: 'week', syncIntervalHours: 6 },
-  ai: { enabled: false, provider: 'groq', model: '', baseUrl: '', language: 'de', maxContextChars: 60_000, agentEnabled: false },
-  moodle: { url: '', siteName: '', userId: null, courseMap: {}, syncFiles: false, syncIntervalMinutes: 10, lastSync: null },
+  calendar: {
+    startHour: 8,
+    endHour: 20,
+    showWeekends: false,
+    defaultView: 'week',
+    syncIntervalHours: 6,
+  },
+  ai: {
+    enabled: false,
+    provider: 'groq',
+    model: '',
+    baseUrl: '',
+    language: 'de',
+    maxContextChars: 60_000,
+    agentEnabled: false,
+  },
+  moodle: {
+    url: '',
+    siteName: '',
+    userId: null,
+    courseMap: {},
+    syncFiles: false,
+    syncIntervalMinutes: 10,
+    lastSync: null,
+  },
 }
 
 export function createDefaultDb(): Db {
@@ -79,7 +101,7 @@ export function createDefaultDb(): Db {
   }
 }
 
-/** Ergänzt fehlende Felder (z. B. nach einem Update mit neuen Einstellungen) */
+/** Fills in missing fields (e.g. after an update that added new settings) */
 export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
   const base = createDefaultDb()
   if (!raw || typeof raw !== 'object') return base
@@ -100,11 +122,13 @@ export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
     events: raw.events ?? [],
     tasks: raw.tasks ?? [],
     subscriptions: (raw.subscriptions ?? []).map((sub) => ({ ...sub, kind: sub.kind ?? 'url' })),
+    // Discussions stored by older versions may lack fields or hold them with the wrong type
     moodleDiscussions: (raw.moodleDiscussions ?? []).map((d) => ({
       ...d,
-      id: Number(d.id || (d as any).discussionId || 0),
-      discussionId: Number((d as any).discussionId || d.id || 0),
-      firstPostId: typeof (d as any).firstPostId === 'number' && !isNaN((d as any).firstPostId) ? (d as any).firstPostId : undefined,
+      id: Number(d.id || d.discussionId || 0),
+      discussionId: Number(d.discussionId || d.id || 0),
+      firstPostId:
+        typeof d.firstPostId === 'number' && !isNaN(d.firstPostId) ? d.firstPostId : undefined,
       forumId: Number(d.forumId || 0),
       courseId: Number(d.courseId || 0),
       moduleId: d.moduleId ?? null,
@@ -123,9 +147,13 @@ export function normalizeDb(raw: Partial<Db> | null | undefined): Db {
       moduleId: c.moduleId ?? null,
       title: c.title || 'Neuer Chat',
       messages: Array.isArray(c.messages)
-        ? c.messages.filter(
-            (m): m is AiMessage =>
-              Boolean(m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'),
+        ? c.messages.filter((m): m is AiMessage =>
+            Boolean(
+              m &&
+              typeof m === 'object' &&
+              (m.role === 'user' || m.role === 'assistant') &&
+              typeof m.content === 'string',
+            ),
           )
         : [],
       createdAt: c.createdAt || new Date().toISOString(),
@@ -250,7 +278,10 @@ export function emptyNote(settings: Settings['editor']): NoteDoc {
   }
 }
 
-export function newChatSession(moduleId: ID | null = null, partial: Partial<ChatSession> = {}): ChatSession {
+export function newChatSession(
+  moduleId: ID | null = null,
+  partial: Partial<ChatSession> = {},
+): ChatSession {
   return {
     id: newId(),
     moduleId,
@@ -261,4 +292,3 @@ export function newChatSession(moduleId: ID | null = null, partial: Partial<Chat
     ...partial,
   }
 }
-

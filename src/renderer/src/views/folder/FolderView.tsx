@@ -1,4 +1,4 @@
-// Ordner (z. B. „Vorlesung 3 · 14.10.“): Notizen, Folien, Videos, Fotos – per Drag & Drop befüllbar.
+// Folder (e.g. "Vorlesung 3 · 14.10."): notes, slides, videos and photos; files can be dropped in.
 import { useState, type DragEvent, type MouseEvent } from 'react'
 import {
   CheckCircle2,
@@ -38,7 +38,14 @@ import {
 import { summarizeFolder, summarizeItems } from '@/lib/ai'
 import { putRecord, removeRecord, useDb } from '@/lib/db'
 import { formatLongDay, formatSize, relativeDay } from '@/lib/format'
-import { DRAG_VIEW_TYPE, MAX_PANES, openInNewPane, openView, useWorkspace, type View } from '@/lib/workspace'
+import {
+  DRAG_VIEW_TYPE,
+  MAX_PANES,
+  openInNewPane,
+  openView,
+  useWorkspace,
+  type View,
+} from '@/lib/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { confirm } from '@/ui/Dialogs'
 import { Empty } from '@/ui/Empty'
@@ -48,19 +55,34 @@ import { FILE_TYPE_LABELS, FileIcon } from '../file/FileIcon'
 import './folder.css'
 
 function ItemThumb({ item }: { item: Item }) {
-  if (item.fileType === 'image') return <img className="item-thumb" src={api.fileUrl(item)} alt="" loading="lazy" />
-  return item.kind === 'note' ? <FileText className="item-icon" /> : <FileIcon type={item.fileType} className="item-icon" />
+  if (item.fileType === 'image')
+    return <img className="item-thumb" src={api.fileUrl(item)} alt="" loading="lazy" />
+  return item.kind === 'note' ? (
+    <FileText className="item-icon" />
+  ) : (
+    <FileIcon type={item.fileType} className="item-icon" />
+  )
 }
 
-/** Mehrere Einträge nebeneinander öffnen (höchstens 4 Bereiche) */
+/** Opens several entries side by side (at most MAX_PANES panes). */
 function openSideBySide(ids: ID[]): void {
-  const ws = useWorkspace.getState()
+  const workspace = useWorkspace.getState()
   const views: View[] = ids.slice(0, MAX_PANES).map((id) => ({ type: 'item', id }))
-  ws.open(views[0], { paneId: ws.activeId })
-  for (const view of views.slice(1)) ws.open(view, { newPane: true })
+  workspace.open(views[0], { paneId: workspace.activeId })
+  for (const view of views.slice(1)) workspace.open(view, { newPane: true })
 }
 
-export function FolderContents({ moduleId, folderId, folders, items }: { moduleId: ID; folderId: ID | null; folders: Folder[]; items: Item[] }) {
+export function FolderContents({
+  moduleId,
+  folderId,
+  folders,
+  items,
+}: {
+  moduleId: ID
+  folderId: ID | null
+  folders: Folder[]
+  items: Item[]
+}) {
   const db = useDb()
   const [selected, setSelected] = useState<Set<ID>>(new Set())
   const [dropping, setDropping] = useState(false)
@@ -89,9 +111,29 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
   const itemMenu = (e: MouseEvent, item: Item) => {
     e.preventDefault()
     showMenu(e, [
-      { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane({ type: 'item', id: item.id }) },
-      ...(item.kind === 'file' ? [{ label: 'Mit Standard-App öffnen', icon: <ExternalLink />, onClick: () => void api.openFile(item).catch(toastError) }] : []),
-      ...(db.settings.ai.enabled ? [{ label: 'Mit KI zusammenfassen', icon: <ScrollText />, onClick: () => void summarizeItems([item]) }] : []),
+      {
+        label: 'In neuem Bereich öffnen',
+        icon: <SplitSquareHorizontal />,
+        onClick: () => openInNewPane({ type: 'item', id: item.id }),
+      },
+      ...(item.kind === 'file'
+        ? [
+            {
+              label: 'Mit Standard-App öffnen',
+              icon: <ExternalLink />,
+              onClick: () => void api.openFile(item).catch(toastError),
+            },
+          ]
+        : []),
+      ...(db.settings.ai.enabled
+        ? [
+            {
+              label: 'Mit KI zusammenfassen',
+              icon: <ScrollText />,
+              onClick: () => void summarizeItems([item]),
+            },
+          ]
+        : []),
       { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameItem(item) },
       { separator: true },
       { label: 'Löschen', icon: <Trash2 />, danger: true, onClick: () => void deleteItem(item) },
@@ -99,7 +141,11 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
   }
 
   const deleteSelected = async () => {
-    const ok = await confirm({ title: `${selectedItems.length} Einträge löschen?`, confirmLabel: 'Löschen', danger: true })
+    const ok = await confirm({
+      title: `${selectedItems.length} Einträge löschen?`,
+      confirmLabel: 'Löschen',
+      danger: true,
+    })
     if (!ok) return
     for (const item of selectedItems) await removeRecord('items', item.id)
     setSelected(new Set())
@@ -116,15 +162,28 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
         <div className="selection-bar">
           <span className="small">{selected.size} ausgewählt</span>
           <span className="spacer" />
-          <Button size="sm" icon={<Columns2 />} onClick={() => openSideBySide([...selected])} disabled={selected.size > MAX_PANES}>
+          <Button
+            size="sm"
+            icon={<Columns2 />}
+            onClick={() => openSideBySide([...selected])}
+            disabled={selected.size > MAX_PANES}
+          >
             Nebeneinander öffnen
           </Button>
           {db.settings.ai.enabled && (
             <>
-              <Button size="sm" icon={<ScrollText />} onClick={() => void summarizeItems(selectedItems)}>
+              <Button
+                size="sm"
+                icon={<ScrollText />}
+                onClick={() => void summarizeItems(selectedItems)}
+              >
                 Zusammenfassen
               </Button>
-              <Button size="sm" icon={<MessageCircle />} onClick={() => openInNewPane({ type: 'chat', itemIds: [...selected] })}>
+              <Button
+                size="sm"
+                icon={<MessageCircle />}
+                onClick={() => openInNewPane({ type: 'chat', itemIds: [...selected] })}
+              >
                 Fragen
               </Button>
             </>
@@ -147,7 +206,10 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
               <Button icon={<FilePlus />} onClick={(e) => void createNote(moduleId, folderId, e)}>
                 Neue Notiz
               </Button>
-              <Button icon={<Upload />} onClick={() => void pickFiles().then((f) => uploadFiles(moduleId, folderId, f))}>
+              <Button
+                icon={<Upload />}
+                onClick={() => void pickFiles().then((f) => uploadFiles(moduleId, folderId, f))}
+              >
                 Dateien hochladen
               </Button>
             </div>
@@ -170,10 +232,19 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
                 onContextMenu={(e) => {
                   e.preventDefault()
                   showMenu(e, [
-                    { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane(view) },
+                    {
+                      label: 'In neuem Bereich öffnen',
+                      icon: <SplitSquareHorizontal />,
+                      onClick: () => openInNewPane(view),
+                    },
                     { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameFolder(f) },
                     { separator: true },
-                    { label: 'Löschen', icon: <Trash2 />, danger: true, onClick: () => void deleteFolder(f) },
+                    {
+                      label: 'Löschen',
+                      icon: <Trash2 />,
+                      danger: true,
+                      onClick: () => void deleteFolder(f),
+                    },
                   ])
                 }}
               >
@@ -209,7 +280,8 @@ export function FolderContents({ moduleId, folderId, folders, items }: { moduleI
                 {item.source === 'moodle' && <span className="badge">Moodle</span>}
                 <span className="meta">
                   {item.kind === 'note' ? 'Notiz' : FILE_TYPE_LABELS[item.fileType ?? 'other']}
-                  {item.size ? ` · ${formatSize(item.size)}` : ''} · {relativeDay(isoDateOf(item.updatedAt))}
+                  {item.size ? ` · ${formatSize(item.size)}` : ''} ·{' '}
+                  {relativeDay(isoDateOf(item.updatedAt))}
                 </span>
               </div>
             )
@@ -231,10 +303,19 @@ export function FolderView({ folder }: { folder: Folder }) {
 
   const more = (e: MouseEvent<HTMLButtonElement>) =>
     showMenu(e.currentTarget, [
-      { label: 'Unterordner anlegen', icon: <FolderPlus />, onClick: () => void createFolder(folder.moduleId, folder.id) },
+      {
+        label: 'Unterordner anlegen',
+        icon: <FolderPlus />,
+        onClick: () => void createFolder(folder.moduleId, folder.id),
+      },
       { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameFolder(folder) },
       { separator: true },
-      { label: 'Ordner löschen', icon: <Trash2 />, danger: true, onClick: () => void deleteFolder(folder) },
+      {
+        label: 'Ordner löschen',
+        icon: <Trash2 />,
+        danger: true,
+        onClick: () => void deleteFolder(folder),
+      },
     ])
 
   return (
@@ -265,7 +346,11 @@ export function FolderView({ folder }: { folder: Folder }) {
                 </span>
               )}
               {folder.sessionKind === 'lab' && (
-                <button type="button" className="lab-state" onClick={() => putRecord('folders', { ...folder, done: !folder.done })}>
+                <button
+                  type="button"
+                  className="lab-state"
+                  onClick={() => putRecord('folders', { ...folder, done: !folder.done })}
+                >
                   {folder.done ? <CheckCircle2 color="var(--success)" /> : <Circle />}
                   {folder.done ? 'Bestanden' : 'Offen'}
                 </button>
@@ -275,18 +360,31 @@ export function FolderView({ folder }: { folder: Folder }) {
         </div>
 
         <div className="folder-actions">
-          <Button icon={<FilePlus />} onClick={(e) => void createNote(folder.moduleId, folder.id, e)}>
+          <Button
+            icon={<FilePlus />}
+            onClick={(e) => void createNote(folder.moduleId, folder.id, e)}
+          >
             Neue Notiz
           </Button>
-          <Button icon={<Upload />} onClick={() => void pickFiles().then((f) => uploadFiles(folder.moduleId, folder.id, f))}>
+          <Button
+            icon={<Upload />}
+            onClick={() => void pickFiles().then((f) => uploadFiles(folder.moduleId, folder.id, f))}
+          >
             Hochladen
           </Button>
           {db.settings.ai.enabled && (
             <>
-              <Button icon={<ScrollText />} onClick={() => void summarizeFolder(folder)} disabled={items.length === 0}>
+              <Button
+                icon={<ScrollText />}
+                onClick={() => void summarizeFolder(folder)}
+                disabled={items.length === 0}
+              >
                 Zusammenfassen
               </Button>
-              <Button icon={<MessageCircle />} onClick={() => openInNewPane({ type: 'chat', folderId: folder.id })}>
+              <Button
+                icon={<MessageCircle />}
+                onClick={() => openInNewPane({ type: 'chat', folderId: folder.id })}
+              >
                 Fragen
               </Button>
             </>
@@ -297,7 +395,12 @@ export function FolderView({ folder }: { folder: Folder }) {
           </IconButton>
         </div>
 
-        <FolderContents moduleId={folder.moduleId} folderId={folder.id} folders={folders} items={items} />
+        <FolderContents
+          moduleId={folder.moduleId}
+          folderId={folder.id}
+          folders={folders}
+          items={items}
+        />
       </div>
     </div>
   )

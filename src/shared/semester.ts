@@ -1,5 +1,5 @@
-// Fest hinterlegte Semester-Modelle für deutsche Hochschulen.
-// Die Termine sind Vorschläge – beim Anlegen eines Semesters lassen sie sich anpassen.
+// Built-in semester models for German universities.
+// The dates are suggestions and can be adjusted when a semester is created.
 import { addDays, diffDays, nextWeekday, parseISODate } from './dates'
 import type { DateRange, ISODate, Semester, SemesterKind, SemesterModelId } from './types'
 
@@ -8,32 +8,36 @@ type MonthDay = [month: number, day: number]
 interface SemesterRule {
   label: string
   description: string
-  /** Beginn des Semesterzeitraums */
+  /** Start of the semester period */
   winterStart: MonthDay
   summerStart: MonthDay
-  /** Vorlesungsbeginn = erster Montag ab diesem Datum */
+  /** Lectures start on the first Monday on or after this date */
   winterLectureFrom: MonthDay
   summerLectureFrom: MonthDay
-  /** Dauer der Vorlesungszeit in Wochen (Vorlesungsende = Freitag der letzten Woche) */
+  /** Length of the lecture period in weeks (lectures end on Friday of the last week) */
   winterLectureWeeks: number
   summerLectureWeeks: number
-  /** Weihnachtspause (Dezember → Januar) */
+  /** Christmas break (December → January) */
   christmasBreak: [from: MonthDay, to: MonthDay]
 }
 
-// Quellen: Vorgaben des MKW NRW für Universitäten und Fachhochschulen (WiSe 2026/27, SoSe 2027),
-// Merkblätter der h_da (WiSe 2025/26 bis WiSe 2026/27). Einzelne Hochschulen weichen ab.
+// Sources: MKW NRW guidelines for universities and universities of applied sciences (WiSe 2026/27,
+// SoSe 2027), h_da fact sheets (WiSe 2025/26 to WiSe 2026/27). Individual universities deviate.
 export const SEMESTER_MODELS: Record<SemesterModelId, SemesterRule> = {
   uni: {
     label: 'Universität',
-    description: 'WiSe 1.10.–31.3., SoSe 1.4.–30.9. · Vorlesungen ab Mitte Oktober bzw. Mitte April',
+    description:
+      'WiSe 1.10.–31.3., SoSe 1.4.–30.9. · Vorlesungen ab Mitte Oktober bzw. Mitte April',
     winterStart: [10, 1],
     summerStart: [4, 1],
     winterLectureFrom: [10, 11],
     summerLectureFrom: [4, 11],
     winterLectureWeeks: 17,
     summerLectureWeeks: 14,
-    christmasBreak: [[12, 22], [1, 6]],
+    christmasBreak: [
+      [12, 22],
+      [1, 6],
+    ],
   },
   hochschule: {
     label: 'Hochschule (HAW/FH)',
@@ -44,18 +48,25 @@ export const SEMESTER_MODELS: Record<SemesterModelId, SemesterRule> = {
     summerLectureFrom: [3, 25],
     winterLectureWeeks: 20,
     summerLectureWeeks: 17,
-    christmasBreak: [[12, 22], [1, 6]],
+    christmasBreak: [
+      [12, 22],
+      [1, 6],
+    ],
   },
   hda: {
     label: 'Hochschule Darmstadt (h_da)',
-    description: 'WiSe 1.10.–31.3., SoSe 1.4.–30.9. · Vorlesungen ab Anfang/Mitte Oktober bzw. Mitte April',
+    description:
+      'WiSe 1.10.–31.3., SoSe 1.4.–30.9. · Vorlesungen ab Anfang/Mitte Oktober bzw. Mitte April',
     winterStart: [10, 1],
     summerStart: [4, 1],
     winterLectureFrom: [10, 6],
     summerLectureFrom: [4, 11],
     winterLectureWeeks: 17,
     summerLectureWeeks: 15,
-    christmasBreak: [[12, 21], [1, 8]],
+    christmasBreak: [
+      [12, 21],
+      [1, 8],
+    ],
   },
 }
 
@@ -68,7 +79,7 @@ export function semesterName(kind: SemesterKind, year: number): string {
   return kind === 'winter' ? `WiSe ${year}/${String(year + 1).slice(2)}` : `SoSe ${year}`
 }
 
-/** Baut ein Semester (Winter: `year` = Jahr des Semesterbeginns) */
+/** Builds a semester (winter: `year` is the year the semester starts) */
 export function buildSemester(
   modelId: SemesterModelId,
   kind: SemesterKind,
@@ -100,7 +111,7 @@ export function buildSemester(
   }
 }
 
-/** Semester, in dessen Zeitraum das Datum liegt */
+/** The semester whose period contains the date */
 export function semesterForDate(modelId: SemesterModelId, date: ISODate): SemesterDraft {
   const year = parseISODate(date).getFullYear()
   const candidates = [
@@ -111,23 +122,29 @@ export function semesterForDate(modelId: SemesterModelId, date: ISODate): Semest
   return candidates.find((s) => date >= s.start && date <= s.end) ?? candidates[2]
 }
 
-/** Vorschlag bei der Einrichtung: nach Vorlesungsende schon das kommende Semester */
+/** Suggestion during setup: after the lecture period ends, already the next semester */
 export function suggestedSemester(modelId: SemesterModelId, date: ISODate): SemesterDraft {
   const current = semesterForDate(modelId, date)
   return date > current.lectureEnd ? nextSemesterDraft(modelId, current) : current
 }
 
-export function nextSemesterDraft(modelId: SemesterModelId, semester: SemesterDraft): SemesterDraft {
+export function nextSemesterDraft(
+  modelId: SemesterModelId,
+  semester: SemesterDraft,
+): SemesterDraft {
   return semester.kind === 'winter'
     ? buildSemester(modelId, 'summer', semester.year + 1)
     : buildSemester(modelId, 'winter', semester.year)
 }
 
-export function findSemesterAt<T extends SemesterDraft>(semesters: T[], date: ISODate): T | undefined {
+export function findSemesterAt<T extends SemesterDraft>(
+  semesters: T[],
+  date: ISODate,
+): T | undefined {
   return semesters.find((s) => date >= s.start && date <= s.end)
 }
 
-/** Vorlesungswoche (ab 1) und Gesamtzahl – null außerhalb der Vorlesungszeit */
+/** Lecture week (from 1) and total weeks; null outside the lecture period */
 export function lectureWeek(
   semester: SemesterDraft,
   date: ISODate,

@@ -18,7 +18,9 @@ function memorySecrets(): Secrets & { data: Map<string, string> } {
   }
 }
 
-function makeEvent(partial: Partial<CalendarEvent> & { id: string; title: string; start: string; end: string }): CalendarEvent {
+function makeEvent(
+  partial: Partial<CalendarEvent> & { id: string; title: string; start: string; end: string },
+): CalendarEvent {
   return {
     allDay: false,
     kind: 'other',
@@ -44,21 +46,31 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
     })
 
     it('contains .cal-chip.kind-lab::before with rotated diamond and var(--dot)', () => {
-      expect(cssContent).toMatch(/\.cal-chip\.kind-lab::before\s*\{[^}]*transform:\s*rotate\(45deg\)/s)
-      expect(cssContent).toMatch(/\.cal-chip\.kind-lab::before\s*\{[^}]*background:\s*var\(--dot\)/s)
+      expect(cssContent).toMatch(
+        /\.cal-chip\.kind-lab::before\s*\{[^}]*transform:\s*rotate\(45deg\)/s,
+      )
+      expect(cssContent).toMatch(
+        /\.cal-chip\.kind-lab::before\s*\{[^}]*background:\s*var\(--dot\)/s,
+      )
     })
 
     it('contains .cal-event.kind-deadline with orange border-left-color', () => {
-      expect(cssContent).toMatch(/\.cal-event\.kind-deadline\s*\{[^}]*border-left-color:\s*var\(--c-orange\)/s)
+      expect(cssContent).toMatch(
+        /\.cal-event\.kind-deadline\s*\{[^}]*border-left-color:\s*var\(--c-orange\)/s,
+      )
     })
 
     it('contains .cal-chip.kind-deadline::before with orange circle ring', () => {
       expect(cssContent).toMatch(/\.cal-chip\.kind-deadline::before\s*\{[^}]*border-radius:\s*50%/s)
-      expect(cssContent).toMatch(/\.cal-chip\.kind-deadline::before\s*\{[^}]*border:\s*1\.5px\s+solid\s+var\(--c-orange\)/s)
+      expect(cssContent).toMatch(
+        /\.cal-chip\.kind-deadline::before\s*\{[^}]*border:\s*1\.5px\s+solid\s+var\(--c-orange\)/s,
+      )
     })
 
     it('contains .cal-event.kind-exam and .cal-event.kind-exercise for visual completeness', () => {
-      expect(cssContent).toMatch(/\.cal-event\.kind-exam\s*\{[^}]*border-left-color:\s*var\(--c-red\)/s)
+      expect(cssContent).toMatch(
+        /\.cal-event\.kind-exam\s*\{[^}]*border-left-color:\s*var\(--c-red\)/s,
+      )
       expect(cssContent).toMatch(/\.cal-event\.kind-exercise\s*\{[^}]*border-left-style:\s*dashed/s)
     })
 
@@ -81,7 +93,10 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
   describe('EventKind Code Inspection in entries.ts and CalendarView.tsx', () => {
     const entriesPath = path.resolve(__dirname, '../src/renderer/src/views/calendar/entries.ts')
     const entriesContent = readFileSync(entriesPath, 'utf-8')
-    const calViewPath = path.resolve(__dirname, '../src/renderer/src/views/calendar/CalendarView.tsx')
+    const calViewPath = path.resolve(
+      __dirname,
+      '../src/renderer/src/views/calendar/CalendarView.tsx',
+    )
     const calViewContent = readFileSync(calViewPath, 'utf-8')
 
     it('entries.ts defines EVENT_KINDS with lab: Praktikum and deadline: Frist / Abgabe', () => {
@@ -95,13 +110,19 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
     })
 
     it('entries.ts expands deadlines with zero duration by 30 minutes', () => {
-      expect(entriesContent).toContain("start.getTime() + 30 * 60_000")
-      expect(entriesContent).toMatch(/event\.kind === 'deadline' && start\.getTime\(\) === new Date\(event\.end\)\.getTime\(\)/)
+      expect(entriesContent).toContain('start.getTime() + 30 * 60_000')
+      expect(entriesContent).toMatch(
+        /event\.kind === 'deadline' && start\.getTime\(\) === new Date\(event\.end\)\.getTime\(\)/,
+      )
     })
 
     it('CalendarView.tsx appends kind-${entry.event.kind} to cal-chip and cal-event', () => {
-      expect(calViewContent).toContain("className={`cal-chip color-${entry.color} ${entry.source} ${entry.source === 'event' ? `kind-${entry.event.kind}` : ''}`}")
-      expect(calViewContent).toContain("className={`cal-event color-${e.color} ${e.source} ${e.source === 'event' ? `kind-${e.event.kind}` : ''}`}")
+      expect(calViewContent).toContain(
+        "className={`cal-chip color-${entry.color} ${entry.source} ${entry.source === 'event' ? `kind-${entry.event.kind}` : ''}`}",
+      )
+      expect(calViewContent).toContain(
+        "className={`cal-event color-${e.color} ${e.source} ${e.source === 'event' ? `kind-${e.event.kind}` : ''}`}",
+      )
     })
   })
 
@@ -109,38 +130,55 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
   // Suite 3: SubscriptionsDialog Source & Logic Verification
   // ==========================================================================
   describe('SubscriptionsDialog Structure in CalendarView.tsx', () => {
-    const calViewPath = path.resolve(__dirname, '../src/renderer/src/views/calendar/CalendarView.tsx')
+    const calViewPath = path.resolve(
+      __dirname,
+      '../src/renderer/src/views/calendar/CalendarView.tsx',
+    )
     const calViewContent = readFileSync(calViewPath, 'utf-8')
 
     it('SubscriptionsDialog component is defined and uses useDb()', () => {
-      expect(calViewContent).toMatch(/function SubscriptionsDialog\(\{ onClose \}: \{ onClose: \(\) => void \}\)/)
+      expect(calViewContent).toMatch(
+        /function SubscriptionsDialog\(\{ onClose \}: \{ onClose: \(\) => void \}\)/,
+      )
       expect(calViewContent).toMatch(/const db = useDb\(\)/)
     })
 
     it('SubscriptionsDialog calls api.calendar.sync and awaits loadDb()', () => {
       expect(calViewContent).toContain('const res = await api.calendar.sync(sub.id)')
       expect(calViewContent).toContain('await loadDb()')
-      expect(calViewContent).toContain("toast(`${res.count} ${res.count === 1 ? 'Termin' : 'Termine'} aktualisiert`)")
+      expect(calViewContent).toContain(
+        "toast(`${res.count} ${res.count === 1 ? 'Termin' : 'Termine'} aktualisiert`)",
+      )
     })
 
     it('SubscriptionsDialog prompts for confirmation before calling api.calendar.unsubscribe', () => {
       expect(calViewContent).toContain('const ok = await confirm({')
-      expect(calViewContent).toContain("title: `„${sub.name}“ entfernen?`")
-      expect(calViewContent).toContain("message: 'Alle zugehörigen Termine werden aus dem Kalender gelöscht.'")
+      expect(calViewContent).toContain('title: `„${sub.name}“ entfernen?`')
+      expect(calViewContent).toContain(
+        "message: 'Alle zugehörigen Termine werden aus dem Kalender gelöscht.'",
+      )
       expect(calViewContent).toContain("confirmLabel: 'Entfernen'")
       expect(calViewContent).toContain('danger: true')
       expect(calViewContent).toContain('if (!ok) return')
       expect(calViewContent).toContain('await api.calendar.unsubscribe(sub.id)')
-      expect(calViewContent).toContain("toast(`„${sub.name}“ wurde entfernt`)")
+      expect(calViewContent).toContain('toast(`„${sub.name}“ wurde entfernt`)')
     })
 
     it('SubscriptionsDialog calculates eventCount per subscription via filter', () => {
-      expect(calViewContent).toContain('const eventCount = db.events.filter((e) => e.subscriptionId === sub.id).length')
-      expect(calViewContent).toContain('{` · ${eventCount} ${eventCount === 1 ? \'Termin\' : \'Termine\'}`}')
+      expect(calViewContent).toContain(
+        'const eventCount = db.events.filter((e) => e.subscriptionId === sub.id).length',
+      )
+      expect(calViewContent).toContain(
+        "{` · ${eventCount} ${eventCount === 1 ? 'Termin' : 'Termine'}`}",
+      )
     })
 
     it('CalendarView toolbar renders subscription count badge when db.subscriptions.length > 0', () => {
-      expect(calViewContent).toContain('db.subscriptions.length > 0 && <span className="cal-sub-count">{db.subscriptions.length}</span>')
+      // Compare without formatting: the formatter may wrap the JSX in parentheses across lines
+      const compact = calViewContent.replace(/[\s()]+/g, '')
+      expect(compact).toContain(
+        'db.subscriptions.length>0&&<spanclassName="cal-sub-count">{db.subscriptions.length}</span>',
+      )
     })
   })
 
@@ -151,9 +189,7 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
     it('handleSync executes api.calendar.sync, loadDb(), and handles singular/plural', async () => {
       const mockApi = {
         calendar: {
-          sync: vi.fn()
-            .mockResolvedValueOnce({ count: 1 })
-            .mockResolvedValueOnce({ count: 4 }),
+          sync: vi.fn().mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 4 }),
         },
       }
       const mockLoadDb = vi.fn().mockResolvedValue(undefined)
@@ -161,7 +197,9 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
       const mockToastError = vi.fn()
 
       let syncingId: string | null = null
-      const setSyncingId = (id: string | null) => { syncingId = id }
+      const setSyncingId = (id: string | null) => {
+        syncingId = id
+      }
 
       const handleSync = async (sub: Subscription) => {
         setSyncingId(sub.id)
@@ -176,7 +214,15 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
         }
       }
 
-      const sub: Subscription = { id: 's-1', name: 'Feed', kind: 'url', url: 'https://cal', enabled: true, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 's-1',
+        name: 'Feed',
+        kind: 'url',
+        url: 'https://cal',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
 
       await handleSync(sub)
       expect(mockApi.calendar.sync).toHaveBeenCalledWith('s-1')
@@ -201,7 +247,9 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
       const mockToastError = vi.fn()
 
       let syncingId: string | null = null
-      const setSyncingId = (id: string | null) => { syncingId = id }
+      const setSyncingId = (id: string | null) => {
+        syncingId = id
+      }
 
       const handleSync = async (sub: Subscription) => {
         setSyncingId(sub.id)
@@ -216,7 +264,15 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
         }
       }
 
-      const sub: Subscription = { id: 's-err', name: 'Broken Feed', kind: 'url', url: 'https://err', enabled: true, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 's-err',
+        name: 'Broken Feed',
+        kind: 'url',
+        url: 'https://err',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
 
       await handleSync(sub)
       expect(mockToastError).toHaveBeenCalledWith(expect.any(Error))
@@ -247,7 +303,15 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
         }
       }
 
-      const sub: Subscription = { id: 's-cancel', name: 'My Sub', kind: 'file', url: 'f.ics', enabled: true, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 's-cancel',
+        name: 'My Sub',
+        kind: 'file',
+        url: 'f.ics',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
 
       await handleUnsubscribe(sub)
       expect(mockConfirm).toHaveBeenCalledWith({
@@ -284,7 +348,15 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
         }
       }
 
-      const sub: Subscription = { id: 's-ok', name: 'TU Darmstadt', kind: 'url', url: 'https://tucan', enabled: true, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 's-ok',
+        name: 'TU Darmstadt',
+        kind: 'url',
+        url: 'https://tucan',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
 
       await handleUnsubscribe(sub)
       expect(mockConfirm).toHaveBeenCalled()
@@ -325,21 +397,71 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
 
     it('cascades deletion of all events belonging to subscription while preserving others', async () => {
       // 1. Setup subscription 1 with 3 events
-      const sub1: Subscription = { id: 'sub-cascade-1', name: 'Sub 1', kind: 'url', url: 'https://sub1.ics', enabled: true, lastSync: null, lastError: null }
+      const sub1: Subscription = {
+        id: 'sub-cascade-1',
+        name: 'Sub 1',
+        kind: 'url',
+        url: 'https://sub1.ics',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
       store.put('subscriptions', sub1)
       await secrets.set('ics:sub-cascade-1', 'https://sub1.ics')
 
-      const event1 = makeEvent({ id: 'e-sub1-1', title: 'Sub1 Event 1', start: '2026-10-15T10:00:00Z', end: '2026-10-15T11:00:00Z', kind: 'lecture', subscriptionId: 'sub-cascade-1' })
-      const event2 = makeEvent({ id: 'e-sub1-2', title: 'Sub1 Event 2', start: '2026-10-16T10:00:00Z', end: '2026-10-16T11:00:00Z', kind: 'lab', subscriptionId: 'sub-cascade-1' })
-      const event3 = makeEvent({ id: 'e-sub1-3', title: 'Sub1 Event 3', start: '2026-10-17T10:00:00Z', end: '2026-10-17T11:00:00Z', kind: 'deadline', subscriptionId: 'sub-cascade-1' })
+      const event1 = makeEvent({
+        id: 'e-sub1-1',
+        title: 'Sub1 Event 1',
+        start: '2026-10-15T10:00:00Z',
+        end: '2026-10-15T11:00:00Z',
+        kind: 'lecture',
+        subscriptionId: 'sub-cascade-1',
+      })
+      const event2 = makeEvent({
+        id: 'e-sub1-2',
+        title: 'Sub1 Event 2',
+        start: '2026-10-16T10:00:00Z',
+        end: '2026-10-16T11:00:00Z',
+        kind: 'lab',
+        subscriptionId: 'sub-cascade-1',
+      })
+      const event3 = makeEvent({
+        id: 'e-sub1-3',
+        title: 'Sub1 Event 3',
+        start: '2026-10-17T10:00:00Z',
+        end: '2026-10-17T11:00:00Z',
+        kind: 'deadline',
+        subscriptionId: 'sub-cascade-1',
+      })
 
       // 2. Setup subscription 2 with 1 event
-      const sub2: Subscription = { id: 'sub-cascade-2', name: 'Sub 2', kind: 'file', url: 'file.ics', enabled: true, lastSync: null, lastError: null }
+      const sub2: Subscription = {
+        id: 'sub-cascade-2',
+        name: 'Sub 2',
+        kind: 'file',
+        url: 'file.ics',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
       store.put('subscriptions', sub2)
-      const event4 = makeEvent({ id: 'e-sub2-1', title: 'Sub2 Event', start: '2026-10-18T10:00:00Z', end: '2026-10-18T11:00:00Z', kind: 'exercise', subscriptionId: 'sub-cascade-2' })
+      const event4 = makeEvent({
+        id: 'e-sub2-1',
+        title: 'Sub2 Event',
+        start: '2026-10-18T10:00:00Z',
+        end: '2026-10-18T11:00:00Z',
+        kind: 'exercise',
+        subscriptionId: 'sub-cascade-2',
+      })
 
       // 3. Setup manual user event without subscriptionId
-      const manualEvent = makeEvent({ id: 'e-manual-1', title: 'Manual Event', start: '2026-10-19T10:00:00Z', end: '2026-10-19T11:00:00Z', kind: 'other' })
+      const manualEvent = makeEvent({
+        id: 'e-manual-1',
+        title: 'Manual Event',
+        start: '2026-10-19T10:00:00Z',
+        end: '2026-10-19T11:00:00Z',
+        kind: 'other',
+      })
 
       store.put('events', event1)
       store.put('events', event2)
@@ -369,18 +491,29 @@ describe('Challenger M2-2: SubscriptionsDialog & EventKind Visuals', () => {
     })
 
     it('stress: unsubscribing a subscription with 200 events cascades completely in < 100ms', async () => {
-      const sub: Subscription = { id: 'sub-heavy', name: 'Heavy Sub', kind: 'file', url: 'heavy.ics', enabled: true, lastSync: null, lastError: null }
+      const sub: Subscription = {
+        id: 'sub-heavy',
+        name: 'Heavy Sub',
+        kind: 'file',
+        url: 'heavy.ics',
+        enabled: true,
+        lastSync: null,
+        lastError: null,
+      }
       store.put('subscriptions', sub)
 
       for (let i = 0; i < 200; i++) {
-        store.put('events', makeEvent({
-          id: `ev-heavy-${i}`,
-          title: `Heavy Event ${i}`,
-          start: '2026-10-15T10:00:00Z',
-          end: '2026-10-15T11:00:00Z',
-          kind: i % 2 === 0 ? 'lab' : 'deadline',
-          subscriptionId: 'sub-heavy',
-        }))
+        store.put(
+          'events',
+          makeEvent({
+            id: `ev-heavy-${i}`,
+            title: `Heavy Event ${i}`,
+            start: '2026-10-15T10:00:00Z',
+            end: '2026-10-15T11:00:00Z',
+            kind: i % 2 === 0 ? 'lab' : 'deadline',
+            subscriptionId: 'sub-heavy',
+          }),
+        )
       }
 
       expect(store.get().events).toHaveLength(200)

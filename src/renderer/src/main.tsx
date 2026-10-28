@@ -12,21 +12,15 @@ import './styles/base.css'
 import './ui/ui.css'
 import './shell/shell.css'
 import { App } from './App'
-
-import { syncDeviceAttributes, detectDevice } from './lib/device'
-import { setupAndroidBackButton } from './lib/android-back'
+import { initApi } from './lib/api'
+import { useDevice, watchDevice } from './lib/device'
+import { isAndroid } from './lib/platform'
 import { useWorkspace } from './lib/workspace'
+import { setupAndroid } from './mobile/android'
 
-syncDeviceAttributes()
-setupAndroidBackButton()
+watchDevice()
+if (isAndroid) setupAndroid()
+// Phones start with the content; the sidebar is a drawer opened from the bottom navigation
+if (useDevice.getState().isPhone) useWorkspace.setState({ sidebarOpen: false })
 
-if (detectDevice().isPhone) {
-  useWorkspace.setState({ sidebarOpen: false })
-}
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('resize', () => syncDeviceAttributes())
-  window.addEventListener('orientationchange', () => syncDeviceAttributes())
-}
-
-createRoot(document.getElementById('root')!).render(<App />)
+void initApi().then(() => createRoot(document.getElementById('root')!).render(<App />))

@@ -1,13 +1,43 @@
-// Alles, was im Kalender erscheint: Stundenplan, eigene/abonnierte Termine, Aufgaben mit Frist.
+// Everything shown in the calendar: timetable, own/subscribed events and tasks with a due date.
 import { addDays, atTime, isoDateOf, toISODate } from '@shared/dates'
 import { SESSION_LABELS, type Occurrence } from '@shared/schedule'
 import type { CalendarEvent, Db, EventKind, ISODate, ModuleColor, Task } from '@shared/types'
 import { activeSemester, semesterOccurrences } from '@/lib/actions'
 
 export type Entry =
-  | { key: string; source: 'session'; title: string; start: Date; end: Date; allDay: false; color: ModuleColor; subtitle: string; occ: Occurrence }
-  | { key: string; source: 'event'; title: string; start: Date; end: Date; allDay: boolean; color: ModuleColor; subtitle: string; event: CalendarEvent }
-  | { key: string; source: 'task'; title: string; start: Date; end: Date; allDay: true; color: ModuleColor; subtitle: string; task: Task }
+  | {
+      key: string
+      source: 'session'
+      title: string
+      start: Date
+      end: Date
+      allDay: false
+      color: ModuleColor
+      subtitle: string
+      occ: Occurrence
+    }
+  | {
+      key: string
+      source: 'event'
+      title: string
+      start: Date
+      end: Date
+      allDay: boolean
+      color: ModuleColor
+      subtitle: string
+      event: CalendarEvent
+    }
+  | {
+      key: string
+      source: 'task'
+      title: string
+      start: Date
+      end: Date
+      allDay: true
+      color: ModuleColor
+      subtitle: string
+      task: Task
+    }
 
 export const EVENT_KINDS: Record<EventKind, string> = {
   exam: 'Prüfung',
@@ -28,7 +58,8 @@ const KIND_COLOR: Record<EventKind, ModuleColor> = {
 }
 
 export function entriesBetween(db: Db, from: ISODate, to: ISODate): Entry[] {
-  const moduleColor = (id: string | null): ModuleColor | undefined => db.modules.find((m) => m.id === id)?.color
+  const moduleColor = (id: string | null): ModuleColor | undefined =>
+    db.modules.find((m) => m.id === id)?.color
   const moduleName = (id: string | null) => db.modules.find((m) => m.id === id)?.name ?? ''
   const entries: Entry[] = []
 
@@ -51,16 +82,20 @@ export function entriesBetween(db: Db, from: ISODate, to: ISODate): Entry[] {
     const day = isoDateOf(event.start)
     if (day > to || isoDateOf(event.end) < from) continue
     const start = new Date(event.start)
-    // Fristen ohne Dauer bekommen 30 Minuten, damit sie sichtbar sind
+    // Give zero-length deadlines 30 minutes so they remain visible
     const end = new Date(Math.max(new Date(event.end).getTime(), start.getTime() + 30 * 60_000))
     entries.push({
       key: `e-${event.id}`,
       source: 'event',
       title: event.title,
-      subtitle: [EVENT_KINDS[event.kind], moduleName(event.moduleId), event.location].filter(Boolean).join(' · '),
+      subtitle: [EVENT_KINDS[event.kind], moduleName(event.moduleId), event.location]
+        .filter(Boolean)
+        .join(' · '),
       start,
       end,
-      allDay: event.allDay || (event.kind === 'deadline' && start.getTime() === new Date(event.end).getTime()),
+      allDay:
+        event.allDay ||
+        (event.kind === 'deadline' && start.getTime() === new Date(event.end).getTime()),
       color: moduleColor(event.moduleId) ?? KIND_COLOR[event.kind],
       event,
     })
@@ -85,7 +120,7 @@ export function entriesBetween(db: Db, from: ISODate, to: ISODate): Entry[] {
   return entries.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
 
-/** Termine an einem Tag. Das Ende ist exklusiv (iCal: ganztägig bis 00:00 des Folgetags). */
+/** Entries on a given day. The end is exclusive (iCal: all-day events end at 00:00 of the next day). */
 export function entriesOn(entries: Entry[], day: ISODate): Entry[] {
   return entries.filter((e) => {
     const last = e.end > e.start ? new Date(e.end.getTime() - 1) : e.end
@@ -93,10 +128,12 @@ export function entriesOn(entries: Entry[], day: ISODate): Entry[] {
   })
 }
 
-/** Überlappende Termine nebeneinander anordnen: Spalte und Spaltenzahl je Termin */
+/** Lay out overlapping entries side by side: column index and column count per entry */
 export function layoutDay(entries: Entry[]): Map<string, { column: number; columns: number }> {
   const result = new Map<string, { column: number; columns: number }>()
-  const sorted = [...entries].sort((a, b) => a.start.getTime() - b.start.getTime() || b.end.getTime() - a.end.getTime())
+  const sorted = [...entries].sort(
+    (a, b) => a.start.getTime() - b.start.getTime() || b.end.getTime() - a.end.getTime(),
+  )
   let cluster: Entry[] = []
   let clusterEnd = 0
   let columnsEnd: number[] = []

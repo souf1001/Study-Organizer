@@ -28,7 +28,9 @@
 }
 
 .swatch[aria-checked='true'] {
-  box-shadow: 0 0 0 2px var(--bg-elevated), 0 0 0 4px var(--dot);
+  box-shadow:
+    0 0 0 2px var(--bg-elevated),
+    0 0 0 4px var(--dot);
 }
 
 .swatch svg {
@@ -71,7 +73,7 @@
   width: 140px;
 }
 
-/* ---- Modulseite ---- */
+/* ---- Module page ---- */
 .module-header {
   display: flex;
   align-items: flex-start;
@@ -207,7 +209,7 @@
   cursor: default;
 }
 
-/* ---- Foren & Ankündigungen Redesign ---- */
+/* ---- Forums & announcements ---- */
 .forum-search-box {
   position: relative;
   display: flex;
@@ -232,7 +234,9 @@
   color: var(--text-1);
   font-size: var(--text-sm);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .forum-search-input:focus {
@@ -252,7 +256,9 @@
   background: var(--bg-hover);
   color: var(--text-3);
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .forum-search-clear:hover {
@@ -275,7 +281,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
   box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
 }
 
@@ -498,7 +506,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .post-reply:hover {
@@ -525,7 +535,7 @@
   word-break: break-word;
 }
 
-/* ---- Modul KI-Chats ---- */
+/* ---- Module AI chats ---- */
 .module-chats {
   display: flex;
   flex-direction: column;
@@ -547,7 +557,9 @@
   flex-direction: column;
   gap: 8px;
   box-shadow: var(--shadow-card);
-  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
 }
 
 .module-chat-card:hover {
@@ -585,4 +597,3 @@
   align-items: center;
   margin-top: 4px;
 }
-

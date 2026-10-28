@@ -4,7 +4,7 @@
   background: var(--bg);
 }
 
-/* ---- Seitenleiste ---- */
+/* ---- Sidebar ---- */
 .sidebar {
   width: var(--sidebar-width);
   flex: none;
@@ -254,7 +254,7 @@
   border-top: 1px solid var(--border);
 }
 
-/* ---- Arbeitsfläche mit Bereichen ---- */
+/* ---- Workspace with panes ---- */
 .workspace {
   flex: 1;
   min-width: 0;
@@ -379,7 +379,7 @@
   background: var(--accent);
 }
 
-/* ---- Befehlspalette ---- */
+/* ---- Command palette ---- */
 .palette {
   width: min(620px, 100%);
   border-radius: 12px;
@@ -471,22 +471,19 @@
   background: var(--bg);
 }
 
-/* ---- Mobile Navigation & Responsive Optimierungen für Phone & Tablet ---- */
+/* ---- Phone and tablet layout (data-device is set in lib/device.ts) ---- */
 
-.mobile-bottom-nav {
-  display: none;
-}
-
+.mobile-bottom-nav,
 .sidebar-backdrop {
   display: none;
 }
 
-/* Tablet Optimierungen */
 :root[data-device='tablet'] .pane-header,
 :root[data-device='tablet'] .sidebar-top {
   padding-top: max(env(safe-area-inset-top, 0px), 6px);
 }
 
+/* Larger touch targets */
 :root[data-device='tablet'] button,
 :root[data-device='tablet'] .icon-btn,
 :root[data-device='tablet'] .nav-item,
@@ -495,130 +492,103 @@
   touch-action: manipulation;
 }
 
-/* Phone (Handy) Optimierungen: greift bei erkanntem Phone oder Viewport <= 767px */
 :root[data-device='phone'] {
   --header-height: 48px;
+  --mobile-nav-height: calc(56px + env(safe-area-inset-bottom, 0px));
 }
 
-:root[data-device='phone'] .sidebar-backdrop,
-@media (max-width: 767px) {
-  .sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 85;
-    backdrop-filter: blur(2px);
-    animation: fade-in 160ms ease-out;
-  }
+:root[data-device='phone'] .sidebar-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  bottom: var(--mobile-nav-height);
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 85;
+  animation: fade-in 160ms ease-out;
 }
 
-:root[data-device='phone'] .sidebar,
-@media (max-width: 767px) {
-  .sidebar {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: min(310px, 84vw) !important;
-    z-index: 90;
-    box-shadow: 4px 0 28px rgba(0, 0, 0, 0.3);
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-    animation: slide-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
-  }
+/* The sidebar becomes a drawer over the content */
+:root[data-device='phone'] .sidebar {
+  position: fixed;
+  top: 0;
+  /* Ends above the bottom navigation, which stays usable while the drawer is open */
+  bottom: var(--mobile-nav-height);
+  left: 0;
+  width: min(310px, 84vw) !important;
+  z-index: 90;
+  box-shadow: 4px 0 28px rgba(0, 0, 0, 0.3);
+  padding-top: env(safe-area-inset-top, 0px);
+  animation: slide-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-:root[data-device='phone'] .sidebar-resize-handle,
-@media (max-width: 767px) {
-  .sidebar-resize-handle {
-    display: none;
-  }
+:root[data-device='phone'] .sidebar-resize-handle {
+  display: none;
 }
 
-:root[data-device='phone'] .workspace,
-@media (max-width: 767px) {
-  .workspace {
-    width: 100%;
-    flex: 1;
-    min-width: 0;
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-  }
+:root[data-device='phone'] .workspace {
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  padding-bottom: var(--mobile-nav-height);
 }
 
-:root[data-device='phone'] .mobile-workspace,
-@media (max-width: 767px) {
-  .mobile-workspace {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-  }
+:root[data-device='phone'] .mobile-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-:root[data-device='phone'] .mobile-bottom-nav,
-@media (max-width: 767px) {
-  .mobile-bottom-nav {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: calc(56px + env(safe-area-inset-bottom, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: var(--bg-sidebar);
-    border-top: 1px solid var(--border);
-    z-index: 80;
-    justify-content: space-around;
-    align-items: center;
-  }
+:root[data-device='phone'] .pane-header {
+  padding-top: max(env(safe-area-inset-top, 0px), 6px);
 }
 
-:root[data-device='phone'] .mobile-nav-item,
-@media (max-width: 767px) {
-  .mobile-nav-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    min-height: 44px;
-    border: 0;
-    background: transparent;
-    color: var(--text-3);
-    font-size: 11px;
-    font-weight: 500;
-    gap: 3px;
-    cursor: pointer;
-    touch-action: manipulation;
-    transition: color 0.15s ease;
-  }
+:root[data-device='phone'] .nav-item,
+:root[data-device='phone'] .tree-row {
+  min-height: 42px;
+}
 
-  .mobile-nav-item svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-    transition: stroke 0.15s ease;
-  }
+:root[data-device='phone'] .mobile-bottom-nav {
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--mobile-nav-height);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border);
+  z-index: 80;
+  justify-content: space-around;
+  align-items: center;
+}
 
-  .mobile-nav-item.active {
-    color: var(--accent);
-    font-weight: 600;
-  }
+.mobile-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 0.15s ease;
+}
 
-  .mobile-nav-item.active svg {
-    stroke: var(--accent);
-  }
+.mobile-nav-item svg {
+  width: 20px;
+  height: 20px;
+}
 
-  .pane-header {
-    padding-top: max(env(safe-area-inset-top, 0px), 6px);
-  }
-
-  .nav-item,
-  .tree-row {
-    min-height: 42px;
-  }
+.mobile-nav-item.active {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 @keyframes slide-in {
@@ -627,14 +597,5 @@
   }
   to {
     transform: translateX(0);
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
   }
 }

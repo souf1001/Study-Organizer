@@ -6,7 +6,7 @@
   overflow: hidden;
 }
 
-/* ---- Chat-Verlauf Seitenleiste ---- */
+/* ---- Chat history sidebar ---- */
 .chat-sidebar {
   width: 250px;
   min-width: 210px;
@@ -82,7 +82,9 @@
   background: transparent;
   color: var(--text);
   position: relative;
-  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .chat-item:hover {
@@ -147,7 +149,7 @@
   color: var(--text-3);
 }
 
-/* ---- Hauptbereich des Chats ---- */
+/* ---- Chat main area ---- */
 .chat-main {
   flex: 1;
   display: flex;

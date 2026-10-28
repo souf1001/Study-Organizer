@@ -1,4 +1,4 @@
-// Durchläuft die wichtigsten Abläufe in der echten Electron-App.
+// Walks through the main flows in the real Electron app.
 /// <reference lib="dom" />
 import path from 'node:path'
 import type { Api } from '../../src/shared/api'
@@ -10,11 +10,11 @@ const shot = async (page: Page, name: string) => {
   if (shots) await page.screenshot({ path: path.join(shots, `${name}.png`) })
 }
 
-test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender', async () => {
+test('Setup, module, lecture folder, note, PDF, split screen, calendar', async () => {
   const { app, page } = await launchApp()
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  // ---- Ersteinrichtung ----
+  // ---- Initial setup ----
   await expect(page.getByText('Willkommen beim Study Organizer')).toBeVisible()
   await shot(page, '01-welcome')
   await page.getByRole('button', { name: 'Los geht’s' }).click()
@@ -30,7 +30,10 @@ test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender',
 
   await page.getByPlaceholder('Modulname, z. B. Programmieren 1').fill('Analysis 1')
   await page.getByPlaceholder('Kürzel').first().fill('ANA1')
-  await page.getByRole('button', { name: /Termine/ }).first().click()
+  await page
+    .getByRole('button', { name: /Termine/ })
+    .first()
+    .click()
   await page.getByRole('button', { name: 'Termin hinzufügen' }).click()
   await page.getByPlaceholder('Raum, z. B. D14/0.04').first().fill('D14/0.04')
   await page.getByRole('button', { name: 'Weiteres Modul' }).click()
@@ -42,11 +45,11 @@ test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender',
   await shot(page, '06-ai')
   await page.getByRole('button', { name: 'Fertig' }).click()
 
-  // ---- Startseite ----
+  // ---- Home page ----
   await expect(page.getByRole('heading', { name: /Soufian/ })).toBeVisible()
   await shot(page, '07-home')
 
-  // ---- Modul & Termine ----
+  // ---- Module & events ----
   await page.locator('.sidebar .tree-row', { hasText: 'Analysis 1' }).click()
   await expect(page.getByRole('heading', { name: 'Analysis 1' })).toBeVisible()
   await shot(page, '08-module')
@@ -56,20 +59,25 @@ test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender',
   await expect(page.locator('.page-title')).toContainText('Vorlesung 1')
   await shot(page, '10-folder-empty')
 
-  // ---- PDF hochladen (wie per Drag & Drop) ----
-  await page.evaluate(async (bytes) => {
-    const api = (window as unknown as { studyApi: Api }).studyApi
-    const db = await api.loadDb()
-    const folder = db.folders[0]
-    const file = new File([new Uint8Array(bytes)], 'Folien_Kapitel_1.pdf', { type: 'application/pdf' })
-    await api.addFiles({ moduleId: folder.moduleId, folderId: folder.id }, [file])
-  }, [...samplePdf(['Kapitel 1: Grenzwerte', 'Folgen und Reihen', 'Konvergenz'])])
-  // Datenbank neu laden, indem wir die Ansicht wechseln
+  // ---- Upload a PDF (as via drag & drop) ----
+  await page.evaluate(
+    async (bytes) => {
+      const api = (window as unknown as { studyApi: Api }).studyApi
+      const db = await api.loadDb()
+      const folder = db.folders[0]
+      const file = new File([new Uint8Array(bytes)], 'Folien_Kapitel_1.pdf', {
+        type: 'application/pdf',
+      })
+      await api.addFiles({ moduleId: folder.moduleId, folderId: folder.id }, [file])
+    },
+    [...samplePdf(['Kapitel 1: Grenzwerte', 'Folgen und Reihen', 'Konvergenz'])],
+  )
+  // Reload the database by switching views
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await page.reload()
   await expect(page.locator('.item-row', { hasText: 'Folien Kapitel 1' })).toBeVisible()
 
-  // ---- Notiz anlegen, schreiben, zeichnen ----
+  // ---- Create, write and draw a note ----
   await page.getByRole('button', { name: 'Neue Notiz' }).first().click()
   await page.locator('.note-title').fill('Grenzwerte – Mitschrift')
   await page.locator('.note-prose').click()
@@ -85,22 +93,27 @@ test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender',
   const box = (await page.locator('.ink-layer').boundingBox())!
   await page.mouse.move(box.x + 120, box.y + 400)
   await page.mouse.down()
-  for (let i = 0; i < 30; i++) await page.mouse.move(box.x + 120 + i * 8, box.y + 400 + Math.sin(i / 3) * 25)
+  for (let i = 0; i < 30; i++)
+    await page.mouse.move(box.x + 120 + i * 8, box.y + 400 + Math.sin(i / 3) * 25)
   await page.mouse.up()
   await expect(page.locator('.ink-layer path')).toHaveCount(1)
   await shot(page, '12-note')
 
-  // ---- Split-Screen: PDF neben der Notiz ----
+  // ---- Split screen: PDF next to the note ----
   await page.locator('.sidebar .tree-row', { hasText: 'Analysis 1' }).locator('.chevron').click()
   await page.locator('.sidebar .tree-row', { hasText: 'Vorlesung 1' }).locator('.chevron').click()
-  await page.locator('.sidebar .tree-row', { hasText: 'Folien Kapitel 1' }).click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] })
+  await page
+    .locator('.sidebar .tree-row', { hasText: 'Folien Kapitel 1' })
+    .click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] })
   await expect(page.locator('.pane')).toHaveCount(2)
   await expect(page.locator('.pdf-page canvas').first()).toBeVisible()
   await page.waitForTimeout(800)
   await shot(page, '13-split')
 
-  // ---- Kalender ----
-  await page.locator('.sidebar .nav-item', { hasText: 'Kalender' }).click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] })
+  // ---- Calendar ----
+  await page
+    .locator('.sidebar .nav-item', { hasText: 'Kalender' })
+    .click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] })
   await expect(page.locator('.pane')).toHaveCount(3)
   await shot(page, '14-three-panes')
   await page.locator('.pane-header button[aria-label="Bereich schließen"]').first().click()
@@ -109,7 +122,7 @@ test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender',
   await expect(page.locator('.cal-toolbar')).toBeVisible()
   await shot(page, '15-calendar')
 
-  // ---- Einstellungen & Dunkelmodus ----
+  // ---- Settings & dark mode ----
   await page.locator('.sidebar .nav-item', { hasText: 'Einstellungen' }).click()
   await page.locator('.settings-nav .nav-item', { hasText: 'KI' }).click()
   await shot(page, '16-settings-ai')
@@ -120,7 +133,7 @@ test('Einrichtung, Modul, Vorlesungsordner, Notiz, PDF, Split-Screen, Kalender',
   await page.locator('.sidebar .nav-item', { hasText: 'Heute' }).click()
   await shot(page, '18-home-dark')
 
-  // ---- Suche ----
+  // ---- Search ----
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K')
   await page.keyboard.type('Grenz')
   await expect(page.locator('.palette-item').first()).toBeVisible()

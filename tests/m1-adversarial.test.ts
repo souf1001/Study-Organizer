@@ -112,7 +112,9 @@ describe('M1 Adversarial: classifyEvent Tricky Academic & Compound Words', () =>
     expect(classifyEvent('Übungszettel bis Freitag einzureichen')).toBe('deadline')
 
     // "kurzschließt" in Elektrotechnik should NOT be a deadline
-    expect(classifyEvent('Elektrotechnik: Was passiert, wenn die Schaltung kurzschließt?')).not.toBe('deadline')
+    expect(
+      classifyEvent('Elektrotechnik: Was passiert, wenn die Schaltung kurzschließt?'),
+    ).not.toBe('deadline')
 
     // English "discloses" should NOT be a deadline
     expect(classifyEvent('Guest Talk: How the algorithm discloses patterns')).not.toBe('deadline')
@@ -229,7 +231,15 @@ describe('M1 Adversarial: Auto-creation for non-academic events', () => {
       'END:VCALENDAR',
     ].join('\r\n')
 
-    const sub = { id: 'sub-test', name: 'Plan', kind: 'file' as const, url: '', enabled: true, lastSync: null, lastError: null }
+    const sub = {
+      id: 'sub-test',
+      name: 'Plan',
+      kind: 'file' as const,
+      url: '',
+      enabled: true,
+      lastSync: null,
+      lastError: null,
+    }
     const created: Module[] = []
 
     eventsFromIcs(ics, sub, [], {

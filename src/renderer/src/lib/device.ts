@@ -1,75 +1,50 @@
+// Layout class of the device: phone (single pane, bottom navigation), tablet or desktop.
+//
+// On Android the class is decided by the *screen* size, never by the window size. When the
+// on-screen keyboard opens, the WebView shrinks. Classifying by window height used to switch a
+// tablet into the phone layout while typing; the whole view was remounted and the text field
+// lost focus ("kicked out" right after tapping it).
 import { create } from 'zustand'
+import { isAndroid } from './platform'
 
 export type DeviceType = 'phone' | 'tablet' | 'desktop'
-export type PlatformType = 'android' | 'mac' | 'other'
 
-export interface DeviceState {
-  platform: PlatformType
+/** Android's own threshold: devices whose short side has at least 600dp are tablets */
+const TABLET_MIN_SHORT_SIDE = 600
+/** Desktop windows narrower than this use the phone layout */
+const DESKTOP_MIN_WIDTH = 768
+
+function detectDeviceType(): DeviceType {
+  if (isAndroid) {
+    const shortSide = Math.min(window.screen.width, window.screen.height)
+    return shortSide >= TABLET_MIN_SHORT_SIDE ? 'tablet' : 'phone'
+  }
+  // Only the width matters: desktop has no on-screen keyboard that changes the height
+  return window.innerWidth < DESKTOP_MIN_WIDTH ? 'phone' : 'desktop'
+}
+
+interface DeviceState {
   device: DeviceType
   isPhone: boolean
-  isTablet: boolean
-  isDesktop: boolean
-  isAndroid: boolean
-  width: number
-  height: number
 }
 
-export function detectDevice(): DeviceState {
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : ''
-  const isCapacitorAndroid =
-    typeof window !== 'undefined' &&
-    Boolean((window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor?.getPlatform() === 'android')
-  const isAndroid = ua.includes('android') || isCapacitorAndroid
-  const platform: PlatformType = isAndroid ? 'android' : ua.includes('mac') ? 'mac' : 'other'
+const stateFor = (device: DeviceType): DeviceState => ({ device, isPhone: device === 'phone' })
 
-  const width = typeof window !== 'undefined' ? window.innerWidth : 1024
-  const height = typeof window !== 'undefined' ? window.innerHeight : 768
-  const minDim = Math.min(width, height)
-  const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0))
+export const useDevice = create<DeviceState>(() => stateFor(detectDeviceType()))
 
-  let device: DeviceType = 'desktop'
-  if (isAndroid) {
-    // Android device: tablets have minDim >= 600dp and portrait width >= 600dp (standard Android tablet breakpoint)
-    if (minDim < 600 || (width < 768 && height > width)) {
-      device = 'phone'
-    } else {
-      device = 'tablet'
-    }
-  } else if (isTouch) {
-    if (minDim < 600 || width < 768) {
-      device = 'phone'
-    } else {
-      device = 'tablet'
-    }
-  } else {
-    // Non-touch (desktop / responsive tester)
-    if (width < 768) {
-      device = 'phone'
-    } else {
-      device = 'desktop'
-    }
+/** Keeps `useDevice` and the `data-device`/`data-platform` attributes on <html> up to date */
+export function watchDevice(): void {
+  const root = document.documentElement
+  root.dataset.platform = isAndroid
+    ? 'android'
+    : navigator.userAgent.includes('Mac')
+      ? 'mac'
+      : 'other'
+  const sync = () => {
+    const device = detectDeviceType()
+    root.dataset.device = device
+    if (useDevice.getState().device !== device) useDevice.setState(stateFor(device))
   }
-
-  return {
-    platform,
-    device,
-    isPhone: device === 'phone',
-    isTablet: device === 'tablet',
-    isDesktop: device === 'desktop',
-    isAndroid,
-    width,
-    height,
-  }
-}
-
-export const useDevice = create<DeviceState>(() => detectDevice())
-
-export function syncDeviceAttributes(): DeviceState {
-  const state = detectDevice()
-  useDevice.setState(state)
-  if (typeof document !== 'undefined') {
-    document.documentElement.dataset.platform = state.platform
-    document.documentElement.dataset.device = state.device
-  }
-  return state
+  sync()
+  window.addEventListener('resize', sync)
 }

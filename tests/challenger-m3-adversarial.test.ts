@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { isIcsDownload } from '../src/main/tucan-session'
-import {
-  normalizeCalendarUrl,
-  maskCalendarUrl,
-  mergeSubscriptionEvents,
-} from '../src/backend/ics'
+import { normalizeCalendarUrl, maskCalendarUrl, mergeSubscriptionEvents } from '../src/backend/ics'
 import type { CalendarEvent } from '../src/shared/types'
 import { createService } from '../src/backend/service'
 import { Store } from '../src/backend/store'
@@ -65,7 +61,9 @@ describe('Challenger M3 Adversarial & Edge Case Suite', () => {
     })
 
     it('preserves existing https:// and http:// schemes', () => {
-      expect(normalizeCalendarUrl('https://example.com/cal.ics')).toBe('https://example.com/cal.ics')
+      expect(normalizeCalendarUrl('https://example.com/cal.ics')).toBe(
+        'https://example.com/cal.ics',
+      )
       expect(normalizeCalendarUrl('http://insecure.example.com/feed')).toBe(
         'http://insecure.example.com/feed',
       )
@@ -115,7 +113,8 @@ describe('Challenger M3 Adversarial & Edge Case Suite', () => {
 
   describe('2. URL Masking', () => {
     it('masks secret query parameters in calendar URLs', () => {
-      const url = 'https://moodle.tu-darmstadt.de/calendar/export.php?userid=123&authtoken=secrettoken999'
+      const url =
+        'https://moodle.tu-darmstadt.de/calendar/export.php?userid=123&authtoken=secrettoken999'
       const masked = maskCalendarUrl(url)
       expect(masked).toContain('moodle.tu-darmstadt.de')
       expect(masked).toContain('/calendar/export.php?…')
@@ -185,12 +184,28 @@ describe('Challenger M3 Adversarial & Edge Case Suite', () => {
 
     it('rejects non-calendar file downloads (PDF, HTML, images, executables)', () => {
       const nonCalendarItems = [
-        { filename: 'syllabus.pdf', mime: 'application/pdf', url: 'https://tucan.tu-darmstadt.de/syllabus.pdf' },
+        {
+          filename: 'syllabus.pdf',
+          mime: 'application/pdf',
+          url: 'https://tucan.tu-darmstadt.de/syllabus.pdf',
+        },
         { filename: 'login.html', mime: 'text/html', url: 'https://tucan.tu-darmstadt.de/login' },
         { filename: 'logo.png', mime: 'image/png', url: 'https://tucan.tu-darmstadt.de/logo.png' },
-        { filename: 'setup.exe', mime: 'application/x-msdownload', url: 'https://tucan.tu-darmstadt.de/setup.exe' },
-        { filename: 'grades.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', url: 'https://tucan.tu-darmstadt.de/grades.xlsx' },
-        { filename: 'notes.txt', mime: 'text/plain', url: 'https://tucan.tu-darmstadt.de/notes.txt' },
+        {
+          filename: 'setup.exe',
+          mime: 'application/x-msdownload',
+          url: 'https://tucan.tu-darmstadt.de/setup.exe',
+        },
+        {
+          filename: 'grades.xlsx',
+          mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          url: 'https://tucan.tu-darmstadt.de/grades.xlsx',
+        },
+        {
+          filename: 'notes.txt',
+          mime: 'text/plain',
+          url: 'https://tucan.tu-darmstadt.de/notes.txt',
+        },
       ]
 
       for (const item of nonCalendarItems) {

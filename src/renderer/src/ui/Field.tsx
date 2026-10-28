@@ -1,6 +1,19 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react'
 
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+export function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: ReactNode
+  children: ReactNode
+}) {
   return (
     <label className="field">
       <span className="field-label">{label}</span>
@@ -23,13 +36,21 @@ interface Option<T extends string | number> {
   label: string
 }
 
-interface SelectProps<T extends string | number> extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange' | 'value'> {
+interface SelectProps<T extends string | number> extends Omit<
+  SelectHTMLAttributes<HTMLSelectElement>,
+  'onChange' | 'value'
+> {
   value: T
   options: Option<T>[]
   onChange: (value: T) => void
 }
 
-export function Select<T extends string | number>({ value, options, onChange, ...rest }: SelectProps<T>) {
+export function Select<T extends string | number>({
+  value,
+  options,
+  onChange,
+  ...rest
+}: SelectProps<T>) {
   return (
     <select
       className="select"
@@ -49,7 +70,15 @@ export function Select<T extends string | number>({ value, options, onChange, ..
   )
 }
 
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: string
+}) {
   return (
     <button
       type="button"
@@ -74,7 +103,12 @@ export function Segmented<T extends string>({
   return (
     <div className="segmented" role="group">
       {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={o.value === value}
+          onClick={() => onChange(o.value)}
+        >
           {o.icon}
           {o.label}
         </button>

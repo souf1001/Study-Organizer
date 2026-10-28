@@ -7,9 +7,7 @@ import { Store } from '../src/backend/store'
 import { newModule } from '../src/shared/defaults'
 import type { Secrets } from '../src/backend/service'
 
-function fakeFetch(
-  handler: (wsfunction: string, body: URLSearchParams) => unknown,
-): typeof fetch {
+function fakeFetch(handler: (wsfunction: string, body: URLSearchParams) => unknown): typeof fetch {
   return (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = new URLSearchParams(init?.body as string)
     const fn = body.get('wsfunction') ?? ''
@@ -21,8 +19,8 @@ function fakeFetch(
   }) as typeof fetch
 }
 
-describe('Moodle Foren & Ankündigungen', () => {
-  it('ruft Foren, Diskussionen und Beiträge ab', async () => {
+describe('Moodle forums & announcements', () => {
+  it('fetches forums, discussions and posts', async () => {
     const fetchImpl = fakeFetch((fn, body) => {
       if (fn === 'mod_forum_get_forums_by_courses') {
         expect(body.get('courseids[0]')).toBe('101')
@@ -133,7 +131,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     expect(reply.postid).toBe(99)
   })
 
-  it('trennt discussionId und firstPostId korrekt bei mod_forum_get_forum_discussions_paginated', async () => {
+  it('separates discussionId and firstPostId correctly for mod_forum_get_forum_discussions_paginated', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'mod_forum_get_forum_discussions_paginated') {
         return {
@@ -170,7 +168,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     expect(rawDiscussions[0].id).toBe(9991)
     expect(rawDiscussions[0].firstpost).toBe(9991)
 
-    // Teste syncMoodle mapping
+    // Test syncMoodle mapping
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-disc-map-'))
     const store = await Store.open(dir)
     try {
@@ -196,7 +194,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     }
   })
 
-  it('fängt cannotfindrecord in discussionPosts ab und liefert leeres Array', async () => {
+  it('catches cannotfindrecord in discussionPosts and returns an empty array', async () => {
     const fetchImpl = fakeFetch((fn) => {
       if (fn === 'mod_forum_get_discussion_posts') {
         return {
@@ -220,7 +218,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     expect(posts).toEqual([])
   })
 
-  it('löst postid zu discussionid auf wenn cannotfindrecord auftritt', async () => {
+  it('resolves postid to discussionid when cannotfindrecord occurs', async () => {
     const fetchImpl = fakeFetch((fn, body) => {
       if (fn === 'mod_forum_get_discussion_posts') {
         const discId = body.get('discussionid')
@@ -283,7 +281,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     expect(posts[1].userFullName).toBe('Student')
   })
 
-  it('synchronisiert Foren und Ankündigungen in die Modul-Datenbank', async () => {
+  it('syncs forums and announcements into the module database', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-forum-'))
     const store = await Store.open(dir)
     try {
@@ -351,7 +349,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     }
   })
 
-  it('MoodleClient.replyPost formatiert Parameter sauber (Ganzzahl, Re: Fallback, messageformat 1)', async () => {
+  it('MoodleClient.replyPost formats parameters cleanly (integer, Re: fallback, messageformat 1)', async () => {
     let calledPostId = ''
     let calledSubject = ''
     let calledMessage = ''
@@ -377,7 +375,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     expect(calledFormat).toBe('1')
   })
 
-  it('service.moodleReply löst Diskussions-ID zuverlässig zur Root-Post-ID auf', async () => {
+  it('service.moodleReply resolves the discussion ID to the root post ID', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-test-'))
     const store = await Store.open(dir)
     try {
@@ -387,7 +385,10 @@ describe('Moodle Foren & Ankündigungen', () => {
         set: async (n, v) => void secretsData.set(n, v),
         remove: async (n) => void secretsData.delete(n),
       }
-      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      await secrets.set(
+        'moodle',
+        JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }),
+      )
       store.update({
         settings: {
           ...store.get().settings,
@@ -401,7 +402,7 @@ describe('Moodle Foren & Ankündigungen', () => {
           {
             id: 200,
             discussionId: 200,
-            firstPostId: 200, // Versehentlich Discussion-ID als firstPostId hinterlegt
+            firstPostId: 200, // Discussion ID mistakenly stored as firstPostId
             forumId: 10,
             courseId: 101,
             moduleId: null,
@@ -424,7 +425,7 @@ describe('Moodle Foren & Ankündigungen', () => {
           return {
             posts: [
               {
-                id: 7001, // Echte Root-Post-ID
+                id: 7001, // Actual root post ID
                 discussionid: 200,
                 parentid: 0,
                 subject: 'Wichtiges Thema',
@@ -444,13 +445,13 @@ describe('Moodle Foren & Ankündigungen', () => {
       const { createService } = await import('../src/backend/service')
       const service = createService(store, secrets, { fetchImpl })
 
-      // Aufruf mit der Diskussions-ID (200)
+      // Call with the discussion ID (200)
       const replyRes = await service.moodleReply(200, 'Re: Wichtiges Thema', 'Super, danke!')
       expect(replyRes.postId).toBe(9999)
-      // Muss an die aufgelöste Root-Post-ID (7001) gesendet worden sein, nicht an die Diskussions-ID (200)
+      // Must have been sent to the resolved root post ID (7001), not to the discussion ID (200)
       expect(addedToPostId).toBe('7001')
 
-      // Und firstPostId im Store muss aktualisiert worden sein
+      // And firstPostId in the store must have been updated
       const updatedDisc = store.get().moodleDiscussions.find((d) => d.id === 200)
       expect(updatedDisc?.firstPostId).toBe(7001)
     } finally {
@@ -459,7 +460,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     }
   })
 
-  it('service.moodlePosts ergänzt fehlenden Inhalt der Eröffnung im Store', async () => {
+  it('service.moodlePosts fills in the missing opening post content in the store', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-posts-test-'))
     const store = await Store.open(dir)
     try {
@@ -469,7 +470,10 @@ describe('Moodle Foren & Ankündigungen', () => {
         set: async (n, v) => void secretsData.set(n, v),
         remove: async (n) => void secretsData.delete(n),
       }
-      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      await secrets.set(
+        'moodle',
+        JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }),
+      )
       store.update({
         settings: {
           ...store.get().settings,
@@ -488,7 +492,7 @@ describe('Moodle Foren & Ankündigungen', () => {
             moduleId: null,
             forumName: 'Allgemein',
             subject: 'Hausübung 1',
-            message: '', // Bislang leer von paginated API
+            message: '', // Empty so far from the paginated API
             userFullName: 'Dozent',
             timeCreated: new Date().toISOString(),
             timeModified: new Date().toISOString(),
@@ -531,7 +535,7 @@ describe('Moodle Foren & Ankündigungen', () => {
       const posts = await service.moodlePosts(300)
       expect(posts).toHaveLength(2)
 
-      // Store muss jetzt die Nachricht des Eröffnungsbeitrags besitzen
+      // The store must now contain the opening post message
       const disc = store.get().moodleDiscussions.find((d) => d.id === 300)
       expect(disc?.message).toBe('<p>Hier ist die Aufgabe 1.</p>')
       expect(disc?.firstPostId).toBe(8001)
@@ -541,7 +545,7 @@ describe('Moodle Foren & Ankündigungen', () => {
     }
   })
 
-  it('service.moodleReply fängt ungültigen Parameterwert bei veralteter firstPostId ab und versucht erneute Auflösung via discussionPosts', async () => {
+  it('service.moodleReply catches an invalid parameter value for a stale firstPostId and retries resolution via discussionPosts', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-reply-invalid-param-'))
     const store = await Store.open(dir)
     try {
@@ -551,7 +555,10 @@ describe('Moodle Foren & Ankündigungen', () => {
         set: async (n, v) => void secretsData.set(n, v),
         remove: async (n) => void secretsData.delete(n),
       }
-      await secrets.set('moodle', JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }))
+      await secrets.set(
+        'moodle',
+        JSON.stringify({ value: 'token123', target: 'https://moodle.hochschule.de' }),
+      )
       store.update({
         settings: {
           ...store.get().settings,
@@ -565,7 +572,7 @@ describe('Moodle Foren & Ankündigungen', () => {
           {
             id: 400,
             discussionId: 400,
-            firstPostId: 99999, // Ungültige oder veraltete Post-ID
+            firstPostId: 99999, // Invalid or stale post ID
             forumId: 10,
             courseId: 101,
             moduleId: null,
@@ -603,7 +610,7 @@ describe('Moodle Foren & Ankündigungen', () => {
           return {
             posts: [
               {
-                id: 88888, // Echte Root-Post-ID
+                id: 88888, // Actual root post ID
                 discussionid: 400,
                 parentid: 0,
                 subject: 'Thema mit ungültiger firstPostId',
@@ -619,12 +626,12 @@ describe('Moodle Foren & Ankündigungen', () => {
       const { createService } = await import('../src/backend/service')
       const service = createService(store, secrets, { fetchImpl })
 
-      // User klickt auf Antworten mit der im Store vorhandenen firstPostId (99999)
+      // User clicks reply with the firstPostId stored in the store (99999)
       const res = await service.moodleReply(99999, 'Re: Thema', 'Meine Antwort')
       expect(res.postId).toBe(77777)
-      expect(attempts).toBe(2) // 1 Fehlversuch an 99999, 1 erfolgreicher Retry an 88888
+      expect(attempts).toBe(2) // 1 failed attempt at 99999, 1 successful retry at 88888
 
-      // Store muss jetzt die korrigierte firstPostId besitzen
+      // The store must now contain the corrected firstPostId
       const updated = store.get().moodleDiscussions.find((d) => d.id === 400)
       expect(updated?.firstPostId).toBe(88888)
     } finally {
@@ -633,4 +640,3 @@ describe('Moodle Foren & Ankündigungen', () => {
     }
   })
 })
-

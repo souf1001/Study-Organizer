@@ -13,7 +13,9 @@
   font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
-  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .btn:hover:not(:disabled) {
@@ -86,7 +88,9 @@
   background: transparent;
   color: var(--text-2);
   flex: none;
-  transition: background var(--duration) var(--ease), color var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -118,7 +122,7 @@
   height: 14px;
 }
 
-/* ---- Formularfelder ---- */
+/* ---- Form fields ---- */
 .field {
   display: flex;
   flex-direction: column;
@@ -149,7 +153,9 @@
   font-size: var(--text-md);
   outline: none;
   user-select: text;
-  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
 }
 
 .textarea {
@@ -239,7 +245,9 @@
   flex: none;
   display: grid;
   place-content: center;
-  transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .checkbox:checked {
@@ -347,14 +355,19 @@
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
+  from {
+    opacity: 0;
+  }
 }
 
 @keyframes pop-in {
-  from { opacity: 0; transform: translateY(4px) scale(0.99); }
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
 }
 
-/* ---- Menü ---- */
+/* ---- Menu ---- */
 .menu {
   position: fixed;
   z-index: 200;
@@ -495,7 +508,7 @@
   color: #fff;
 }
 
-/* ---- Sonstiges ---- */
+/* ---- Misc ---- */
 .empty {
   display: flex;
   flex-direction: column;
@@ -610,10 +623,12 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* ---- Popover (frei positioniert) ---- */
+/* ---- Popover (freely positioned) ---- */
 .overlay.transparent {
   background: transparent;
   animation: none;

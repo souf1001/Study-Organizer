@@ -50,22 +50,29 @@ import { ModuleDialog } from '@/views/module/ModuleDialog'
 import { SemesterDialog } from '@/views/semester/SemesterDialog'
 import { usePalette } from './CommandPalette'
 
-// Aufgeklappte Einträge merken
-const useExpanded = create<{ ids: string[]; toggle: (id: string) => void; open: (id: string) => void }>()(
+// Remembers which tree entries are expanded.
+const useExpanded = create<{
+  ids: string[]
+  toggle: (id: string) => void
+  open: (id: string) => void
+}>()(
   persist(
     (set) => ({
       ids: [],
-      toggle: (id) => set((s) => ({ ids: s.ids.includes(id) ? s.ids.filter((x) => x !== id) : [...s.ids, id] })),
+      toggle: (id) =>
+        set((s) => ({ ids: s.ids.includes(id) ? s.ids.filter((x) => x !== id) : [...s.ids, id] })),
       open: (id) => set((s) => (s.ids.includes(id) ? s : { ids: [...s.ids, id] })),
     }),
     { name: 'study-organizer-sidebar' },
   ),
 )
 
+const DEFAULT_SIDEBAR_WIDTH = 252
+
 export const useSidebarWidth = create<{ width: number; setWidth: (w: number) => void }>()(
   persist(
     (set) => ({
-      width: 252,
+      width: DEFAULT_SIDEBAR_WIDTH,
       setWidth: (width) => set({ width: Math.max(180, Math.min(600, Math.round(width))) }),
     }),
     { name: 'study-organizer-sidebar-width' },
@@ -88,7 +95,17 @@ function dragStart(view: View) {
   }
 }
 
-function NavItem({ icon, label, view, trailing }: { icon: ReactNode; label: string; view: View; trailing?: ReactNode }) {
+function NavItem({
+  icon,
+  label,
+  view,
+  trailing,
+}: {
+  icon: ReactNode
+  label: string
+  view: View
+  trailing?: ReactNode
+}) {
   const active = isActive(useActiveView(), view)
   return (
     <button
@@ -111,7 +128,11 @@ function ItemRow({ item, depth }: { item: Item; depth: number }) {
   const menu = (e: MouseEvent) => {
     e.preventDefault()
     showMenu(e, [
-      { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane(view) },
+      {
+        label: 'In neuem Bereich öffnen',
+        icon: <SplitSquareHorizontal />,
+        onClick: () => openInNewPane(view),
+      },
       { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameItem(item) },
       { separator: true },
       { label: 'Löschen', icon: <Trash2 />, danger: true, onClick: () => void deleteItem(item) },
@@ -126,7 +147,11 @@ function ItemRow({ item, depth }: { item: Item; depth: number }) {
       draggable
       onDragStart={dragStart(view)}
     >
-      {item.kind === 'note' ? <FileText className="row-icon" /> : <FileIcon type={item.fileType} className="row-icon" />}
+      {item.kind === 'note' ? (
+        <FileText className="row-icon" />
+      ) : (
+        <FileIcon type={item.fileType} className="row-icon" />
+      )}
       <span className="label">{item.title}</span>
     </div>
   )
@@ -144,14 +169,35 @@ function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
   const menu = (e: MouseEvent) => {
     e.preventDefault()
     showMenu(e, [
-      { label: 'Neue Notiz', icon: <FilePlus />, onClick: () => void createNote(folder.moduleId, folder.id).then(() => open(folder.id)) },
-      { label: 'Dateien hinzufügen', icon: <Upload />, onClick: () => void pickFiles().then((f) => uploadFiles(folder.moduleId, folder.id, f)) },
-      { label: 'Unterordner', icon: <FolderPlus />, onClick: () => void createFolder(folder.moduleId, folder.id).then(() => open(folder.id)) },
+      {
+        label: 'Neue Notiz',
+        icon: <FilePlus />,
+        onClick: () => void createNote(folder.moduleId, folder.id).then(() => open(folder.id)),
+      },
+      {
+        label: 'Dateien hinzufügen',
+        icon: <Upload />,
+        onClick: () => void pickFiles().then((f) => uploadFiles(folder.moduleId, folder.id, f)),
+      },
+      {
+        label: 'Unterordner',
+        icon: <FolderPlus />,
+        onClick: () => void createFolder(folder.moduleId, folder.id).then(() => open(folder.id)),
+      },
       { separator: true },
-      { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane(view) },
+      {
+        label: 'In neuem Bereich öffnen',
+        icon: <SplitSquareHorizontal />,
+        onClick: () => openInNewPane(view),
+      },
       { label: 'Umbenennen', icon: <Pencil />, onClick: () => void renameFolder(folder) },
       { separator: true },
-      { label: 'Löschen', icon: <Trash2 />, danger: true, onClick: () => void deleteFolder(folder) },
+      {
+        label: 'Löschen',
+        icon: <Trash2 />,
+        danger: true,
+        onClick: () => void deleteFolder(folder),
+      },
     ])
   }
 
@@ -207,16 +253,39 @@ function ModuleRow({ module, onEdit }: { module: Module; onEdit: () => void }) {
   const menu = (e: MouseEvent) => {
     e.preventDefault()
     showMenu(e, [
-      { label: 'Neue Notiz', icon: <FilePlus />, onClick: () => void createNote(module.id, null).then(() => open(module.id)) },
-      { label: 'Neuer Ordner', icon: <FolderPlus />, onClick: () => void createFolder(module.id, null).then(() => open(module.id)) },
+      {
+        label: 'Neue Notiz',
+        icon: <FilePlus />,
+        onClick: () => void createNote(module.id, null).then(() => open(module.id)),
+      },
+      {
+        label: 'Neuer Ordner',
+        icon: <FolderPlus />,
+        onClick: () => void createFolder(module.id, null).then(() => open(module.id)),
+      },
       ...(db.settings.ai.enabled
-        ? [{ label: 'KI-Chat', icon: <MessageCircle />, onClick: () => openView({ type: 'chat', moduleId: module.id }) }]
+        ? [
+            {
+              label: 'KI-Chat',
+              icon: <MessageCircle />,
+              onClick: () => openView({ type: 'chat', moduleId: module.id }),
+            },
+          ]
         : []),
       { separator: true },
-      { label: 'In neuem Bereich öffnen', icon: <SplitSquareHorizontal />, onClick: () => openInNewPane(view) },
+      {
+        label: 'In neuem Bereich öffnen',
+        icon: <SplitSquareHorizontal />,
+        onClick: () => openInNewPane(view),
+      },
       { label: 'Modul bearbeiten', icon: <Pencil />, onClick: onEdit },
       { separator: true },
-      { label: 'Modul löschen', icon: <Trash2 />, danger: true, onClick: () => void deleteModule(module) },
+      {
+        label: 'Modul löschen',
+        icon: <Trash2 />,
+        danger: true,
+        onClick: () => void deleteModule(module),
+      },
     ])
   }
 
@@ -302,7 +371,10 @@ export function Sidebar() {
     window.addEventListener('mouseup', onMouseUp)
   }
 
-  const openTasks = db.tasks.filter((t) => !t.done && t.due && isoDateOf(t.due) <= today()).length
+  // Open tasks that are due today or overdue.
+  const dueTaskCount = db.tasks.filter(
+    (t) => !t.done && t.due && isoDateOf(t.due) <= today(),
+  ).length
   const initials = (db.profile.name || 'S').trim().slice(0, 1).toUpperCase()
 
   const semesterMenu = (e: MouseEvent<HTMLButtonElement>) =>
@@ -317,11 +389,18 @@ export function Sidebar() {
         })),
       { separator: true },
       { label: 'Neues Semester beginnen…', icon: <Plus />, onClick: () => setSemesterDialog(true) },
-      { label: 'Semester verwalten', icon: <Settings />, onClick: () => openView({ type: 'settings', section: 'study' }) },
+      {
+        label: 'Semester verwalten',
+        icon: <Settings />,
+        onClick: () => openView({ type: 'settings', section: 'study' }),
+      },
     ])
 
   return (
-    <aside className={`sidebar ${resizing ? 'resizing' : ''}`} style={isPhone ? undefined : { width: `${width}px` }}>
+    <aside
+      className={`sidebar ${resizing ? 'resizing' : ''}`}
+      style={isPhone ? undefined : { width: `${width}px` }}
+    >
       <div className="sidebar-top drag">
         <button type="button" className="semester-switch" onClick={semesterMenu}>
           <span className="avatar">{initials}</span>
@@ -347,9 +426,11 @@ export function Sidebar() {
             icon={<CheckSquare />}
             label="Aufgaben"
             view={{ type: 'tasks' }}
-            trailing={openTasks > 0 ? <span className="count">{openTasks}</span> : null}
+            trailing={dueTaskCount > 0 ? <span className="count">{dueTaskCount}</span> : null}
           />
-          {db.settings.ai.enabled && <NavItem icon={<MessageCircle />} label="KI-Chat" view={{ type: 'chat' }} />}
+          {db.settings.ai.enabled && (
+            <NavItem icon={<MessageCircle />} label="KI-Chat" view={{ type: 'chat' }} />
+          )}
         </nav>
 
         <div className="sidebar-heading">
@@ -377,11 +458,15 @@ export function Sidebar() {
         className="sidebar-resize-handle"
         title="Breite anpassen (Doppelklick für Standardbreite)"
         onMouseDown={startResize}
-        onDoubleClick={() => setWidth(252)}
+        onDoubleClick={() => setWidth(DEFAULT_SIDEBAR_WIDTH)}
       />
 
       {moduleDialog && semester && (
-        <ModuleDialog semester={semester} module={moduleDialog.module} onClose={() => setModuleDialog(null)} />
+        <ModuleDialog
+          semester={semester}
+          module={moduleDialog.module}
+          onClose={() => setModuleDialog(null)}
+        />
       )}
       {semesterDialog && <SemesterDialog onClose={() => setSemesterDialog(false)} />}
     </aside>

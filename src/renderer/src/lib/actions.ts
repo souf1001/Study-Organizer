@@ -1,19 +1,37 @@
-// Häufige Aktionen, die von mehreren Ansichten genutzt werden.
+// Common actions shared by several views.
 import { emptyNote, newFolder, newNoteItem } from '@shared/defaults'
 import { today } from '@shared/dates'
-import { moduleOccurrences, sessionFolderName, SESSION_LABELS, type Occurrence } from '@shared/schedule'
+import {
+  moduleOccurrences,
+  sessionFolderName,
+  SESSION_LABELS,
+  type Occurrence,
+} from '@shared/schedule'
 import { findSemesterAt } from '@shared/semester'
-import type { ChatSession, Db, Folder, ID, Item, Module, Semester, SessionKind } from '@shared/types'
+import type {
+  ChatSession,
+  Db,
+  Folder,
+  ID,
+  Item,
+  Module,
+  Semester,
+  SessionKind,
+} from '@shared/types'
 import { confirm, prompt } from '@/ui/Dialogs'
 import { toast, toastError } from '@/ui/Toast'
 import { api } from './api'
 import { getDb, loadDb, putRecord, removeRecord } from './db'
 import { openView } from './workspace'
 
-// ---- Abfragen ----
+// ---- Queries ----
 
 export function activeSemester(db: Db): Semester | undefined {
-  return db.semesters.find((s) => s.id === db.activeSemesterId) ?? findSemesterAt(db.semesters, today()) ?? db.semesters.at(-1)
+  return (
+    db.semesters.find((s) => s.id === db.activeSemesterId) ??
+    findSemesterAt(db.semesters, today()) ??
+    db.semesters.at(-1)
+  )
 }
 
 export function semesterModules(db: Db, semesterId: ID | undefined): Module[] {
@@ -24,7 +42,7 @@ export function semesterOf(db: Db, module: Module): Semester | undefined {
   return db.semesters.find((s) => s.id === module.semesterId)
 }
 
-/** Alle Stundenplan-Termine der Module eines Semesters */
+/** All timetable occurrences of a semester's modules, sorted chronologically. */
 export function semesterOccurrences(db: Db, semester: Semester | undefined): Occurrence[] {
   if (!semester) return []
   return semesterModules(db, semester.id)
@@ -44,8 +62,16 @@ export function childFolders(db: Db, moduleId: ID, parentId: ID | null): Folder[
     .sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') || a.order - b.order)
 }
 
-export function findSessionFolder(db: Db, moduleId: ID, date: string, kind: SessionKind): Folder | undefined {
-  return db.folders.find((f) => f.moduleId === moduleId && f.kind === 'session' && f.date === date && f.sessionKind === kind)
+export function findSessionFolder(
+  db: Db,
+  moduleId: ID,
+  date: string,
+  kind: SessionKind,
+): Folder | undefined {
+  return db.folders.find(
+    (f) =>
+      f.moduleId === moduleId && f.kind === 'session' && f.date === date && f.sessionKind === kind,
+  )
 }
 
 export function folderPath(db: Db, folder: Folder): Folder[] {
@@ -60,9 +86,13 @@ export function folderPath(db: Db, folder: Folder): Folder[] {
   return path
 }
 
-// ---- Anlegen ----
+// ---- Creation ----
 
-export async function createNote(moduleId: ID, folderId: ID | null, event?: { metaKey: boolean; ctrlKey: boolean }): Promise<Item> {
+export async function createNote(
+  moduleId: ID,
+  folderId: ID | null,
+  event?: { metaKey: boolean; ctrlKey: boolean },
+): Promise<Item> {
   const db = getDb()
   const item = newNoteItem(moduleId, folderId)
   putRecord('items', item)
@@ -71,8 +101,10 @@ export async function createNote(moduleId: ID, folderId: ID | null, event?: { me
   return item
 }
 
-/** Ordner für einen Vorlesungs-/Übungs-/Praktikumstermin – legt ihn bei Bedarf an */
-export function ensureSessionFolder(occurrence: Pick<Occurrence, 'moduleId' | 'date' | 'kind' | 'index' | 'room'>): Folder {
+/** Returns the folder for a lecture/exercise/lab session, creating it if needed. */
+export function ensureSessionFolder(
+  occurrence: Pick<Occurrence, 'moduleId' | 'date' | 'kind' | 'index' | 'room'>,
+): Folder {
   const db = getDb()
   const existing = findSessionFolder(db, occurrence.moduleId, occurrence.date, occurrence.kind)
   if (existing) return existing
@@ -87,27 +119,48 @@ export function ensureSessionFolder(occurrence: Pick<Occurrence, 'moduleId' | 'd
   return folder
 }
 
-export function openSession(occurrence: Occurrence, event?: { metaKey: boolean; ctrlKey: boolean }): void {
+export function openSession(
+  occurrence: Occurrence,
+  event?: { metaKey: boolean; ctrlKey: boolean },
+): void {
   const folder = ensureSessionFolder(occurrence)
   openView({ type: 'folder', id: folder.id }, event)
 }
 
-/** Zusätzlicher Termin ohne Stundenplan (z. B. Blockpraktikum) */
+/** Adds an extra session outside the timetable (e.g. a block lab course). */
 export async function createManualSession(module: Module, kind: SessionKind): Promise<void> {
-  const date = await prompt({ title: `${SESSION_LABELS[kind]} anlegen`, label: 'Datum', initial: today(), placeholder: 'JJJJ-MM-TT' })
+  const date = await prompt({
+    title: `${SESSION_LABELS[kind]} anlegen`,
+    label: 'Datum',
+    initial: today(),
+    placeholder: 'JJJJ-MM-TT',
+  })
   if (!date) return
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return toast('Bitte das Datum als JJJJ-MM-TT eingeben.', { error: true })
-  const count = getDb().folders.filter((f) => f.moduleId === module.id && f.sessionKind === kind).length
-  const folder = ensureSessionFolder({ moduleId: module.id, date, kind, index: count + 1, room: '' })
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+    return toast('Bitte das Datum als JJJJ-MM-TT eingeben.', { error: true })
+  const count = getDb().folders.filter(
+    (f) => f.moduleId === module.id && f.sessionKind === kind,
+  ).length
+  const folder = ensureSessionFolder({
+    moduleId: module.id,
+    date,
+    kind,
+    index: count + 1,
+    room: '',
+  })
   openView({ type: 'folder', id: folder.id })
 }
 
 export async function createFolder(moduleId: ID, parentId: ID | null): Promise<void> {
-  const name = await prompt({ title: 'Neuer Ordner', label: 'Name', placeholder: 'z. B. Übungsblätter' })
+  const name = await prompt({
+    title: 'Neuer Ordner',
+    label: 'Name',
+    placeholder: 'z. B. Übungsblätter',
+  })
   if (name) putRecord('folders', newFolder(moduleId, { name, parentId }))
 }
 
-// ---- Dateien ----
+// ---- Files ----
 
 export function pickFiles(accept = ''): Promise<File[]> {
   return new Promise((resolve) => {
@@ -120,13 +173,21 @@ export function pickFiles(accept = ''): Promise<File[]> {
   })
 }
 
-/** Dateien übernehmen und bei PDFs im Hintergrund den Text für Suche/KI auslesen */
-export async function uploadFiles(moduleId: ID, folderId: ID | null, files: File[]): Promise<Item[]> {
+/** Imports files and extracts PDF text in the background for search and AI. */
+export async function uploadFiles(
+  moduleId: ID,
+  folderId: ID | null,
+  files: File[],
+): Promise<Item[]> {
   if (files.length === 0) return []
   try {
     const items = await api.addFiles({ moduleId, folderId }, files)
     await loadDb()
-    toast(items.length === 1 ? `„${items[0].title}“ hinzugefügt` : `${items.length} Dateien hinzugefügt`)
+    toast(
+      items.length === 1
+        ? `„${items[0].title}“ hinzugefügt`
+        : `${items.length} Dateien hinzugefügt`,
+    )
     void indexPdfs(items)
     return items
   } catch (error) {
@@ -141,12 +202,12 @@ export async function indexPdfs(items: Item[]): Promise<void> {
     try {
       await api.writeText(item.id, await extractPdfText(api.fileUrl(item)))
     } catch {
-      // Ohne Text bleibt die Datei trotzdem nutzbar
+      // The file stays usable even without extracted text.
     }
   }
 }
 
-/** Text einer Notiz oder Datei (für die KI); PDFs werden bei Bedarf nachträglich ausgelesen */
+/** Plain text of a note or file (for the AI); PDFs are extracted lazily if not cached yet. */
 export async function itemText(item: Item): Promise<string> {
   if (item.kind === 'note') return (await api.readNote(item.id))?.text ?? ''
   if (item.fileType === 'pdf') {
@@ -164,7 +225,7 @@ export async function itemText(item: Item): Promise<string> {
   return ''
 }
 
-// ---- Umbenennen & Löschen ----
+// ---- Rename & delete ----
 
 export async function renameItem(item: Item): Promise<void> {
   const title = await prompt({ title: 'Umbenennen', initial: item.title })
@@ -192,7 +253,9 @@ export async function deleteFolder(folder: Folder): Promise<boolean> {
   const count = db.items.filter((i) => i.folderId === folder.id).length
   const ok = await confirm({
     title: `Ordner „${folder.name}“ löschen?`,
-    message: count ? `Der Ordner enthält ${count} Einträge, die ebenfalls gelöscht werden.` : undefined,
+    message: count
+      ? `Der Ordner enthält ${count} Einträge, die ebenfalls gelöscht werden.`
+      : undefined,
     confirmLabel: 'Löschen',
     danger: true,
   })
@@ -238,4 +301,3 @@ export async function deleteChat(chat: ChatSession): Promise<boolean> {
   if (ok) await removeRecord('chats', chat.id)
   return ok
 }
-

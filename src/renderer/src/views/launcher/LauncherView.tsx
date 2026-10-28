@@ -29,11 +29,16 @@ export function LauncherView({ paneId }: { paneId: string }) {
   const semester = activeSemester(db)
   const modules = semesterModules(db, semester?.id)
 
-  const navigate = (view: View) => {
-    replace(paneId, view)
-  }
+  // Replace the launcher in place instead of pushing it onto the pane history.
+  const navigate = (view: View) => replace(paneId, view)
 
-  const quickLinks: { label: string; icon: React.ReactNode; view?: View; action?: () => void; kbd?: string }[] = [
+  const quickLinks: {
+    label: string
+    icon: React.ReactNode
+    view?: View
+    action?: () => void
+    kbd?: string
+  }[] = [
     {
       label: 'Suchen',
       icon: <Search />,
@@ -119,7 +124,10 @@ export function LauncherView({ paneId }: { paneId: string }) {
                 onClick={() => navigate({ type: 'module', id: m.id })}
               >
                 <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-                  <div className={`module-badge color-${m.color}`} style={{ width: 34, height: 34, fontSize: 13 }}>
+                  <div
+                    className={`module-badge color-${m.color}`}
+                    style={{ width: 34, height: 34, fontSize: 13 }}
+                  >
                     {(m.code || m.name).slice(0, 2).toUpperCase()}
                   </div>
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>

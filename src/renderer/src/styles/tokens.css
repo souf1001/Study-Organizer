@@ -1,4 +1,4 @@
-/* Design-Tokens: ruhige Grautöne, eine Akzentfarbe, klare Typografie. */
+/* Design tokens: calm grays, a single accent color, clear typography. */
 
 :root {
   --font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -27,7 +27,7 @@
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --duration: 120ms;
 
-  /* Hell */
+  /* Light theme */
   --bg: #ffffff;
   --bg-sidebar: #f7f7f5;
   --bg-subtle: #f3f3f1;
@@ -44,14 +44,16 @@
   --success: #3f8a5f;
   --warning: #c98a1b;
   --overlay: rgba(15, 15, 15, 0.28);
-  --shadow-pop: 0 0 0 1px var(--border), 0 10px 30px -6px rgba(0, 0, 0, 0.14), 0 3px 8px -2px rgba(0, 0, 0, 0.06);
+  --shadow-pop:
+    0 0 0 1px var(--border), 0 10px 30px -6px rgba(0, 0, 0, 0.14),
+    0 3px 8px -2px rgba(0, 0, 0, 0.06);
   --shadow-card: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.04);
 
   --accent: #5b5bd6;
   --accent-text: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
 
-  /* Modulfarben (Text / Fläche) */
+  /* Module colors (text / background) */
   --c-gray: #787774;
   --c-gray-bg: #f1f1ef;
   --c-brown: #9f6b53;
@@ -118,15 +120,34 @@
   color-scheme: dark;
 }
 
-:root[data-accent='indigo'] { --accent: #5b5bd6; }
-:root[data-accent='blue'] { --accent: #2f76d2; }
-:root[data-accent='green'] { --accent: #3f8a5f; }
-:root[data-accent='orange'] { --accent: #d9730d; }
-:root[data-accent='pink'] { --accent: #c14c8a; }
-:root[data-accent='graphite'] { --accent: #37352f; }
-:root[data-theme='dark'][data-accent='indigo'] { --accent: #8080f0; }
-:root[data-theme='dark'][data-accent='blue'] { --accent: #4a90e2; }
-:root[data-theme='dark'][data-accent='graphite'] { --accent: #d6d6d3; --accent-text: #191919; }
+:root[data-accent='indigo'] {
+  --accent: #5b5bd6;
+}
+:root[data-accent='blue'] {
+  --accent: #2f76d2;
+}
+:root[data-accent='green'] {
+  --accent: #3f8a5f;
+}
+:root[data-accent='orange'] {
+  --accent: #d9730d;
+}
+:root[data-accent='pink'] {
+  --accent: #c14c8a;
+}
+:root[data-accent='graphite'] {
+  --accent: #37352f;
+}
+:root[data-theme='dark'][data-accent='indigo'] {
+  --accent: #8080f0;
+}
+:root[data-theme='dark'][data-accent='blue'] {
+  --accent: #4a90e2;
+}
+:root[data-theme='dark'][data-accent='graphite'] {
+  --accent: #d6d6d3;
+  --accent-text: #191919;
+}
 
 :root[data-compact='true'] {
   --row-height: 26px;

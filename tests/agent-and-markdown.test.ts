@@ -6,51 +6,53 @@ import { newModule, normalizeDb } from '@shared/defaults'
 import { extractValidTokenLimit, streamOpenAi } from '../src/backend/ai-openai'
 
 describe('repairMarkdown', () => {
-  it('schließt unvollständige Codeblöcke bei Token-Cut-Off', () => {
+  it('closes unterminated code blocks on token cut-off', () => {
     const broken = '# Test\n```typescript\nconst x = 42;'
     const fixed = repairMarkdown(broken)
     expect(fixed).toBe('# Test\n```typescript\nconst x = 42;\n```')
   })
 
-  it('lässt bereits geschlossene Codeblöcke unverändert', () => {
+  it('leaves already closed code blocks unchanged', () => {
     const valid = '# Test\n```typescript\nconst x = 42;\n```'
     const fixed = repairMarkdown(valid)
     expect(fixed).toBe(valid)
   })
 
-  it('schließt unvollständige KaTeX/LaTeX Blöcke', () => {
+  it('closes unterminated KaTeX/LaTeX blocks', () => {
     const broken = 'Formel:\n$$\\int_0^1 x dx'
     const fixed = repairMarkdown(broken)
     expect(fixed).toBe('Formel:\n$$\\int_0^1 x dx\n$$')
   })
 
-  it('schließt unvollständigen Inline-Code, Inline-Math und Fett-Formatierung', () => {
+  it('closes unterminated inline code, inline math and bold formatting', () => {
     expect(repairMarkdown('Hier ist `Code')).toBe('Hier ist `Code`')
     expect(repairMarkdown('Formel $E = mc^2')).toBe('Formel $E = mc^2$')
     expect(repairMarkdown('Wichtig: **Kernaussage')).toBe('Wichtig: **Kernaussage**')
-    expect(repairMarkdown('Link: [Webseite](https://example.com/api')).toBe('Link: [Webseite](https://example.com/api)')
+    expect(repairMarkdown('Link: [Webseite](https://example.com/api')).toBe(
+      'Link: [Webseite](https://example.com/api)',
+    )
   })
 })
 
 describe('extractValidTokenLimit', () => {
-  it('parst die Obergrenze bei Groq zwischen 1 und 8192 korrekt (nicht 1)', () => {
+  it('parses the Groq upper bound between 1 and 8192 correctly (not 1)', () => {
     const groqMsg = "'max_tokens' must be an integer between 1 and 8192, but got 16384"
     expect(extractValidTokenLimit(groqMsg, 16384)).toBe(8192)
   })
 
-  it('parst Obergrenze bei 4096 Modellen', () => {
+  it('parses the upper bound for 4096-token models', () => {
     const msg = 'max_tokens must be between 1 and 4096'
     expect(extractValidTokenLimit(msg, 8192)).toBe(4096)
   })
 
-  it('ignoriert Zahlen größer oder gleich dem angefragten Limit', () => {
+  it('ignores numbers greater than or equal to the requested limit', () => {
     const msg = 'Limit 16384'
     expect(extractValidTokenLimit(msg, 16384)).toBeNull()
   })
 })
 
 describe('extractAgentActions', () => {
-  it('extrahiert Aktionsblöcke und bereinigt den Text', () => {
+  it('extracts action blocks and cleans up the text', () => {
     const aiResponse = `Ich habe den Termin für dich gestrichen.
 
 \`\`\`action
@@ -74,7 +76,7 @@ Lass mich wissen, ob du noch etwas brauchst!`
     expect(cleanText).toContain('Lass mich wissen, ob du noch etwas brauchst!')
   })
 
-  it('ignoriert fehlerhaftes JSON ohne Absturz', () => {
+  it('ignores malformed JSON without crashing', () => {
     const brokenResponse = `Hier ist eine unvollständige Aktion:
 \`\`\`action
 { "tool": "create_task", "params":
@@ -86,7 +88,7 @@ Lass mich wissen, ob du noch etwas brauchst!`
 })
 
 describe('agentSystemPrompt', () => {
-  it('generiert System-Prompt mit Modul-Übersicht', () => {
+  it('generates a system prompt with a module overview', () => {
     const db = normalizeDb({
       modules: [
         newModule('sem1', {
@@ -105,25 +107,31 @@ describe('agentSystemPrompt', () => {
 })
 
 describe('streamOpenAi auto-continuation', () => {
-  it('setzt die Textgenerierung nahtlos fort, wenn finish_reason === "length"', async () => {
+  it('seamlessly continues text generation when finish_reason === "length"', async () => {
     let callCount = 0
-    const receivedBodies: any[] = []
+    const receivedBodies: { messages: unknown[] }[] = []
 
-    const fakeFetch: typeof fetch = (async (_url: any, init: any) => {
+    const fakeFetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       callCount++
-      const body = JSON.parse(init.body)
+      const body = JSON.parse(String(init?.body))
       receivedBodies.push(body)
 
-      let sse = ''
+      let sse: string
       if (callCount === 1) {
         sse = [
-          'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Teil 1 ' }, finish_reason: 'length' }] }),
+          'data: ' +
+            JSON.stringify({
+              choices: [{ delta: { content: 'Teil 1 ' }, finish_reason: 'length' }],
+            }),
           'data: [DONE]',
           '',
         ].join('\n\n')
       } else {
         sse = [
-          'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Teil 2 abgeschlossen.' }, finish_reason: 'stop' }] }),
+          'data: ' +
+            JSON.stringify({
+              choices: [{ delta: { content: 'Teil 2 abgeschlossen.' }, finish_reason: 'stop' }],
+            }),
           'data: [DONE]',
           '',
         ].join('\n\n')
@@ -133,7 +141,7 @@ describe('streamOpenAi auto-continuation', () => {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' },
       })
-    }) as any
+    }) as typeof fetch
 
     const streamedChunks: string[] = []
     const fullText = await streamOpenAi(
@@ -153,7 +161,7 @@ describe('streamOpenAi auto-continuation', () => {
     expect(fullText).toBe('Teil 1 Teil 2 abgeschlossen.')
     expect(streamedChunks).toEqual(['Teil 1 ', 'Teil 2 abgeschlossen.'])
 
-    // In Iteration 2 wurde die bisherige Antwort als Assistant-Nachricht plus Fortsetzungs-Prompt angefügt
+    // In iteration 2 the previous answer was appended as an assistant message plus a continuation prompt
     expect(receivedBodies[1].messages).toEqual([
       { role: 'system', content: 'System Prompt' },
       { role: 'user', content: 'Schreib einen Aufsatz.' },
@@ -166,4 +174,3 @@ describe('streamOpenAi auto-continuation', () => {
     ])
   })
 })
-

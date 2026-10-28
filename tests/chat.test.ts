@@ -18,8 +18,8 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-describe('ChatSession Datenmodell & Normalisierung', () => {
-  it('erzeugt eine gültige ChatSession mit Standardwerten', () => {
+describe('ChatSession data model & normalization', () => {
+  it('creates a valid ChatSession with default values', () => {
     const chat = newChatSession()
     expect(chat.id).toBeDefined()
     expect(chat.title).toBe('Neuer Chat')
@@ -29,26 +29,26 @@ describe('ChatSession Datenmodell & Normalisierung', () => {
     expect(chat.updatedAt).toBeDefined()
   })
 
-  it('erzeugt eine ChatSession mit Modulzuordnung', () => {
+  it('creates a ChatSession linked to a module', () => {
     const chat = newChatSession('mod-123', { title: 'Analysis Fragen' })
     expect(chat.moduleId).toBe('mod-123')
     expect(chat.title).toBe('Analysis Fragen')
   })
 
-  it('normalizeDb initialisiert fehlendes chats-Feld', () => {
+  it('normalizeDb initializes a missing chats field', () => {
     const db = normalizeDb({})
     expect(db.chats).toBeDefined()
     expect(Array.isArray(db.chats)).toBe(true)
     expect(db.chats).toHaveLength(0)
   })
 
-  it('normalizeDb bereinigt unvollständige oder beschädigte Chats', () => {
+  it('normalizeDb cleans up incomplete or corrupted chats', () => {
     const raw = {
       chats: [
         {
           id: 'chat-1',
-          // title fehlt
-          // messages ist kein Array
+          // title is missing
+          // messages is not an array
           messages: 'ungültig' as unknown as [],
         },
       ],
@@ -64,15 +64,18 @@ describe('ChatSession Datenmodell & Normalisierung', () => {
   })
 })
 
-describe('ChatSession Persistenz im Store', () => {
-  it('speichert und lädt Chats persistent über Store.open', async () => {
+describe('ChatSession persistence in the store', () => {
+  it('persists and reloads chats via Store.open', async () => {
     const chat1: ChatSession = {
       id: 'chat-1',
       moduleId: 'mod-lin-alg',
       title: 'Eigenvektoren berechnen',
       messages: [
         { role: 'user', content: 'Wie bestimme ich Eigenwerte?' },
-        { role: 'assistant', content: 'Über das charakteristische Polynom $\\det(A - \\lambda I) = 0$.' },
+        {
+          role: 'assistant',
+          content: 'Über das charakteristische Polynom $\\det(A - \\lambda I) = 0$.',
+        },
       ],
       createdAt: '2026-10-24T10:00:00.000Z',
       updatedAt: '2026-10-24T10:05:00.000Z',
@@ -80,7 +83,7 @@ describe('ChatSession Persistenz im Store', () => {
 
     const chat2: ChatSession = {
       id: 'chat-2',
-      moduleId: null, // Allgemeiner Chat
+      moduleId: null, // General chat
       title: 'Lernplan für die Semesterferien',
       messages: [{ role: 'user', content: 'Erstelle mir einen Zeitplan.' }],
       createdAt: '2026-10-24T11:00:00.000Z',
@@ -107,12 +110,12 @@ describe('ChatSession Persistenz im Store', () => {
     expect(re2?.moduleId).toBeNull()
   })
 
-  it('aktualisiert bestehende Chats ohne Duplikate zu erzeugen', async () => {
+  it('updates existing chats without creating duplicates', async () => {
     const chat: ChatSession = newChatSession('mod-1', { id: 'c-unique', title: 'Frage 1' })
     store.put('chats', chat)
     expect(store.get().chats).toHaveLength(1)
 
-    // Antwort hinzufügen und aktualisieren
+    // Add a reply and update
     store.put('chats', {
       ...chat,
       title: 'Umbenannte Frage 1',
@@ -125,7 +128,7 @@ describe('ChatSession Persistenz im Store', () => {
     expect(store.get().chats[0].messages).toHaveLength(1)
   })
 
-  it('löscht einen einzelnen Chat', async () => {
+  it('deletes a single chat', async () => {
     const chat1 = newChatSession('mod-1', { id: 'c-1' })
     const chat2 = newChatSession('mod-2', { id: 'c-2' })
     store.put('chats', chat1)
@@ -138,8 +141,8 @@ describe('ChatSession Persistenz im Store', () => {
   })
 })
 
-describe('Modulweise Kaskadierung & Verknüpfung', () => {
-  it('löscht beim Entfernen eines Moduls automatisch alle zugehörigen Chats (Kaskade)', async () => {
+describe('Per-module cascading & linking', () => {
+  it('deletes all related chats when a module is removed (cascade)', async () => {
     const modA = newModule('sem-1', { id: 'mod-a', name: 'Softwaretechnik' })
     const modB = newModule('sem-1', { id: 'mod-b', name: 'Rechnerarchitektur' })
     store.put('modules', modA)
@@ -156,22 +159,22 @@ describe('Modulweise Kaskadierung & Verknüpfung', () => {
     store.put('chats', chatGeneral)
     expect(store.get().chats).toHaveLength(4)
 
-    // Modul A löschen
+    // Delete module A
     await store.remove('modules', modA.id)
 
     const remainingChats = store.get().chats
-    // Chats von Modul A müssen entfernt sein
+    // Chats of module A must be removed
     expect(remainingChats.some((c) => c.moduleId === modA.id)).toBe(false)
     expect(remainingChats.find((c) => c.id === 'chat-a1')).toBeUndefined()
     expect(remainingChats.find((c) => c.id === 'chat-a2')).toBeUndefined()
 
-    // Chats von Modul B und der allgemeine Chat müssen erhalten bleiben
+    // Chats of module B and the general chat must be kept
     expect(remainingChats.find((c) => c.id === 'chat-b1')).toBeDefined()
     expect(remainingChats.find((c) => c.id === 'chat-gen')).toBeDefined()
     expect(remainingChats).toHaveLength(2)
   })
 
-  it('filtert Chats modulweise und nach Datum', () => {
+  it('filters chats by module and date', () => {
     const c1 = newChatSession('mod-1', { id: '1', updatedAt: '2026-10-20T10:00:00Z' })
     const c2 = newChatSession('mod-1', { id: '2', updatedAt: '2026-10-24T10:00:00Z' })
     const c3 = newChatSession('mod-2', { id: '3', updatedAt: '2026-10-22T10:00:00Z' })
@@ -179,18 +182,18 @@ describe('Modulweise Kaskadierung & Verknüpfung', () => {
 
     const all = [c1, c2, c3, c4]
 
-    // Modul-1 Chats, sortiert nach Aktualität
+    // Module 1 chats, most recent first
     const mod1Chats = all
       .filter((c) => c.moduleId === 'mod-1')
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     expect(mod1Chats.map((c) => c.id)).toEqual(['2', '1'])
 
-    // Allgemeine Chats (ohne Modul)
+    // General chats (no module)
     const generalChats = all.filter((c) => !c.moduleId)
     expect(generalChats.map((c) => c.id)).toEqual(['4'])
   })
 
-  it('löscht beim Entfernen eines Semesters kaskadierend alle Chats der enthaltenen Module', async () => {
+  it('deletes all chats of the contained modules when a semester is removed (cascade)', async () => {
     const sem: Semester = {
       id: 'sem-ws26',
       name: 'WS 26/27',
@@ -220,7 +223,7 @@ describe('Modulweise Kaskadierung & Verknüpfung', () => {
 
     expect(store.get().chats).toHaveLength(3)
 
-    // Semester löschen
+    // Delete the semester
     await store.remove('semesters', sem.id)
 
     const remaining = store.get().chats
@@ -228,7 +231,7 @@ describe('Modulweise Kaskadierung & Verknüpfung', () => {
     expect(remaining[0].id).toBe('c-oth')
   })
 
-  it('bereinigt korrupte und nicht-konforme Nachrichtenobjekte in normalizeDb', () => {
+  it('normalizeDb cleans up corrupt and non-conforming message objects', () => {
     const raw = {
       chats: [
         {
@@ -238,7 +241,7 @@ describe('Modulweise Kaskadierung & Verknüpfung', () => {
             null,
             { role: 'user', content: 'Gültige Frage' },
             { role: 'unbekannt', content: 'Ungültige Rolle' },
-            { role: 'assistant', content: 42 }, // content keine Zeichenkette
+            { role: 'assistant', content: 42 }, // content is not a string
             { role: 'assistant', content: 'Gültige Antwort' },
             undefined,
           ],
@@ -252,17 +255,25 @@ describe('Modulweise Kaskadierung & Verknüpfung', () => {
     expect(db.chats[0].messages[1]).toEqual({ role: 'assistant', content: 'Gültige Antwort' })
   })
 
-  it('generiert saubere einzeilige Chat-Titel ohne führende Markdown-Formatierung oder Zeilenumbrüche', () => {
+  it('generates clean single-line chat titles without leading Markdown formatting or line breaks', () => {
     const generateCleanTitle = (question: string) => {
-      const firstNonEmpty = question.split('\n').map((l) => l.trim()).find(Boolean) || question.trim()
+      const firstNonEmpty =
+        question
+          .split('\n')
+          .map((l) => l.trim())
+          .find(Boolean) || question.trim()
       const firstLine = firstNonEmpty.replace(/^[#*`_\s-]+/, '').trim() || firstNonEmpty
       return firstLine.length > 45 ? firstLine.slice(0, 42) + '…' : firstLine
     }
 
-    expect(generateCleanTitle('### Zusammenfassung von Kapitel 1\nZweite Zeile')).toBe('Zusammenfassung von Kapitel 1')
+    expect(generateCleanTitle('### Zusammenfassung von Kapitel 1\nZweite Zeile')).toBe(
+      'Zusammenfassung von Kapitel 1',
+    )
     expect(generateCleanTitle('\n\n* Was ist eine Matrix?')).toBe('Was ist eine Matrix?')
     expect(
-      generateCleanTitle('Dies ist ein extrem langer Text der definitiv mehr als fünfundvierzig Zeichen enthält und gekürzt werden muss'),
+      generateCleanTitle(
+        'Dies ist ein extrem langer Text der definitiv mehr als fünfundvierzig Zeichen enthält und gekürzt werden muss',
+      ),
     ).toBe('Dies ist ein extrem langer Text der defini…')
   })
 })

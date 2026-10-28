@@ -22,7 +22,14 @@ import { toISODate, today, diffDays } from '@shared/dates'
 import { api } from '@/lib/api'
 import { activeSemester, deleteChat, renameChat, semesterModules } from '@/lib/actions'
 import { agentSystemPrompt, executeAgentAction, extractAgentActions } from '@/lib/agent'
-import { buildContext, collectDocs, createNoteFromMarkdown, markdownToHtml, renderMath, systemPrompt } from '@/lib/ai'
+import {
+  buildContext,
+  collectDocs,
+  createNoteFromMarkdown,
+  markdownToHtml,
+  renderMath,
+  systemPrompt,
+} from '@/lib/ai'
 import { getDb, putRecord, useDb } from '@/lib/db'
 import { formatDay, formatTime } from '@/lib/format'
 import { openView, useWorkspace, type View } from '@/lib/workspace'
@@ -56,7 +63,8 @@ function initialContext(view: Extract<View, { type: 'chat' }>): Context {
 
 function contextItems(db: Db, context: Context, paneId: string): Item[] {
   const visible = (i: Item) => !i.attachedTo
-  const inFolders = (ids: Set<ID>) => db.items.filter((i) => i.folderId && ids.has(i.folderId) && visible(i))
+  const inFolders = (ids: Set<ID>) =>
+    db.items.filter((i) => i.folderId && ids.has(i.folderId) && visible(i))
   switch (context.kind) {
     case 'none':
       return []
@@ -65,11 +73,17 @@ function contextItems(db: Db, context: Context, paneId: string): Item[] {
     case 'module':
       return db.items.filter((i) => i.moduleId === context.id && visible(i))
     case 'folder': {
-      const ids = new Set([context.id, ...db.folders.filter((f) => f.parentId === context.id).map((f) => f.id)])
+      const ids = new Set([
+        context.id,
+        ...db.folders.filter((f) => f.parentId === context.id).map((f) => f.id),
+      ])
       return inFolders(ids)
     }
     case 'panes': {
-      const views = useWorkspace.getState().panes.filter((p) => p.id !== paneId).map((p) => p.view)
+      const views = useWorkspace
+        .getState()
+        .panes.filter((p) => p.id !== paneId)
+        .map((p) => p.view)
       const itemIds = new Set(views.flatMap((v) => (v.type === 'item' ? [v.id] : [])))
       const folderIds = new Set(views.flatMap((v) => (v.type === 'folder' ? [v.id] : [])))
       return [...db.items.filter((i) => itemIds.has(i.id)), ...inFolders(folderIds)]
@@ -94,14 +108,20 @@ function chatTimeLabel(iso: string): string {
   }
 }
 
-/** Bereinigtes Markdown-HTML inklusive Formeln */
+/** Sanitized Markdown HTML including rendered math */
 function Markdown({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const html = useMemo(() => markdownToHtml(text), [text])
   useLayoutEffect(() => {
     if (ref.current) renderMath(ref.current)
   }, [html])
-  return <div ref={ref} className="chat-markdown selectable" dangerouslySetInnerHTML={{ __html: html }} />
+  return (
+    <div
+      ref={ref}
+      className="chat-markdown selectable"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
 }
 
 function Message({ message, onSave }: { message: AiMessage; onSave?: () => void }) {
@@ -111,7 +131,13 @@ function Message({ message, onSave }: { message: AiMessage; onSave?: () => void 
       <Markdown text={message.content} />
       {onSave && (
         <div className="chat-actions">
-          <IconButton small label="Kopieren" onClick={() => void navigator.clipboard.writeText(message.content).then(() => toast('Kopiert'))}>
+          <IconButton
+            small
+            label="Kopieren"
+            onClick={() =>
+              void navigator.clipboard.writeText(message.content).then(() => toast('Kopiert'))
+            }
+          >
             <Copy />
           </IconButton>
           <IconButton small label="Als Notiz speichern" onClick={onSave}>
@@ -123,7 +149,13 @@ function Message({ message, onSave }: { message: AiMessage; onSave?: () => void 
   )
 }
 
-export default function ChatView({ view, paneId }: { view: Extract<View, { type: 'chat' }>; paneId: string }) {
+export default function ChatView({
+  view,
+  paneId,
+}: {
+  view: Extract<View, { type: 'chat' }>
+  paneId: string
+}) {
   const db = useDb()
   const semester = activeSemester(db)
   const modules = semesterModules(db, semester?.id)
@@ -136,12 +168,22 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
   const [context, setContext] = useState<Context>(() => initialContext(view))
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState<{ text: string; cancel: () => void } | null>(null)
-  const cache = useRef<{ key: string; text: string; count: number; truncated: boolean } | null>(null)
+  const cache = useRef<{ key: string; text: string; count: number; truncated: boolean } | null>(
+    null,
+  )
   const endRef = useRef<HTMLDivElement>(null)
 
   const cancelledRef = useRef(false)
   const activeChatIdRef = useRef<ID | null>(activeChatId)
   activeChatIdRef.current = activeChatId
+  // Latest values for effects that must only re-run on specific changes
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const contextKindRef = useRef(context.kind)
+  contextKindRef.current = context.kind
+
+  const replaceView = (patch: Partial<Extract<View, { type: 'chat' }>>) =>
+    useWorkspace.getState().replace(paneId, { ...view, ...patch })
 
   useEffect(() => {
     setActiveChatId(view.chatId ?? null)
@@ -153,7 +195,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
       setContext({ kind: 'module', id: view.moduleId })
     } else if (view.chatId === undefined) {
       setModuleFilter('all')
-      setContext(initialContext(view))
+      setContext(initialContext(viewRef.current))
     }
   }, [view.moduleId, view.chatId])
 
@@ -167,8 +209,9 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     return (db.chats ?? []).find((c) => c.id === activeChatId) ?? null
   }, [db.chats, activeChatId])
 
+  // Opening a module chat while the context is "open panes" switches to that module
   useEffect(() => {
-    if (activeChat?.moduleId && context.kind === 'panes') {
+    if (activeChat?.moduleId && contextKindRef.current === 'panes') {
       setContext({ kind: 'module', id: activeChat.moduleId })
     }
   }, [activeChat?.moduleId])
@@ -180,14 +223,13 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         streaming.cancel()
         setStreaming(null)
       }
+      // The active chat was deleted elsewhere
       setActiveChatId(null)
       useWorkspace.getState().replace(paneId, { ...view, chatId: undefined })
     }
   }, [activeChatId, activeChat, paneId, streaming, view])
 
-  const messages: AiMessage[] = useMemo(() => {
-    return activeChat?.messages ?? []
-  }, [activeChat])
+  const messages: AiMessage[] = useMemo(() => activeChat?.messages ?? [], [activeChat])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
@@ -214,9 +256,10 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     }
     const q = historySearch.trim().toLowerCase()
     if (q) {
-      list = list.filter((c) =>
-        c.title.toLowerCase().includes(q) ||
-        c.messages.some((m) => m.content.toLowerCase().includes(q)),
+      list = list.filter(
+        (c) =>
+          c.title.toLowerCase().includes(q) ||
+          c.messages.some((m) => m.content.toLowerCase().includes(q)),
       )
     }
     return list
@@ -245,7 +288,10 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         if (fresh) {
           putRecord('chats', {
             ...fresh,
-            messages: [...fresh.messages, { role: 'assistant', content: streaming.text + ' (abgebrochen)' }],
+            messages: [
+              ...fresh.messages,
+              { role: 'assistant', content: streaming.text + ' (abgebrochen)' },
+            ],
             updatedAt: new Date().toISOString(),
           })
         }
@@ -260,10 +306,10 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     setInput('')
     if (moduleFilter !== 'all' && moduleFilter !== 'none') {
       setContext({ kind: 'module', id: moduleFilter })
-      useWorkspace.getState().replace(paneId, { ...view, chatId: undefined, moduleId: moduleFilter })
+      replaceView({ chatId: undefined, moduleId: moduleFilter })
     } else {
       setContext({ kind: 'panes' })
-      useWorkspace.getState().replace(paneId, { ...view, chatId: undefined, moduleId: undefined })
+      replaceView({ chatId: undefined, moduleId: undefined })
     }
   }
 
@@ -271,12 +317,8 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     if (chat.id === activeChatId) return
     cancelStreaming()
     setActiveChatId(chat.id)
-    if (chat.moduleId) {
-      setContext({ kind: 'module', id: chat.moduleId })
-    } else {
-      setContext({ kind: 'panes' })
-    }
-    useWorkspace.getState().replace(paneId, { ...view, chatId: chat.id, moduleId: chat.moduleId ?? undefined })
+    setContext(chat.moduleId ? { kind: 'module', id: chat.moduleId } : { kind: 'panes' })
+    replaceView({ chatId: chat.id, moduleId: chat.moduleId ?? undefined })
   }
 
   const handleDeleteChat = async (chat: ChatSession) => {
@@ -285,27 +327,16 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
     const ok = await deleteChat(chat)
     if (ok && isCurrent) {
       setActiveChatId(null)
-      useWorkspace.getState().replace(paneId, { ...view, chatId: undefined })
+      replaceView({ chatId: undefined })
     }
   }
 
-  const handleFilterChange = (val: string) => {
-    setModuleFilter(val)
-    if (val !== 'all' && val !== 'none') {
-      setContext({ kind: 'module', id: val })
-      if (!activeChatId) {
-        useWorkspace.getState().replace(paneId, { ...view, moduleId: val })
-      }
-    } else if (val === 'none') {
-      if (context.kind === 'module') setContext({ kind: 'panes' })
-      if (!activeChatId) {
-        useWorkspace.getState().replace(paneId, { ...view, moduleId: undefined })
-      }
-    } else {
-      if (!activeChatId) {
-        useWorkspace.getState().replace(paneId, { ...view, moduleId: undefined })
-      }
-    }
+  const handleFilterChange = (filter: string) => {
+    setModuleFilter(filter)
+    const isModule = filter !== 'all' && filter !== 'none'
+    if (isModule) setContext({ kind: 'module', id: filter })
+    else if (filter === 'none' && context.kind === 'module') setContext({ kind: 'panes' })
+    if (!activeChatId) replaceView({ moduleId: isModule ? filter : undefined })
   }
 
   const assignChatModuleMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -317,7 +348,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         icon: !activeChat.moduleId ? '✓' : <span style={{ width: 15 }} />,
         onClick: () => {
           putRecord('chats', { ...activeChat, moduleId: null, updatedAt: new Date().toISOString() })
-          useWorkspace.getState().replace(paneId, { ...view, moduleId: undefined })
+          replaceView({ moduleId: undefined })
           toast('Modulzuordnung entfernt')
         },
       },
@@ -327,7 +358,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         onClick: () => {
           putRecord('chats', { ...activeChat, moduleId: m.id, updatedAt: new Date().toISOString() })
           setContext({ kind: 'module', id: m.id })
-          useWorkspace.getState().replace(paneId, { ...view, moduleId: m.id })
+          replaceView({ moduleId: m.id })
           toast(`Modul „${m.name}“ zugewiesen`)
         },
       })),
@@ -346,18 +377,25 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
       if (moduleFilter === 'none') return null
       if (moduleFilter !== 'all') return moduleFilter
       if (context.kind === 'module') return context.id
-      if (context.kind === 'folder') return db.folders.find((f) => f.id === context.id)?.moduleId ?? null
-      if (context.kind === 'items') return db.items.find((i) => context.ids.includes(i.id))?.moduleId ?? null
+      if (context.kind === 'folder')
+        return db.folders.find((f) => f.id === context.id)?.moduleId ?? null
+      if (context.kind === 'items')
+        return db.items.find((i) => context.ids.includes(i.id))?.moduleId ?? null
       return view.moduleId ?? null
     })()
 
     if (!currentChatId || !currentChat) {
-      const newIdVal = crypto.randomUUID()
-      const firstNonEmpty = question.split('\n').map((l) => l.trim()).find(Boolean) || question.trim()
+      const newId = crypto.randomUUID()
+      // Title the chat after the first non-empty line, without leading Markdown markers
+      const firstNonEmpty =
+        question
+          .split('\n')
+          .map((l) => l.trim())
+          .find(Boolean) || question.trim()
       const firstLine = firstNonEmpty.replace(/^[#*`_\s-]+/, '').trim() || firstNonEmpty
       const title = firstLine.length > 45 ? firstLine.slice(0, 42) + '…' : firstLine
       const newSession: ChatSession = {
-        id: newIdVal,
+        id: newId,
         moduleId: targetModuleId,
         title,
         messages: [{ role: 'user', content: question }],
@@ -365,15 +403,14 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         updatedAt: new Date().toISOString(),
       }
       putRecord('chats', newSession)
-      currentChatId = newIdVal
+      currentChatId = newId
       currentChat = newSession
-      setActiveChatId(newIdVal)
-      useWorkspace.getState().replace(paneId, { ...view, chatId: newIdVal, moduleId: targetModuleId ?? undefined })
+      setActiveChatId(newId)
+      replaceView({ chatId: newId, moduleId: targetModuleId ?? undefined })
     } else {
-      const nextMessages: AiMessage[] = [...currentChat.messages, { role: 'user', content: question }]
       const updated: ChatSession = {
         ...currentChat,
-        messages: nextMessages,
+        messages: [...currentChat.messages, { role: 'user', content: question }],
         updatedAt: new Date().toISOString(),
       }
       putRecord('chats', updated)
@@ -392,15 +429,18 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         : systemPrompt(ctx.text)
 
       let answer = ''
-      const stream = api.ai.stream({ system: sysPrompt, messages: messagesToSend, maxTokens: 16_384 }, (chunk) => {
-        answer += chunk
-        setStreaming((s) => (s ? { ...s, text: answer } : s))
-      })
-      setStreaming((s) => (s ? { ...s, cancel: stream.cancel } : { text: '', cancel: stream.cancel }))
-      const final = await stream.done
+      const stream = api.ai.stream(
+        { system: sysPrompt, messages: messagesToSend, maxTokens: 16_384 },
+        (chunk) => {
+          answer += chunk
+          setStreaming((s) => (s ? { ...s, text: answer } : s))
+        },
+      )
+      setStreaming((s) =>
+        s ? { ...s, cancel: stream.cancel } : { text: '', cancel: stream.cancel },
+      )
+      const fullResponse = (await stream.done) || answer
       if (cancelledRef.current) return
-
-      const fullResponse = final || answer
 
       let assistantText = fullResponse
       if (isAgent) {
@@ -416,16 +456,21 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
 
       if (cancelledRef.current) return
 
-      const dbNow = getDb()
-      const freshChat = (dbNow.chats ?? []).find((c) => c.id === currentChatId)
+      // Re-read the chat: it may have changed while the answer was streaming
+      const freshChat = (getDb().chats ?? []).find((c) => c.id === currentChatId)
       if (freshChat) {
-        const finalMessages: AiMessage[] = [...freshChat.messages, { role: 'assistant', content: assistantText }]
-        putRecord('chats', { ...freshChat, messages: finalMessages, updatedAt: new Date().toISOString() })
+        const finalMessages: AiMessage[] = [
+          ...freshChat.messages,
+          { role: 'assistant', content: assistantText },
+        ]
+        putRecord('chats', {
+          ...freshChat,
+          messages: finalMessages,
+          updatedAt: new Date().toISOString(),
+        })
       }
     } catch (error) {
-      if (!cancelledRef.current) {
-        toastError(error)
-      }
+      if (!cancelledRef.current) toastError(error)
     } finally {
       setStreaming(null)
     }
@@ -458,7 +503,8 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
           </Button>
         }
       >
-        Hinterlege in den Einstellungen einen API-Key – z. B. kostenlos bei Groq, Google Gemini oder Hugging Face.
+        Hinterlege in den Einstellungen einen API-Key – z. B. kostenlos bei Groq, Google Gemini oder
+        Hugging Face.
       </Empty>
     )
   }
@@ -470,7 +516,9 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
   const contextOptions = [
     { value: 'panes', label: 'Offene Bereiche' },
     ...(folder ? [{ value: `folder:${folder.id}`, label: `Ordner: ${folder.name}` }] : []),
-    ...(view.itemIds?.length ? [{ value: 'items', label: `Auswahl (${view.itemIds.length})` }] : []),
+    ...(view.itemIds?.length
+      ? [{ value: 'items', label: `Auswahl (${view.itemIds.length})` }]
+      : []),
     ...modules.map((m) => ({ value: `module:${m.id}`, label: `Modul: ${m.name}` })),
     { value: 'none', label: 'Ohne Unterlagen' },
   ]
@@ -481,7 +529,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
 
   return (
     <div className="chat">
-      {/* Linke Leiste: Modulweiser Chat-Verlauf */}
+      {/* Left sidebar: chat history, filterable by module */}
       <aside className={`chat-sidebar ${!showHistory ? 'hidden' : ''}`}>
         <div className="chat-sidebar-header">
           <History size={16} />
@@ -503,7 +551,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
               { value: 'none', label: 'Ohne Modul (Allgemein)' },
               ...modules.map((m) => ({ value: m.id, label: `Modul: ${m.name}` })),
             ]}
-            onChange={(val) => handleFilterChange(val)}
+            onChange={handleFilterChange}
           />
           <input
             type="search"
@@ -540,9 +588,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
                 <div className="chat-item-meta">
                   <span>{chatTimeLabel(c.updatedAt)}</span>
                   {chatMod && (
-                    <span className="chat-item-module muted">
-                      {chatMod.code || chatMod.name}
-                    </span>
+                    <span className="chat-item-module muted">{chatMod.code || chatMod.name}</span>
                   )}
                   <span className="spacer" />
                   <span className="faint">{c.messages.length}</span>
@@ -562,7 +608,7 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
         </div>
       </aside>
 
-      {/* Rechter Hauptbereich: Konversation */}
+      {/* Main area: conversation */}
       <div className="chat-main">
         <div className="chat-context">
           {!showHistory && (
@@ -581,7 +627,11 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
               <IconButton small label="Modul zuweisen / ändern" onClick={assignChatModuleMenu}>
                 <Tag size={12} />
               </IconButton>
-              <IconButton small label="Chat löschen" onClick={() => void handleDeleteChat(activeChat)}>
+              <IconButton
+                small
+                label="Chat löschen"
+                onClick={() => void handleDeleteChat(activeChat)}
+              >
                 <Trash2 size={12} />
               </IconButton>
               {activeChatModule && (
@@ -637,7 +687,12 @@ export default function ChatView({ view, paneId }: { view: Extract<View, { type:
                 </p>
                 <div className="chat-suggestions">
                   {suggestions.map((s) => (
-                    <button key={s} type="button" className="chat-suggestion" onClick={() => void send(s)}>
+                    <button
+                      key={s}
+                      type="button"
+                      className="chat-suggestion"
+                      onClick={() => void send(s)}
+                    >
                       {s}
                     </button>
                   ))}

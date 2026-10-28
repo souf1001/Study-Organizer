@@ -55,7 +55,7 @@
   text-overflow: ellipsis;
 }
 
-/* ---- Chips (Monat, ganztägig) ---- */
+/* ---- Chips (month view, all-day) ---- */
 .cal-chip {
   display: flex;
   align-items: center;
@@ -87,7 +87,7 @@
   flex: none;
 }
 
-/* ---- Woche ---- */
+/* ---- Week ---- */
 .week {
   flex: 1;
   min-height: 0;
@@ -254,7 +254,7 @@
   background: var(--danger);
 }
 
-/* ---- Monat ---- */
+/* ---- Month ---- */
 .month {
   flex: 1;
   min-height: 0;
@@ -319,7 +319,7 @@
   padding-top: 20px;
 }
 
-/* Prüfungen fallen auf, egal in welcher Modulfarbe */
+/* Exams stand out regardless of the module color */
 .cal-event.kind-exam {
   border-left-color: var(--c-red);
 }
@@ -333,7 +333,7 @@
   flex: none;
 }
 
-/* Übungen und Tutorien */
+/* Exercises and tutorials */
 .cal-event.kind-exercise {
   border-left-style: dashed;
 }
@@ -347,7 +347,7 @@
   flex: none;
 }
 
-/* Praktika und Labore (lab) */
+/* Labs */
 .cal-event.kind-lab {
   border-left-style: dotted;
 }
@@ -362,7 +362,7 @@
   flex: none;
 }
 
-/* Fristen und Abgaben (deadline) */
+/* Deadlines and submissions */
 .cal-event.kind-deadline {
   border-left-color: var(--c-orange);
 }
@@ -376,7 +376,7 @@
   flex: none;
 }
 
-/* Subscription Badge & Modal */
+/* Subscription badge & dialog */
 .cal-sub-count {
   display: inline-flex;
   align-items: center;
@@ -465,4 +465,3 @@
   color: var(--text-2);
   font-size: var(--text-sm);
 }
-

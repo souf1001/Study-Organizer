@@ -1,4 +1,4 @@
-// Handschrift: Striche als SVG-Pfade (perfect-freehand) und Radierer-Treffertest.
+// Handwriting: strokes as SVG paths (perfect-freehand) and eraser hit testing.
 import { getStroke } from 'perfect-freehand'
 import type { Stroke } from '@shared/types'
 
@@ -12,7 +12,8 @@ export interface InkTool {
 
 function triples(points: number[]): [number, number, number][] {
   const result: [number, number, number][] = []
-  for (let i = 0; i + 2 < points.length; i += 3) result.push([points[i], points[i + 1], points[i + 2]])
+  for (let i = 0; i + 2 < points.length; i += 3)
+    result.push([points[i], points[i + 1], points[i + 2]])
   return result
 }
 
@@ -50,7 +51,7 @@ export function strokePath(stroke: Stroke): string {
   )
 }
 
-/** Striche, die der Radierer an Position (x, y) berührt */
+/** IDs of the strokes the eraser touches at (x, y) */
 export function hitStrokes(strokes: Stroke[], x: number, y: number, radius: number): Set<string> {
   const hits = new Set<string>()
   for (const stroke of strokes) {
@@ -67,9 +68,10 @@ export function hitStrokes(strokes: Stroke[], x: number, y: number, radius: numb
   return hits
 }
 
-/** Unterkante aller Striche (zum automatischen Verlängern der Seite) */
+/** Lowest point of all strokes (used to extend the page automatically) */
 export function inkBottom(strokes: Stroke[]): number {
   let max = 0
-  for (const s of strokes) for (let i = 1; i < s.points.length; i += 3) max = Math.max(max, s.points[i])
+  for (const s of strokes)
+    for (let i = 1; i < s.points.length; i += 3) max = Math.max(max, s.points[i])
   return max
 }

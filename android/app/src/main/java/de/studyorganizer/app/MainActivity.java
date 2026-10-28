@@ -1,34 +1,17 @@
 package de.studyorganizer.app;
 
 import android.os.Bundle;
-import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 
+/**
+ * Hosts the web UI. The Android back button is handled in JavaScript through the official
+ * App plugin (see src/renderer/src/mobile/android.ts).
+ */
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Local plugins must be registered before the bridge starts
+        registerPlugin(WebLoginPlugin.class);
         super.onCreate(savedInstanceState);
-
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                if (getBridge() != null && getBridge().getWebView() != null) {
-                    getBridge().getWebView().evaluateJavascript(
-                        "(function() { try { return Boolean(window.__onAndroidBack && window.__onAndroidBack()); } catch(e) { return false; } })()",
-                        value -> {
-                            if (!"true".equals(value)) {
-                                setEnabled(false);
-                                getOnBackPressedDispatcher().onBackPressed();
-                                setEnabled(true);
-                            }
-                        }
-                    );
-                } else {
-                    setEnabled(false);
-                    getOnBackPressedDispatcher().onBackPressed();
-                    setEnabled(true);
-                }
-            }
-        });
     }
 }

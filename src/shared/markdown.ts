@@ -1,5 +1,6 @@
 /**
- * Hilfsfunktionen zur Validierung und Reparatur von Markdown (z. B. bei gekürzten KI-Antworten).
+ * Closes unbalanced Markdown constructs (code fences, math, inline code, bold, links),
+ * e.g. in AI answers that were cut off.
  */
 export function repairMarkdown(md: string): string {
   let repaired = md.trim()
@@ -8,23 +9,23 @@ export function repairMarkdown(md: string): string {
   const mathMatches = repaired.match(/\$\$/g) || []
   if (mathMatches.length % 2 !== 0) repaired += '\n$$'
 
-  // Text außerhalb von Code-Blöcken für Inline-Prüfungen
+  // Inline checks only look at text outside code blocks
   const outsideCode = repaired.replace(/```[\s\S]*?```/g, '')
 
-  // Inline-Code (einzelne Backticks)
+  // Inline code (single backticks)
   const inlineTicks = (outsideCode.match(/(?<!`)`(?!`)/g) || []).length
   if (inlineTicks % 2 !== 0) repaired += '`'
 
-  // Inline-Math ($)
+  // Inline math ($)
   const outsideMath = outsideCode.replace(/\$\$[\s\S]*?\$\$/g, '')
   const inlineDollars = (outsideMath.match(/(?<!\\)\$/g) || []).length
   if (inlineDollars % 2 !== 0) repaired += '$'
 
-  // Fett-Formatierung (**)
+  // Bold (**)
   const boldMatches = (outsideCode.match(/\*\*/g) || []).length
   if (boldMatches % 2 !== 0) repaired += '**'
 
-  // Unvollständige Links [Text](URL
+  // Unfinished link: [text](url
   if (/\[[^\]]*\]\([^)]*$/.test(repaired)) repaired += ')'
 
   return repaired

@@ -20,7 +20,7 @@ function useSystemDark(): boolean {
   return dark
 }
 
-/** Überträgt die Darstellungs-Einstellungen auf das Dokument */
+/** Applies the appearance settings (theme, accent, density, zoom) to the document. */
 function useAppearance(appearance: Settings['appearance'] | undefined): void {
   const systemDark = useSystemDark()
   useEffect(() => {

@@ -1,4 +1,4 @@
-// Notiz: Text (TipTap) + Handschrift-Ebene + Papier. Speichert automatisch.
+// Note: rich text (TipTap) + handwriting layer + paper background. Saves automatically.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
@@ -19,9 +19,11 @@ import './note.css'
 import './paper.css'
 
 const SAVE_DELAY = 500
+const HISTORY_LIMIT = 60
+const EXTEND_BY = 800
 
-// Noch nicht bestätigte Speicherungen. Wird eine Notiz neu geöffnet (z. B. beim Teilen des
-// Bildschirms), bevor das Speichern fertig ist, gilt der Stand von hier.
+// Saves not yet confirmed by the backend. If a note is reopened (e.g. when splitting the
+// screen) before its save has finished, the state from here wins.
 const pendingSaves = new Map<string, NoteDoc>()
 
 function writeNote(id: string, doc: NoteDoc): void {
@@ -31,8 +33,15 @@ function writeNote(id: string, doc: NoteDoc): void {
     .catch(toastError)
     .finally(() => pendingSaves.get(id) === doc && pendingSaves.delete(id))
 }
-const HISTORY_LIMIT = 60
-const EXTEND_BY = 800
+
+function insertImages(editor: Editor | null, images: Item[]): void {
+  for (const image of images)
+    editor
+      ?.chain()
+      .focus()
+      .setImage({ src: api.fileUrl(image), alt: image.title })
+      .run()
+}
 
 function SlashMenu() {
   const { open, items, index, rect, select } = useSlash()
@@ -53,7 +62,9 @@ function SlashMenu() {
           }}
           onMouseEnter={() => useSlash.setState({ index: i })}
         >
-          <span className="slash-icon"><item.icon /></span>
+          <span className="slash-icon">
+            <item.icon />
+          </span>
           <span>
             <span className="slash-title">{item.title}</span>
             <span className="slash-hint">{item.hint}</span>
@@ -65,7 +76,7 @@ function SlashMenu() {
   )
 }
 
-/** Breite des Bereichs beobachten, um die Seite bei Bedarf zu verkleinern */
+/** Observes the container width so the page can be scaled down when needed */
 function useWidth(ref: React.RefObject<HTMLElement | null>): number {
   const [width, setWidth] = useState(0)
   useLayoutEffect(() => {
@@ -79,11 +90,23 @@ function useWidth(ref: React.RefObject<HTMLElement | null>): number {
 
 function NoteEditor({ item, initial }: { item: Item; initial: NoteDoc }) {
   const settings = useDb().settings.editor
-  const [meta, setMeta] = useState(() => ({ paper: initial.paper, paperColor: initial.paperColor, font: initial.font, height: initial.height }))
+  const [meta, setMeta] = useState(() => ({
+    paper: initial.paper,
+    paperColor: initial.paperColor,
+    font: initial.font,
+    height: initial.height,
+  }))
   const [strokes, setStrokes] = useState<Stroke[]>(initial.strokes)
   const [drawing, setDrawing] = useState(false)
-  const [tool, setTool] = useState<InkTool>({ tool: 'pen', color: settings.penColor, size: settings.penSize })
-  const [history, setHistory] = useState<{ undo: Stroke[][]; redo: Stroke[][] }>({ undo: [], redo: [] })
+  const [tool, setTool] = useState<InkTool>({
+    tool: 'pen',
+    color: settings.penColor,
+    size: settings.penSize,
+  })
+  const [history, setHistory] = useState<{ undo: Stroke[][]; redo: Stroke[][] }>({
+    undo: [],
+    redo: [],
+  })
   const [title, setTitle] = useState(item.title)
   const [contentHeight, setContentHeight] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -91,7 +114,7 @@ function NoteEditor({ item, initial }: { item: Item; initial: NoteDoc }) {
   const editorRef = useRef<Editor | null>(null)
   const available = useWidth(scrollRef)
 
-  // ---- Speichern (verzögert, beim Verlassen sofort) ----
+  // ---- Saving (debounced, immediately when leaving) ----
   const latest = useRef<NoteDoc>(initial)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flush = useCallback(() => {
@@ -116,45 +139,62 @@ function NoteEditor({ item, initial }: { item: Item; initial: NoteDoc }) {
     }
   }, [flush])
 
-  // ---- Titel ----
+  // ---- Title ----
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const changeTitle = (value: string) => {
     setTitle(value)
     if (titleTimer.current) clearTimeout(titleTimer.current)
-    titleTimer.current = setTimeout(() => putRecord('items', { ...item, title: value.trim() || 'Unbenannte Notiz', updatedAt: new Date().toISOString() }), 400)
+    titleTimer.current = setTimeout(
+      () =>
+        putRecord('items', {
+          ...item,
+          title: value.trim() || 'Unbenannte Notiz',
+          updatedAt: new Date().toISOString(),
+        }),
+      400,
+    )
   }
 
-  // ---- Aktionen für Slash-Menü und Werkzeugleiste ----
+  // ---- Actions for the slash menu and toolbar ----
   const actions = useMemo<EditorActions>(
     () => ({
       insertImage: () =>
         void pickFiles('image/*').then(async (files) => {
-          const images = await api.addFiles({ moduleId: item.moduleId, folderId: item.folderId, attachedTo: item.id }, files)
-          for (const image of images) editorRef.current?.chain().focus().setImage({ src: api.fileUrl(image), alt: image.title }).run()
+          const images = await api.addFiles(
+            { moduleId: item.moduleId, folderId: item.folderId, attachedTo: item.id },
+            files,
+          )
+          insertImages(editorRef.current, images)
         }),
       editMath: async (kind, latex, pos) => {
-        const value = await prompt({ title: kind === 'block' ? 'Formel (LaTeX)' : 'Formel im Text (LaTeX)', initial: latex ?? '', placeholder: 'z. B. \\int_0^1 x^2 \\, dx', confirmLabel: 'Übernehmen' })
+        const value = await prompt({
+          title: kind === 'block' ? 'Formel (LaTeX)' : 'Formel im Text (LaTeX)',
+          initial: latex ?? '',
+          placeholder: 'z. B. \\int_0^1 x^2 \\, dx',
+          confirmLabel: 'Übernehmen',
+        })
         const editor = editorRef.current
         if (!editor || value === null) return
         const chain = editor.chain().focus()
         if (pos === undefined) {
           if (kind === 'block') chain.insertBlockMath({ latex: value }).run()
           else chain.insertInlineMath({ latex: value }).run()
-        } else if (kind === 'block') chain.setNodeSelection(pos).updateBlockMath({ latex: value }).run()
+        } else if (kind === 'block')
+          chain.setNodeSelection(pos).updateBlockMath({ latex: value }).run()
         else chain.setNodeSelection(pos).updateInlineMath({ latex: value }).run()
       },
     }),
     [item.id, item.moduleId, item.folderId],
   )
 
-  // Eingefügte oder hineingezogene Bilder als Anhang speichern
+  // Store pasted or dropped images as attachments of the note
   const insertImageFiles = useCallback(
     (files: File[]) => {
       const images = files.filter((f) => f.type.startsWith('image/'))
       if (images.length === 0) return false
       void api
         .addFiles({ moduleId: item.moduleId, folderId: item.folderId, attachedTo: item.id }, images)
-        .then((added) => added.forEach((image) => editorRef.current?.chain().focus().setImage({ src: api.fileUrl(image), alt: image.title }).run()))
+        .then((added) => insertImages(editorRef.current, added))
         .catch(toastError)
       return true
     },
@@ -167,13 +207,15 @@ function NoteEditor({ item, initial }: { item: Item; initial: NoteDoc }) {
     editorProps: {
       attributes: { spellcheck: String(settings.spellcheck), class: 'note-prose' },
       handlePaste: (_view, event) => insertImageFiles([...(event.clipboardData?.files ?? [])]),
-      handleDrop: (_view, event) => insertImageFiles([...((event as DragEvent).dataTransfer?.files ?? [])]),
+      handleDrop: (_view, event) =>
+        insertImageFiles([...((event as DragEvent).dataTransfer?.files ?? [])]),
     },
-    onUpdate: ({ editor: e }) => save({ content: e.getJSON(), text: e.getText({ blockSeparator: '\n' }) }),
+    onUpdate: ({ editor: e }) =>
+      save({ content: e.getJSON(), text: e.getText({ blockSeparator: '\n' }) }),
   })
   editorRef.current = editor
 
-  // Seitenhöhe = gespeicherte Mindesthöhe oder Inhalt, je nachdem was größer ist
+  // Page height = stored minimum height or content height, whichever is larger
   useLayoutEffect(() => {
     if (!pageRef.current) return
     const observer = new ResizeObserver(() => setContentHeight(pageRef.current?.scrollHeight ?? 0))
@@ -181,15 +223,17 @@ function NoteEditor({ item, initial }: { item: Item; initial: NoteDoc }) {
     return () => observer.disconnect()
   }, [editor])
 
-  // ---- Zeichnen ----
+  // ---- Drawing ----
   const pageWidth = settings.wide ? 1000 : 800
   const fixed = drawing || strokes.length > 0
-  // In schmalen Bereichen wird die Seite verkleinert, aber nicht unleserlich klein
-  const scale = fixed && available > 0 ? Math.max(0.6, Math.min(1, (available - 32) / pageWidth)) : 1
+  // Scale the page down in narrow panes, but not to an unreadable size
+  const scale =
+    fixed && available > 0 ? Math.max(0.6, Math.min(1, (available - 32) / pageWidth)) : 1
   const pageHeight = Math.max(meta.height, contentHeight + 200)
 
   const changeStrokes = (next: Stroke[], recordHistory = true) => {
-    if (recordHistory) setHistory((h) => ({ undo: [...h.undo, strokes].slice(-HISTORY_LIMIT), redo: [] }))
+    if (recordHistory)
+      setHistory((h) => ({ undo: [...h.undo, strokes].slice(-HISTORY_LIMIT), redo: [] }))
     setStrokes(next)
     const bottom = inkBottom(next)
     const height = bottom > meta.height - 300 ? meta.height + EXTEND_BY : meta.height
@@ -251,7 +295,11 @@ function NoteEditor({ item, initial }: { item: Item; initial: NoteDoc }) {
         onRedo={redo}
         onExtend={() => changePaper({ height: pageHeight + EXTEND_BY })}
         onClear={() =>
-          void confirm({ title: 'Alle Zeichnungen löschen?', confirmLabel: 'Löschen', danger: true }).then((ok) => ok && changeStrokes([]))
+          void confirm({
+            title: 'Alle Zeichnungen löschen?',
+            confirmLabel: 'Löschen',
+            danger: true,
+          }).then((ok) => ok && changeStrokes([]))
         }
         paper={meta}
         onPaper={changePaper}
@@ -318,7 +366,7 @@ export function NoteView({ item }: { item: Item }) {
     return () => {
       active = false
     }
-    // Nur beim Wechsel der Notiz neu laden
+    // Reload only when switching to another note
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id])
   if (!doc) return null

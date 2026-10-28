@@ -2,7 +2,7 @@
   "name": "study-organizer",
   "productName": "Study Organizer",
   "version": "0.2.0",
-  "description": "Minimalistischer Studien-Organizer: Module, Vorlesungen, Notizen, Folien, Kalender und optionale KI.",
+  "description": "Minimalist study organizer: modules, lectures, notes, slides, calendar and optional AI.",
   "main": "out/main/index.js",
   "type": "module",
   "private": true,
@@ -16,7 +16,8 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write .",
+    "format": "prettier --write src tests scripts",
+    "format:check": "prettier --check src tests scripts",
     "test": "vitest run",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
@@ -29,6 +30,12 @@
     "icon": "node scripts/render-icon.mjs"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "@eslint/js": "^10.0.1",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -81,9 +88,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "@capacitor/android": "^8.5.3",
-    "@capacitor/cli": "^8.5.3",
-    "@capacitor/core": "^8.5.3",
     "ical.js": "^2.2.1",
     "openai": "^7.23.0"
   },

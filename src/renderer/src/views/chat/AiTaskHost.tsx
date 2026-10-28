@@ -1,4 +1,4 @@
-// Fortschrittsfenster, solange die KI eine Zusammenfassung schreibt.
+// Progress dialog shown while the AI is writing a summary.
 import { useAiTask } from '@/lib/ai'
 import { Button } from '@/ui/Button'
 import { Modal } from '@/ui/Modal'

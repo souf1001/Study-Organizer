@@ -1,4 +1,4 @@
-// Autonomer KI-Agent (Experimentell) für Aktionen im Study-Organizer.
+// Autonomous AI agent (experimental) that performs actions in the Study Organizer.
 import type { EventKind, ID } from '@shared/types'
 import { toISODate } from '@shared/dates'
 import { newEvent, newFolder, newTask } from '@shared/defaults'
@@ -9,45 +9,41 @@ import type { AgentAction, ActionResult } from '@shared/agent'
 export type { AgentAction, ActionResult }
 export { agentSystemPrompt, extractAgentActions } from '@shared/agent'
 
-/**
- * Führt eine vom Agenten generierte Aktion im Store / Backend aus.
- */
+/** Executes an agent-generated action against the store/backend. */
 export async function executeAgentAction(action: AgentAction): Promise<ActionResult> {
   const db = getDb()
   const { tool, params } = action
 
   switch (tool) {
     case 'cancel_event': {
-      const query = String(params.query || '').trim().toLowerCase()
+      const query = String(params.query || '')
+        .trim()
+        .toLowerCase()
       const date = String(params.date || toISODate(new Date())).trim()
 
-      // 1. Suche in Modul-Slots
+      // 1. Skip matching timetable slots on that date
       let slotFound = false
-      for (const m of db.modules) {
-        if (!query || m.name.toLowerCase().includes(query) || (m.code && m.code.toLowerCase().includes(query))) {
-          let updated = false
-          const newSchedule = m.schedule.map((s) => {
-            if (!s.skip.includes(date)) {
-              updated = true
-              slotFound = true
-              return { ...s, skip: [...s.skip, date] }
-            }
-            return s
-          })
-          if (updated) {
-            putRecord('modules', { ...m, schedule: newSchedule })
-          }
-        }
+      for (const module of db.modules) {
+        const matches =
+          !query ||
+          module.name.toLowerCase().includes(query) ||
+          module.code?.toLowerCase().includes(query)
+        if (!matches) continue
+        let updated = false
+        const schedule = module.schedule.map((slot) => {
+          if (slot.skip.includes(date)) return slot
+          updated = true
+          slotFound = true
+          return { ...slot, skip: [...slot.skip, date] }
+        })
+        if (updated) putRecord('modules', { ...module, schedule })
       }
 
-      // 2. Suche in Kalender-Events
+      // 2. Remove matching calendar events on that date
       let eventCancelled = false
-      for (const e of db.events) {
-        if (
-          e.start.startsWith(date) &&
-          (!query || e.title.toLowerCase().includes(query))
-        ) {
-          removeRecord('events', e.id)
+      for (const event of db.events) {
+        if (event.start.startsWith(date) && (!query || event.title.toLowerCase().includes(query))) {
+          removeRecord('events', event.id)
           eventCancelled = true
         }
       }
@@ -78,15 +74,7 @@ export async function executeAgentAction(action: AgentAction): Promise<ActionRes
       const start = `${date}T${startTime}:00`
       const end = `${date}T${endTime}:00`
 
-      const ev = newEvent({
-        title,
-        start,
-        end,
-        moduleId,
-        location,
-        kind,
-      })
-      putRecord('events', ev)
+      putRecord('events', newEvent({ title, start, end, moduleId, location, kind }))
       return {
         success: true,
         message: `Termin „${title}“ am ${date} (${startTime}–${endTime}) angelegt.`,
@@ -97,9 +85,10 @@ export async function executeAgentAction(action: AgentAction): Promise<ActionRes
     case 'create_note': {
       const title = String(params.title || 'Neue Zusammenfassung').trim()
       const content = String(params.content || '').trim()
-      const activeSemId = db.activeSemesterId ?? db.semesters[0]?.id
-      const defaultModId = db.modules.find((m) => m.semesterId === activeSemId)?.id ?? db.modules[0]?.id ?? ''
-      const moduleId: ID = (params.moduleId ? String(params.moduleId) : defaultModId) as ID
+      const activeSemesterId = db.activeSemesterId ?? db.semesters[0]?.id
+      const defaultModuleId =
+        db.modules.find((m) => m.semesterId === activeSemesterId)?.id ?? db.modules[0]?.id ?? ''
+      const moduleId: ID = (params.moduleId ? String(params.moduleId) : defaultModuleId) as ID
       const folderId: ID | null = (params.folderId ? String(params.folderId) : null) as ID | null
 
       if (!moduleId) {
@@ -124,12 +113,7 @@ export async function executeAgentAction(action: AgentAction): Promise<ActionRes
       const dueDate = params.dueDate ? String(params.dueDate).trim() : null
       const moduleId: ID | null = params.moduleId ? (String(params.moduleId) as ID) : null
 
-      const t = newTask({
-        title,
-        moduleId,
-        due: dueDate ? `${dueDate}T23:59:00` : null,
-      })
-      putRecord('tasks', t)
+      putRecord('tasks', newTask({ title, moduleId, due: dueDate ? `${dueDate}T23:59:00` : null }))
       return {
         success: true,
         message: `Aufgabe „${title}“ ${dueDate ? `(fällig am ${dueDate})` : ''} erstellt.`,
@@ -138,7 +122,9 @@ export async function executeAgentAction(action: AgentAction): Promise<ActionRes
     }
 
     case 'complete_task': {
-      const query = String(params.query || '').trim().toLowerCase()
+      const query = String(params.query || '')
+        .trim()
+        .toLowerCase()
       const task = db.tasks.find(
         (t) => !t.done && (!query || t.title.toLowerCase().includes(query)),
       )

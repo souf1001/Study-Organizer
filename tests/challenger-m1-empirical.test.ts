@@ -84,8 +84,18 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('handles sequential download duplicates: schedule.ics -> (1) -> (2) -> (3) without duplicating subscriptions or events', async () => {
     const content = vcal(
-      vevent({ uid: 'ev1', summary: 'Analysis 1 Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'ev2', summary: 'Analysis 1 Übung', start: '20261014T100000Z', end: '20261014T113000Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Analysis 1 Vorlesung',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'ev2',
+          summary: 'Analysis 1 Übung',
+          start: '20261014T100000Z',
+          end: '20261014T113000Z',
+        }),
     )
 
     // 1st import: schedule.ics
@@ -120,7 +130,12 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('handles reverse order: user imports schedule (2).ics first, then schedule (1).ics, then schedule.ics', async () => {
     const content = vcal(
-      vevent({ uid: 'ev1', summary: 'Lineare Algebra Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Lineare Algebra Vorlesung',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }),
     )
 
     const r1 = await service.calendarImportFile('schedule (2).ics', content)
@@ -144,7 +159,12 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('handles chained browser duplicate suffixes like "schedule (1) (2).ics" and "schedule(1).ics"', async () => {
     const content = vcal(
-      vevent({ uid: 'ev1', summary: 'Physik 1 Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Physik 1 Vorlesung',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }),
     )
 
     await service.calendarImportFile('schedule (1) (2).ics', content)
@@ -162,7 +182,12 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('case mismatch "Schedule.ics" vs "schedule (1).ics" reuses existing subscription', async () => {
     const content = vcal(
-      vevent({ uid: 'ev1', summary: 'Physik 1', start: '20261012T081500Z', end: '20261012T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Physik 1',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }),
     )
 
     await service.calendarImportFile('Schedule.ics', content)
@@ -174,13 +199,38 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('snapshot replacement: event addition updates the event list cleanly', async () => {
     const v1 = vcal(
-      vevent({ uid: 'ev1', summary: 'Event 1', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'ev2', summary: 'Event 2', start: '20261013T081500Z', end: '20261013T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Event 1',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'ev2',
+          summary: 'Event 2',
+          start: '20261013T081500Z',
+          end: '20261013T094500Z',
+        }),
     )
     const v2 = vcal(
-      vevent({ uid: 'ev1', summary: 'Event 1', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'ev2', summary: 'Event 2', start: '20261013T081500Z', end: '20261013T094500Z' }) +
-        vevent({ uid: 'ev3', summary: 'Event 3', start: '20261014T081500Z', end: '20261014T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Event 1',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'ev2',
+          summary: 'Event 2',
+          start: '20261013T081500Z',
+          end: '20261013T094500Z',
+        }) +
+        vevent({
+          uid: 'ev3',
+          summary: 'Event 3',
+          start: '20261014T081500Z',
+          end: '20261014T094500Z',
+        }),
     )
 
     await service.calendarImportFile('my_plan.ics', v1)
@@ -194,13 +244,38 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('snapshot replacement: event deletion (cancelled course) removes the event from DB without leaving ghost events', async () => {
     const v1 = vcal(
-      vevent({ uid: 'ev1', summary: 'Event 1', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'ev2', summary: 'Cancelled Event', start: '20261013T081500Z', end: '20261013T094500Z' }) +
-        vevent({ uid: 'ev3', summary: 'Event 3', start: '20261014T081500Z', end: '20261014T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Event 1',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'ev2',
+          summary: 'Cancelled Event',
+          start: '20261013T081500Z',
+          end: '20261013T094500Z',
+        }) +
+        vevent({
+          uid: 'ev3',
+          summary: 'Event 3',
+          start: '20261014T081500Z',
+          end: '20261014T094500Z',
+        }),
     )
     const v2 = vcal(
-      vevent({ uid: 'ev1', summary: 'Event 1', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'ev3', summary: 'Event 3', start: '20261014T081500Z', end: '20261014T094500Z' }),
+      vevent({
+        uid: 'ev1',
+        summary: 'Event 1',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'ev3',
+          summary: 'Event 3',
+          start: '20261014T081500Z',
+          end: '20261014T094500Z',
+        }),
     )
 
     await service.calendarImportFile('timetable.ics', v1)
@@ -248,11 +323,26 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
   it('multiple distinct subscriptions do not interfere or overwrite each other', async () => {
     const mathContent = vcal(
-      vevent({ uid: 'm1', summary: 'Mathe VL', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'm2', summary: 'Mathe UE', start: '20261013T081500Z', end: '20261013T094500Z' }),
+      vevent({
+        uid: 'm1',
+        summary: 'Mathe VL',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'm2',
+          summary: 'Mathe UE',
+          start: '20261013T081500Z',
+          end: '20261013T094500Z',
+        }),
     )
     const csContent = vcal(
-      vevent({ uid: 'cs1', summary: 'Informatik VL', start: '20261014T081500Z', end: '20261014T094500Z' }),
+      vevent({
+        uid: 'cs1',
+        summary: 'Informatik VL',
+        start: '20261014T081500Z',
+        end: '20261014T094500Z',
+      }),
     )
 
     // Import math
@@ -267,9 +357,24 @@ describe('Challenger M1: Duplicate Prevention & Snapshot Replacement in Service'
 
     // Re-import math with 3 events
     const mathContentV2 = vcal(
-      vevent({ uid: 'm1', summary: 'Mathe VL', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'm2', summary: 'Mathe UE', start: '20261013T081500Z', end: '20261013T094500Z' }) +
-        vevent({ uid: 'm3', summary: 'Mathe TUT', start: '20261015T081500Z', end: '20261015T094500Z' }),
+      vevent({
+        uid: 'm1',
+        summary: 'Mathe VL',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'm2',
+          summary: 'Mathe UE',
+          start: '20261013T081500Z',
+          end: '20261013T094500Z',
+        }) +
+        vevent({
+          uid: 'm3',
+          summary: 'Mathe TUT',
+          start: '20261015T081500Z',
+          end: '20261015T094500Z',
+        }),
     )
     await service.calendarImportFile('mathe (1).ics', mathContentV2)
 
@@ -368,13 +473,43 @@ describe('Challenger M1: Active Semester Module Auto-Creation & Color Cycling', 
   it('foreign key linking: multiple events of same course link to the EXACT same moduleId when codes or delimiters exist', async () => {
     // HM1 has course code, Info 1 uses hyphen delimiter
     const content = vcal(
-      vevent({ uid: 'hm-vl', summary: '20-00-0012-vl Höhere Mathematik I', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'hm-ue', summary: '20-00-0012-ue Höhere Mathematik I (Große Übung)', start: '20261014T100000Z', end: '20261014T113000Z' }) +
-        vevent({ uid: 'hm-tut', summary: '20-00-0012-tut Höhere Mathematik I Tutorium', start: '20261015T140000Z', end: '20261015T153000Z' }) +
-        vevent({ uid: 'hm-exam', summary: '20-00-0012 Klausur Höhere Mathematik I', start: '20270220T090000Z', end: '20270220T120000Z' }) +
+      vevent({
+        uid: 'hm-vl',
+        summary: '20-00-0012-vl Höhere Mathematik I',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'hm-ue',
+          summary: '20-00-0012-ue Höhere Mathematik I (Große Übung)',
+          start: '20261014T100000Z',
+          end: '20261014T113000Z',
+        }) +
+        vevent({
+          uid: 'hm-tut',
+          summary: '20-00-0012-tut Höhere Mathematik I Tutorium',
+          start: '20261015T140000Z',
+          end: '20261015T153000Z',
+        }) +
+        vevent({
+          uid: 'hm-exam',
+          summary: '20-00-0012 Klausur Höhere Mathematik I',
+          start: '20270220T090000Z',
+          end: '20270220T120000Z',
+        }) +
         // Course with hyphen delimiter
-        vevent({ uid: 'info-vl', summary: 'Informatik 1 - Vorlesung', start: '20261013T081500Z', end: '20261013T094500Z' }) +
-        vevent({ uid: 'info-ue', summary: 'Informatik 1 - Übung', start: '20261016T100000Z', end: '20261016T113000Z' }),
+        vevent({
+          uid: 'info-vl',
+          summary: 'Informatik 1 - Vorlesung',
+          start: '20261013T081500Z',
+          end: '20261013T094500Z',
+        }) +
+        vevent({
+          uid: 'info-ue',
+          summary: 'Informatik 1 - Übung',
+          start: '20261016T100000Z',
+          end: '20261016T113000Z',
+        }),
     )
 
     const res = await service.calendarImportFile('semester_plan.ics', content)
@@ -416,8 +551,18 @@ describe('Challenger M1: Active Semester Module Auto-Creation & Color Cycling', 
 
   it('re-importing the same file does NOT create duplicate modules or orphan links', async () => {
     const content = vcal(
-      vevent({ uid: 'c1', summary: 'Algorithmen und Datenstrukturen - Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'c2', summary: 'Algorithmen und Datenstrukturen - Übung', start: '20261014T100000Z', end: '20261014T113000Z' }),
+      vevent({
+        uid: 'c1',
+        summary: 'Algorithmen und Datenstrukturen - Vorlesung',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'c2',
+          summary: 'Algorithmen und Datenstrukturen - Übung',
+          start: '20261014T100000Z',
+          end: '20261014T113000Z',
+        }),
     )
 
     const r1 = await service.calendarImportFile('algo.ics', content)
@@ -439,13 +584,26 @@ describe('Challenger M1: Active Semester Module Auto-Creation & Color Cycling', 
 
   it('whitespace-separated activity titles ("Course Vorlesung" vs "Course Übung") share a single module', async () => {
     const content = vcal(
-      vevent({ uid: 'ad-vl', summary: 'Algorithmen Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }) +
-        vevent({ uid: 'ad-ue', summary: 'Algorithmen Übung', start: '20261014T100000Z', end: '20261014T113000Z' }),
+      vevent({
+        uid: 'ad-vl',
+        summary: 'Algorithmen Vorlesung',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }) +
+        vevent({
+          uid: 'ad-ue',
+          summary: 'Algorithmen Übung',
+          start: '20261014T100000Z',
+          end: '20261014T113000Z',
+        }),
     )
 
     const res = await service.calendarImportFile('algo_plain.ics', content)
     expect(res.newModules).toBe(1)
-    const moduleNames = store.get().modules.map((m) => m.name).sort()
+    const moduleNames = store
+      .get()
+      .modules.map((m) => m.name)
+      .sort()
     expect(moduleNames).toEqual(['Algorithmen'])
   })
 
@@ -453,7 +611,12 @@ describe('Challenger M1: Active Semester Module Auto-Creation & Color Cycling', 
     store.update({ activeSemesterId: null })
 
     const content = vcal(
-      vevent({ uid: 'sem-fb', summary: 'Datenbanken Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }),
+      vevent({
+        uid: 'sem-fb',
+        summary: 'Datenbanken Vorlesung',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }),
     )
 
     const res = await service.calendarImportFile('db.ics', content)
@@ -466,7 +629,12 @@ describe('Challenger M1: Active Semester Module Auto-Creation & Color Cycling', 
     await store.remove('semesters', 'sem-active-test')
 
     const content = vcal(
-      vevent({ uid: 'no-sem', summary: 'Vorlesung Ohne Semester', start: '20261012T081500Z', end: '20261012T094500Z' }),
+      vevent({
+        uid: 'no-sem',
+        summary: 'Vorlesung Ohne Semester',
+        start: '20261012T081500Z',
+        end: '20261012T094500Z',
+      }),
     )
 
     const res = await service.calendarImportFile('nosem.ics', content)
@@ -484,13 +652,13 @@ describe('Challenger M1: Adversarial Stress & Edge Cases', () => {
       const store = await Store.open(dir)
       const service = createService(store, memorySecrets())
 
-      await expect(service.calendarImportFile('not_cal.txt', 'This is a text file')).rejects.toThrow(
-        'keine iCal-Datei',
-      )
+      await expect(
+        service.calendarImportFile('not_cal.txt', 'This is a text file'),
+      ).rejects.toThrow('keine iCal-Datei')
       await expect(service.calendarImportFile('empty.ics', '')).rejects.toThrow('keine iCal-Datei')
-      await expect(service.calendarImportFile('binary.dat', new Uint8Array([0x00, 0x11, 0x22]))).rejects.toThrow(
-        'keine iCal-Datei',
-      )
+      await expect(
+        service.calendarImportFile('binary.dat', new Uint8Array([0x00, 0x11, 0x22])),
+      ).rejects.toThrow('keine iCal-Datei')
     } finally {
       await rm(dir, { recursive: true, force: true }).catch(() => undefined)
     }
@@ -600,7 +768,12 @@ describe('Challenger M1: Adversarial Stress & Edge Cases', () => {
 
       const content = vcal(
         'BEGIN:VEVENT\r\nUID:no-summary\r\nDTSTART:20261012T080000Z\r\nDTEND:20261012T090000Z\r\nEND:VEVENT\r\n' +
-          vevent({ uid: 'only-kind', summary: 'Vorlesung', start: '20261013T080000Z', end: '20261013T090000Z' }),
+          vevent({
+            uid: 'only-kind',
+            summary: 'Vorlesung',
+            start: '20261013T080000Z',
+            end: '20261013T090000Z',
+          }),
       )
 
       const res = await service.calendarImportFile('edge_titles.ics', content)
@@ -634,7 +807,12 @@ describe('Challenger M1: Adversarial Stress & Edge Cases', () => {
       })
 
       const content = vcal(
-        vevent({ uid: 'imported-1', summary: 'Vorlesung', start: '20261012T081500Z', end: '20261012T094500Z' }),
+        vevent({
+          uid: 'imported-1',
+          summary: 'Vorlesung',
+          start: '20261012T081500Z',
+          end: '20261012T094500Z',
+        }),
       )
       await service.calendarImportFile('schedule.ics', content)
       expect(store.get().events).toHaveLength(2)

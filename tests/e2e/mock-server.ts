@@ -1,4 +1,4 @@
-// Schein-Server für Tests: OpenAI-kompatible KI-Schnittstelle (mit Streaming) und ein iCal-Kalender.
+// Mock server for tests: an OpenAI-compatible AI API (with streaming) and an iCal calendar.
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 
@@ -27,7 +27,13 @@ CATEGORIES:ANA1
 END:VEVENT
 END:VCALENDAR`
 
-const ANSWER = ['## Überblick\n', 'Es ging um **Grenzwerte** von Folgen.\n\n', '## Kernaussagen\n', '- Eine Folge konvergiert gegen $a$, wenn $|a_n - a| < \\varepsilon$.\n', '- Beschränkte monotone Folgen konvergieren.\n']
+const ANSWER = [
+  '## Überblick\n',
+  'Es ging um **Grenzwerte** von Folgen.\n\n',
+  '## Kernaussagen\n',
+  '- Eine Folge konvergiert gegen $a$, wenn $|a_n - a| < \\varepsilon$.\n',
+  '- Beschränkte monotone Folgen konvergieren.\n',
+]
 
 export async function startMockServer(): Promise<MockServer> {
   const requests: MockServer['requests'] = []
@@ -39,12 +45,23 @@ export async function startMockServer(): Promise<MockServer> {
       requests.push({ path, body })
       if (path.endsWith('/models')) {
         res.writeHead(200, { 'Content-Type': 'application/json' })
-        return res.end(JSON.stringify({ object: 'list', data: [{ id: 'mock-model', object: 'model', created: 0, owned_by: 'test' }] }))
+        return res.end(
+          JSON.stringify({
+            object: 'list',
+            data: [{ id: 'mock-model', object: 'model', created: 0, owned_by: 'test' }],
+          }),
+        )
       }
       if (path.endsWith('/chat/completions')) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
         for (const content of ANSWER) {
-          const chunk = { id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'mock-model', choices: [{ index: 0, delta: { content }, finish_reason: null }] }
+          const chunk = {
+            id: 'c1',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'mock-model',
+            choices: [{ index: 0, delta: { content }, finish_reason: null }],
+          }
           res.write(`data: ${JSON.stringify(chunk)}\n\n`)
         }
         res.write('data: [DONE]\n\n')

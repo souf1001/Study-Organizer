@@ -1,9 +1,15 @@
-// Neues Semester beginnen oder ein bestehendes bearbeiten.
+// Start a new semester or edit an existing one.
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { newId, newModule, newSlot } from '@shared/defaults'
 import { today } from '@shared/dates'
-import { buildSemester, nextSemesterDraft, suggestedSemester, SEMESTER_MODELS, type SemesterDraft } from '@shared/semester'
+import {
+  buildSemester,
+  nextSemesterDraft,
+  suggestedSemester,
+  SEMESTER_MODELS,
+  type SemesterDraft,
+} from '@shared/semester'
 import type { Semester, SemesterKind, SemesterModelId } from '@shared/types'
 import { semesterModules } from '@/lib/actions'
 import { putRecord, updateDb, useDb } from '@/lib/db'
@@ -14,7 +20,10 @@ import { Modal } from '@/ui/Modal'
 import { toast } from '@/ui/Toast'
 import './semester.css'
 
-/** Vorschlag für das nächste Semester anhand des Modells und der vorhandenen Semester */
+/**
+ * Suggests the next semester from the semester model: the current one if it does not
+ * exist yet, otherwise the one following the latest existing semester.
+ */
 export function suggestSemester(semesters: Semester[], model: SemesterModelId): SemesterDraft {
   const current = suggestedSemester(model, today())
   if (!semesters.some((s) => s.name === current.name)) return current
@@ -34,10 +43,17 @@ export function SemesterForm({
   const db = useDb()
   const model = modelProp ?? db.settings.study.semesterModel
   const set = (values: Partial<SemesterDraft>) => onChange({ ...draft, ...values })
+  const updateBreak = (index: number, values: Partial<SemesterDraft['breaks'][number]>) =>
+    set({ breaks: draft.breaks.map((b, i) => (i === index ? { ...b, ...values } : b)) })
   const rebuild = (kind: SemesterKind, year: number) => onChange(buildSemester(model, kind, year))
   const date = (key: 'start' | 'end' | 'lectureStart' | 'lectureEnd', label: string) => (
     <Field label={label}>
-      <input className="input" type="date" value={draft[key]} onChange={(e) => set({ [key]: e.target.value })} />
+      <input
+        className="input"
+        type="date"
+        value={draft[key]}
+        onChange={(e) => set({ [key]: e.target.value })}
+      />
     </Field>
   )
 
@@ -55,7 +71,11 @@ export function SemesterForm({
           />
         </Field>
         <Field label="Jahr">
-          <Input type="number" value={draft.year} onChange={(e) => rebuild(draft.kind, Number(e.target.value) || draft.year)} />
+          <Input
+            type="number"
+            value={draft.year}
+            onChange={(e) => rebuild(draft.kind, Number(e.target.value) || draft.year)}
+          />
         </Field>
         <Field label="Name">
           <Input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
@@ -76,23 +96,26 @@ export function SemesterForm({
             <Input
               value={b.label}
               aria-label="Bezeichnung"
-              onChange={(e) => set({ breaks: draft.breaks.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+              onChange={(e) => updateBreak(i, { label: e.target.value })}
             />
             <input
               className="input"
               type="date"
               value={b.start}
               aria-label="Von"
-              onChange={(e) => set({ breaks: draft.breaks.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)) })}
+              onChange={(e) => updateBreak(i, { start: e.target.value })}
             />
             <input
               className="input"
               type="date"
               value={b.end}
               aria-label="Bis"
-              onChange={(e) => set({ breaks: draft.breaks.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)) })}
+              onChange={(e) => updateBreak(i, { end: e.target.value })}
             />
-            <IconButton label="Entfernen" onClick={() => set({ breaks: draft.breaks.filter((_, j) => j !== i) })}>
+            <IconButton
+              label="Entfernen"
+              onClick={() => set({ breaks: draft.breaks.filter((_, j) => j !== i) })}
+            >
               <Trash2 />
             </IconButton>
           </div>
@@ -102,41 +125,71 @@ export function SemesterForm({
             size="sm"
             variant="ghost"
             icon={<Plus />}
-            onClick={() => set({ breaks: [...draft.breaks, { label: 'Frei', start: draft.lectureStart, end: draft.lectureStart }] })}
+            onClick={() =>
+              set({
+                breaks: [
+                  ...draft.breaks,
+                  { label: 'Frei', start: draft.lectureStart, end: draft.lectureStart },
+                ],
+              })
+            }
           >
             Zeitraum hinzufügen
           </Button>
         </div>
       </div>
-      <p className="field-hint">Vorschlag nach dem Modell „{SEMESTER_MODELS[model].label}“ – bitte mit den Terminen deiner Hochschule abgleichen.</p>
+      <p className="field-hint">
+        Vorschlag nach dem Modell „{SEMESTER_MODELS[model].label}“ – bitte mit den Terminen deiner
+        Hochschule abgleichen.
+      </p>
     </div>
   )
 }
 
-export function SemesterDialog({ semester, onClose }: { semester?: Semester; onClose: () => void }) {
+export function SemesterDialog({
+  semester,
+  onClose,
+}: {
+  semester?: Semester
+  onClose: () => void
+}) {
   const db = useDb()
-  const [draft, setDraft] = useState<SemesterDraft>(() => semester ?? suggestSemester(db.semesters, db.settings.study.semesterModel))
-  const previous = semester ? undefined : [...db.semesters].sort((a, b) => b.start.localeCompare(a.start))[0]
+  const [draft, setDraft] = useState<SemesterDraft>(
+    () => semester ?? suggestSemester(db.semesters, db.settings.study.semesterModel),
+  )
+  const previous = semester
+    ? undefined
+    : [...db.semesters].sort((a, b) => b.start.localeCompare(a.start))[0]
   const previousModules = previous ? semesterModules(db, previous.id) : []
+  // IDs of previous-semester modules to copy into the new semester.
   const [carry, setCarry] = useState<string[]>([])
 
   const save = () => {
     if (draft.lectureStart > draft.lectureEnd || draft.start > draft.end) {
       return toast('Das Ende darf nicht vor dem Beginn liegen.', { error: true })
     }
-    const record: Semester = { ...(semester ?? { id: newId(), createdAt: new Date().toISOString() }), ...draft }
+    const record: Semester = {
+      ...(semester ?? { id: newId(), createdAt: new Date().toISOString() }),
+      ...draft,
+    }
     putRecord('semesters', record)
     if (!semester) {
       for (const m of previousModules.filter((m) => carry.includes(m.id))) {
-        putRecord('modules', newModule(record.id, {
-          name: m.name,
-          code: m.code,
-          lecturer: m.lecturer,
-          color: m.color,
-          ects: m.ects,
-          info: m.info,
-          schedule: m.schedule.map((s) => newSlot({ ...s, id: newId(), firstDate: null, skip: [] })),
-        }))
+        putRecord(
+          'modules',
+          newModule(record.id, {
+            name: m.name,
+            code: m.code,
+            lecturer: m.lecturer,
+            color: m.color,
+            ects: m.ects,
+            info: m.info,
+            // Copy weekly slots but drop dates that belong to the old semester.
+            schedule: m.schedule.map((s) =>
+              newSlot({ ...s, id: newId(), firstDate: null, skip: [] }),
+            ),
+          }),
+        )
       }
       updateDb({ activeSemesterId: record.id })
       openView({ type: 'home' })
@@ -163,7 +216,9 @@ export function SemesterDialog({ semester, onClose }: { semester?: Semester; onC
       {previousModules.length > 0 && (
         <div className="field carry">
           <span className="field-label">Module aus {previous!.name} übernehmen</span>
-          <span className="field-hint">Praktisch für Module, die über zwei Semester laufen oder wiederholt werden.</span>
+          <span className="field-hint">
+            Praktisch für Module, die über zwei Semester laufen oder wiederholt werden.
+          </span>
           <div className="carry-list">
             {previousModules.map((m) => (
               <label key={m.id} className="row small">
@@ -171,7 +226,9 @@ export function SemesterDialog({ semester, onClose }: { semester?: Semester; onC
                   type="checkbox"
                   className="checkbox"
                   checked={carry.includes(m.id)}
-                  onChange={(e) => setCarry((c) => (e.target.checked ? [...c, m.id] : c.filter((x) => x !== m.id)))}
+                  onChange={(e) =>
+                    setCarry((c) => (e.target.checked ? [...c, m.id] : c.filter((x) => x !== m.id)))
+                  }
                 />
                 <span className={`dot color-${m.color}`} />
                 {m.name}

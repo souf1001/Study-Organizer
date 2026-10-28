@@ -1,73 +1,75 @@
 # Study Organizer
 
-Ein ruhiger, minimalistischer Organizer fürs Studium: Semester, Module, Vorlesungen mit Raum, Praktika, Notizen mit Stift, Folien, Videos, Kalender – und optional KI mit deinem eigenen API-Key. Kein Konto, keine Cloud: Deine Daten bleiben auf deinem Rechner.
+A calm, minimal organizer for your studies: semesters, modules, lectures with rooms, labs, handwritten notes, slides, videos, a calendar, and optional AI with your own API key. No account, no cloud: your data stays on your computer.
 
-![Split-Screen mit Notiz und Folien](docs/screenshots/split-screen.png)
+The app's interface is in German; labels quoted below are shown as they appear in the app, with an English translation in parentheses.
 
-## Funktionen
+![Split screen with a note and slides](docs/screenshots/split-screen.png)
 
-**Studium organisieren**
-- Ersteinrichtung beim ersten Start: Name, Hochschule, Studiengang, Semester, Module – ohne Login.
-- Semesterzeiten sind für Universitäten, Hochschulen (HAW/FH) und die **h_da** hinterlegt. Beginnt ein neues Semester, fragt die App nach und übernimmt auf Wunsch Module.
-- Module mit Kürzel, Dozent/in, ECTS, Farbe und **wöchentlichen Terminen inkl. Raum** (Vorlesung, Übung, Praktikum, Seminar, Tutorium; auch 14-täglich, mit Ausfällen und Weihnachtspause).
-- **Ein Ordner pro Termin auf Knopfdruck** („Vorlesung 3 · 14.10.“) – darin landen Notizen, Folien, Fotos und Videos.
-- **Praktikum**: eigene Termine, Testat-Status (bestanden/offen) und Abgaben pro Modul.
-- **Aufgaben & Abgaben** mit Fälligkeit, gruppiert nach überfällig, heute, diese Woche …
-- **Kalender** (Woche, Monat, Liste) zeigt automatisch alle Vorlesungen mit Raum, Prüfungen, Fristen und Praktika.
+## Features
 
-**Notizen wie auf dem Tablet**
-- Editor im Notion-Stil mit Slash-Menü (`/`): Überschriften, Listen, Checklisten, Tabellen, Code, Zitate, **LaTeX-Formeln**, Bilder.
-- Schriften (Sans, Serif, Buch, Mono, Handschrift, besonders gut lesbar), Größen, Farben, Textmarker.
-- **Zeichnen mit Stift** (Druckstufen), Textmarker, Radierer; „Nur Stift zeichnet“ für Handballen-Erkennung.
-- Papier: blanko, liniert, liniert mit Rand, kariert, Punktraster, Millimeter, Cornell – in Weiß, Creme, Grau oder Dunkel.
+**Organize your studies**
+- First-run setup: name, university, degree program, semester, modules. No login.
+- Semester dates are built in for universities, universities of applied sciences (HAW/FH) and **h_da**. When a new semester starts, the app asks and can carry modules over.
+- Modules with code, lecturer, ECTS, color and **weekly sessions including the room** (lecture, exercise, lab, seminar, tutorial; also biweekly, with cancellations and the Christmas break).
+- **One folder per session at the push of a button** („Vorlesung 3 · 14.10.“, i.e. "Lecture 3 · Oct 14") for notes, slides, photos and videos.
+- **Labs**: their own dates, pass status (passed/open) and submissions per module.
+- **Tasks and submissions** with due dates, grouped into overdue, today, this week, …
+- **Calendar** (week, month, list) automatically shows all lectures with rooms, exams, deadlines and labs.
 
-**Dateien**
-- **PDF-Folien** ansehen, Text markieren und kopieren, **direkt auf die Folien schreiben**.
-- **Videos und Audio** mit Geschwindigkeit 0,5× bis 3×, Sprüngen, Bild-in-Bild; die Position wird gemerkt.
-- Fotos mit Zoom und Drehen, Textdateien, alles andere öffnet die Standard-App.
-- **Split-Screen mit bis zu 4 Bereichen** – z. B. Folien, Übungsblatt, Notiz und KI-Chat gleichzeitig. `Strg`/`⌘` + Klick öffnet nebeneinander, oder Einträge aus der Seitenleiste in einen Bereich ziehen.
+**Notes like on a tablet**
+- Notion-style editor with a slash menu (`/`): headings, lists, checklists, tables, code, quotes, **LaTeX formulas**, images.
+- Fonts (sans, serif, book, mono, handwriting, high legibility), sizes, colors, highlighter.
+- **Pen drawing** (pressure-sensitive), highlighter, eraser; „Nur Stift zeichnet“ (only the pen draws) for palm rejection.
+- Paper: blank, lined, lined with margin, squared, dot grid, millimeter, Cornell, in white, cream, gray or dark.
 
-**Automatisch aktuell**
-- **Moodle-Anbindung** (auch mit Hochschul-Login/SSO): Abgaben als Aufgaben, Tests und Kurstermine im Kalender, auf Wunsch Kursdateien.
-- **Kalender-Abos (iCal)** von Moodle, Stud.IP, ILIAS, dem OBS der h_da-Informatik u. a. – regelmäßig abgeglichen.
-- **Import von .ics-Dateien** für Systeme ohne Abo (my h_da/HISinOne, TUCaN).
+**Files**
+- View **PDF slides**, select and copy text, **write directly on the slides**.
+- **Video and audio** at 0.5× to 3× speed, skipping, picture-in-picture; the playback position is remembered.
+- Photos with zoom and rotation, text files; everything else opens in the default app.
+- **Split screen with up to 4 panes**, e.g. slides, exercise sheet, note and AI chat at once. `Ctrl`/`⌘` + click opens side by side, or drag entries from the sidebar into a pane.
 
-**KI (optional)**
-- Nur aktiv, wenn du sie in den Einstellungen einschaltest und einen API-Key hinterlegst.
-- **Zusammenfassung einer Vorlesung**, **aller bisherigen Vorlesungen** eines Moduls oder **ausgewählter Dateien** – als neue Notiz.
-- **Chat mit deinen Unterlagen**: Kontext sind die offenen Bereiche, ein Modul, ein Ordner oder eine Auswahl.
-- Anbieter: **Groq, Hugging Face, Google Gemini, Mistral, OpenRouter** (kostenlos nutzbar), **OpenAI, Anthropic, DeepSeek, xAI**, lokal **Ollama/LM Studio** und jeder andere OpenAI-kompatible Dienst.
+**Always up to date**
+- **Moodle integration** (including university login/SSO): assignments become tasks, quizzes and course events appear in the calendar, course files on request.
+- **Calendar subscriptions (iCal)** from Moodle, Stud.IP, ILIAS, the OBS of h_da computer science and others, synced regularly.
+- **Import of .ics files** for systems without subscriptions (my h_da/HISinOne, TUCaN).
+
+**AI (optional)**
+- Only active if you enable it in the settings and enter an API key.
+- **Summarize a lecture**, **all lectures so far** in a module, or **selected files**, as a new note.
+- **Chat with your material**: the context is the open panes, a module, a folder or a selection.
+- Providers: **Groq, Hugging Face, Google Gemini, Mistral, OpenRouter** (usable for free), **OpenAI, Anthropic, DeepSeek, xAI**, local **Ollama/LM Studio**, and any other OpenAI-compatible service.
 
 <p>
-  <img src="docs/screenshots/kalender.png" width="49%" alt="Kalender" />
-  <img src="docs/screenshots/ki-chat.png" width="49%" alt="KI-Chat" />
+  <img src="docs/screenshots/kalender.png" width="49%" alt="Calendar" />
+  <img src="docs/screenshots/ki-chat.png" width="49%" alt="AI chat" />
 </p>
 
 ## Installation
 
-Die fertigen Installationsdateien werden automatisch auf GitHub gebaut.
+The installers are built automatically on GitHub.
 
-1. Öffne auf GitHub den Reiter **Releases** (fertige Versionen) – oder **Actions → „Installationspakete“ → neuester Lauf → Artifacts** (Stand des letzten Pushs).
-2. Lade die Datei für dein System herunter.
+1. On GitHub, open the **Releases** tab (published versions), or **Actions → "Installer packages" → latest run → Artifacts** (state of the latest push).
+2. Download the file for your system.
 
 ### Windows (`.exe`)
 
-1. `Study-Organizer-Setup-….exe` doppelklicken.
-2. Warnt Windows SmartScreen („Der Computer wurde durch Windows geschützt“), auf **Weitere Informationen → Trotzdem ausführen** klicken. Die Warnung erscheint, weil die App nicht mit einem kostenpflichtigen Zertifikat signiert ist.
-3. Installationsordner wählen → **Installieren**. Die App liegt danach im Startmenü und auf dem Desktop.
+1. Double-click `Study-Organizer-Setup-….exe`.
+2. If Windows SmartScreen warns you ("Windows protected your PC"), click **More info → Run anyway** (on German systems: **Weitere Informationen → Trotzdem ausführen**). The warning appears because the app is not signed with a paid certificate.
+3. Choose the installation folder → **Install**. The app then appears in the Start menu and on the desktop.
 
 ### macOS (`.dmg`)
 
-1. `Study-Organizer-…-mac.dmg` öffnen und **Study Organizer** in den Ordner **Programme** ziehen.
-2. Beim ersten Start meldet macOS „nicht verifizierter Entwickler“:
-   - macOS 15 und neuer: **Systemeinstellungen → Datenschutz & Sicherheit** → ganz unten **Dennoch öffnen**.
-   - Ältere Versionen: im Finder mit **Rechtsklick → Öffnen** starten.
-3. Meldet macOS „ist beschädigt“, einmal im Terminal ausführen:
+1. Open `Study-Organizer-…-mac.dmg` and drag **Study Organizer** into the **Applications** folder.
+2. On first launch, macOS reports an "unverified developer":
+   - macOS 15 and later: **System Settings → Privacy & Security** → at the very bottom, **Open Anyway**.
+   - Older versions: start it in Finder with **right-click → Open**.
+3. If macOS says the app "is damaged", run this once in Terminal:
    ```bash
    xattr -cr "/Applications/Study Organizer.app"
    ```
 
-Die `.dmg` enthält eine Universal-App (Apple Silicon und Intel).
+The `.dmg` contains a universal app (Apple Silicon and Intel).
 
 ### Linux (`.AppImage`)
 
@@ -76,94 +78,126 @@ chmod +x Study-Organizer-*.AppImage
 ./Study-Organizer-*.AppImage
 ```
 
-### Wo liegen meine Daten?
+### Android (`.apk`, tablet and phone)
 
-| System | Ordner |
+1. Download `Study-Organizer-….apk` from **Actions → "Android APK" → latest run → Artifacts**, or from a release.
+2. Open the file on the device and allow installing apps from this source when Android asks. A newer APK installs over the old one and keeps your data.
+3. On the welcome screen, tap **„Einrichtung importieren“** (import setup) to take over everything from your PC (see [Moving your setup to another device](#moving-your-setup-to-another-device)), or set the app up from scratch.
+
+Differences to the desktop app:
+
+- **Moodle**: „Mit Hochschul-Login anmelden“ (sign in with the university login) opens the university's login page inside the app, like the official Moodle app. Username and password, or a security key, also work. Simplest of all: import the setup from your PC, which already contains the Moodle access.
+- **TUCaN**: the TUCaN assistant opens TUCaN inside the app. Sign in, open the timetable and tap „Export“ for each month you need, then „Fertig“ (done). The app imports the captured `.ics` files.
+- Data lives in the app's private storage. **Backup** and **export** open the Android share sheet, so you can save the file to Files, Drive, etc.
+- Calendar subscriptions and Moodle sync in the background while the app is open.
+
+### Where is my data?
+
+| System | Folder |
 |---|---|
 | Windows | `%APPDATA%\Study Organizer\data` |
 | macOS | `~/Library/Application Support/Study Organizer/data` |
 | Linux | `~/.config/Study Organizer/data` |
 
-In **Einstellungen → Daten & Backup** kannst du den Ordner öffnen und ein Backup erstellen (z. B. auf einen USB-Stick). API-Keys und Moodle-Zugang liegen verschlüsselt im Schlüsselbund des Systems und sind nicht im Backup.
+In **Einstellungen → Daten & Backup** (Settings → Data & backup) you can open the folder and create a backup (e.g. on a USB stick). API keys and Moodle access are stored encrypted in the system keychain and are not part of the backup.
 
-## KI einrichten (Beispiel Groq, kostenlos)
+## Moving your setup to another device
 
-1. Auf [console.groq.com/keys](https://console.groq.com/keys) anmelden und **Create API Key** klicken, Key kopieren.
-2. In der App: **Einstellungen → KI → Aktivieren**, Dienst **Groq**, Key einfügen, **Speichern**.
-3. **Testen** klicken. Fertig – in jedem Vorlesungsordner gibt es jetzt **Zusammenfassen** und **Fragen**.
+**Einstellungen → Geräte-Übertragung** (Settings → Device transfer) creates a `.studysetup` file that you can import on another device. A typical use: export on your PC, copy the file to your Android tablet, and import it there.
 
-Andere Anbieter funktionieren genauso; unter „Modell“ lädt **Modelle laden** die verfügbaren Modelle. Datenschutz: Bei einer Zusammenfassung werden die gewählten Notizen und Folientexte an den Anbieter gesendet. Mit Ollama bleibt alles auf deinem Rechner.
+Choose how much the file contains:
 
-## Moodle und Hochschulkalender
+| Scope | Contents | On import |
+|---|---|---|
+| „Einstellungen“ (settings) | Profile, settings, Moodle connection, AI, calendar subscriptions | Keeps the existing data on the target device |
+| „+ Studium“ (+ studies) | Additionally semesters, modules, folders, calendar (including TUCaN imports), tasks, chats, Moodle forums | Replaces the data on the target device |
+| „+ Notizen & Dateien“ (+ notes & files) | Additionally all notes, PDF annotations and files | Replaces the data on the target device |
 
-Kurzfassung (Details und Quellen in [docs/integrationen.md](docs/integrationen.md)):
+- **Credentials** (Moodle token, AI keys, private calendar feed URLs) are only included if you enable the corresponding option.
+- An optional **password** encrypts the file with AES-256-GCM (key derived with PBKDF2-SHA256, 250,000 iterations). Use one whenever the file contains credentials.
 
-- **Moodle verbinden**: Einstellungen → Moodle & Kalender-Abos → Adresse eingeben (z. B. `lernen.h-da.de`). Die App erkennt selbst, ob Benutzername/Passwort oder der Hochschul-Login (SSO) nötig ist. Danach Kurse den Modulen zuordnen und **Jetzt abgleichen**.
-- **Moodle-Kalender abonnieren**: In Moodle Kalender → „Import und Export“ → „Kalender exportieren“ → „Alle Termine“ → „Kalender-URL abfragen“ → URL in der App unter „Kalender abonnieren“ einfügen.
-- **my h_da**: Stundenplan → „Daten für Kalender (ics) exportieren“ → in der App **iCal-Datei importieren**.
+To import on the new device, either click **„Einrichtung importieren“** (import setup) on the onboarding welcome screen, or go to **Einstellungen → Geräte-Übertragung → „Datei wählen“** (choose file).
 
-## Entwicklung
+## Setting up AI (example: Groq, free)
 
-Voraussetzung: [Node.js 22](https://nodejs.org) und [Git](https://git-scm.com).
+1. Sign in at [console.groq.com/keys](https://console.groq.com/keys), click **Create API Key** and copy the key.
+2. In the app: **Einstellungen → KI → Aktivieren** (Settings → AI → Enable), choose the service **Groq**, paste the key, **Speichern** (save).
+3. Click **Testen** (test). Done: every lecture folder now offers **Zusammenfassen** (summarize) and **Fragen** (ask).
+
+Other providers work the same way; under „Modell“ (model), **Modelle laden** (load models) fetches the available models. Privacy: for a summary, the selected notes and slide texts are sent to the provider. With Ollama, everything stays on your computer.
+
+## Moodle and university calendars
+
+Short version (details and sources in [docs/integrations.md](docs/integrations.md)):
+
+- **Connect Moodle**: Einstellungen → Moodle & Kalender-Abos (Settings → Moodle & calendar subscriptions) → enter the address (e.g. `lernen.h-da.de`). The app detects whether a username/password or the university login (SSO) is required. Then map courses to modules and click **Jetzt abgleichen** (sync now).
+- **Subscribe to the Moodle calendar**: in Moodle, Calendar → „Import und Export“ → „Kalender exportieren“ → „Alle Termine“ → „Kalender-URL abfragen“ (Import and export → Export calendar → All events → Get calendar URL) → paste the URL in the app under „Kalender abonnieren“ (subscribe to calendar).
+- **my h_da**: timetable → „Daten für Kalender (ics) exportieren“ (export calendar data) → in the app, **iCal-Datei importieren** (import iCal file).
+
+## Development
+
+Prerequisites: [Node.js 22](https://nodejs.org) and [Git](https://git-scm.com).
 
 ```bash
-# 1. Projekt holen
+# 1. Get the project
 git clone https://github.com/souf1001/Study-Organizer.git
 cd Study-Organizer
 
-# 2. Abhängigkeiten installieren (lädt auch Electron herunter)
+# 2. Install dependencies (also downloads Electron)
 npm install
 
-# 3. App im Entwicklungsmodus starten (lädt bei Änderungen automatisch neu)
+# 3. Start the app in development mode (reloads automatically on changes)
 npm run dev
 ```
 
-Weitere Befehle:
+Other commands:
 
-| Befehl | Was er macht |
+| Command | What it does |
 |---|---|
-| `npm run lint` | Prüft den Code auf typische Fehler (ESLint) |
-| `npm run typecheck` | Prüft die TypeScript-Typen |
-| `npm test` | Unit-Tests (Vitest): Semester, Stundenplan, Speicher, iCal, Moodle |
-| `npm run build` | Baut die App nach `out/` |
-| `npm run test:e2e` | Startet die echte App und klickt die wichtigsten Abläufe durch (Playwright); unter Linux ohne Bildschirm: `xvfb-run -a npm run test:e2e` |
-| `npm run dist:win` / `dist:mac` / `dist:linux` | Baut die Installationsdatei für das jeweilige System nach `release/` |
+| `npm run lint` | Checks the code for common mistakes (ESLint) |
+| `npm run typecheck` | Checks the TypeScript types |
+| `npm test` | Unit tests (Vitest): semesters, timetable, storage, iCal, Moodle, setup transfer |
+| `npm run build` | Builds the app into `out/` |
+| `npm run test:e2e` | Launches the real app and clicks through the main flows (Playwright); on Linux without a display: `xvfb-run -a npm run test:e2e` |
+| `npm run dist:win` / `dist:mac` / `dist:linux` | Builds the installer for the given system into `release/` |
+| `npm run build:android` | Builds the web app and copies it into the Android project (`npx cap sync android`) |
+| `npm run dist:android` | Additionally builds the signed APK into `release/` (needs JDK 17+ and the Android SDK) |
 
-**Neue Version veröffentlichen:** Version in `package.json` erhöhen, committen, dann
+**Publishing a new version:** bump the version in `package.json`, commit, then
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-GitHub baut daraufhin `.exe`, `.dmg` und `.AppImage` und legt ein Release an.
+GitHub then builds the `.exe`, `.dmg` and `.AppImage` and creates a release.
 
-### Aufbau des Codes
+### Code structure
 
 ```
 src/
-  shared/     Datentypen und reine Logik (Semester, Stundenplan, KI-Anbieter) – ohne Abhängigkeiten
-  backend/    Speicher (JSON + Dateien), KI-Aufrufe, iCal, Moodle – läuft in Node.js
-  main/       Electron-Hauptprozess: Fenster, sichere IPC, Datei-Protokoll, Schlüsselbund, Moodle-SSO
-  preload/    Brücke zur Oberfläche (window.studyApi, siehe shared/api.ts)
-  renderer/   Oberfläche mit React
-    src/lib/     Datenzugriff, Arbeitsfläche (Split-Screen), Aktionen, KI-Kontext
-    src/shell/   Seitenleiste, Bereiche, Befehlspalette
-    src/views/   Ansichten: Heute, Kalender, Aufgaben, Modul, Ordner, Notiz, Dateien, Chat, Einstellungen
-    src/ui/      Grundbausteine: Buttons, Felder, Dialoge, Menüs
-tests/        Unit-Tests und End-to-End-Tests
+  shared/     Data types and pure logic (semesters, timetable, AI providers, setup files), no dependencies
+  backend/    Storage (JSON + files), AI calls, iCal, Moodle, setup transfer; runs in Node.js
+  main/       Electron main process: windows, secure IPC, file protocol, keychain, Moodle SSO, TUCaN wizard
+  preload/    Bridge to the UI (window.studyApi, see shared/api.ts)
+  renderer/   React UI
+    src/lib/     Data access, workspace (split screen), actions, AI context
+    src/shell/   Sidebar, panes, command palette
+    src/views/   Views: today, calendar, tasks, module, folder, note, files, chat, settings
+    src/ui/      Building blocks: buttons, fields, dialogs, menus
+tests/        Unit tests and end-to-end tests
 ```
 
-Grundprinzip: Die Oberfläche spricht nur über die Schnittstelle in `src/shared/api.ts` mit den Daten. Die Desktop-App setzt sie per IPC um, die Web-Version (Branch `webapp`) per HTTP – die Oberfläche bleibt dieselbe.
+Core principle: the UI talks to the data only through the interface in `src/shared/api.ts`. The desktop app implements it via IPC, the web version (branch `webapp`) via HTTP; the UI stays the same. See [docs/architecture.md](docs/architecture.md) for details.
 
-### Sicherheit
+### Security
 
-- Oberfläche in einer Sandbox ohne Node.js-Zugriff (`contextIsolation`, `sandbox`), strenge Content-Security-Policy.
-- IPC nimmt nur Anfragen aus der eigenen Oberfläche an; IDs und Dateinamen werden gegen Pfad-Tricks geprüft.
-- KI-Antworten werden vor der Anzeige bereinigt (DOMPurify).
-- API-Keys, Moodle-Token und Kalender-Abo-Adressen werden mit dem Schlüsselbund des Systems verschlüsselt (Electron `safeStorage`).
-- Links öffnen immer im Browser, nie im App-Fenster.
+- The UI runs in a sandbox without Node.js access (`contextIsolation`, `sandbox`) with a strict Content Security Policy.
+- IPC only accepts requests from the app's own UI; IDs and file names are checked against path tricks.
+- AI responses are sanitized before display (DOMPurify).
+- API keys, Moodle tokens and calendar subscription addresses are encrypted with the system keychain (Electron `safeStorage`) and bound to the address they belong to.
+- Links always open in the browser, never in the app window.
 
-## Lizenz
+## License
 
 MIT

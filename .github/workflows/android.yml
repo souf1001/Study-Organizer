@@ -1,0 +1,45 @@
+# Builds the Android APK.
+# - Every push to mobile-android: the APK is available under "Actions → run → Artifacts".
+# - A tag like v0.3.0 additionally attaches the APK to the GitHub release of that tag.
+name: Android APK
+
+on:
+  push:
+    branches: [mobile-android]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - name: Build web app and copy it into the Android project
+        run: npm run build:android
+      - name: Build signed release APK
+        run: node scripts/build-android.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Study-Organizer-Android
+          path: release/*.apk
+          if-no-files-found: error
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.apk
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}

@@ -100,7 +100,9 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
     expect(stripModuleSuffix('20-00-0012-tut')).toBe('20-00-0012')
     expect(stripModuleSuffix('18-kn-2010-vl')).toBe('18-kn-2010')
 
-    const info1 = extractCourseInfo('20-00-0015-iv Functional and Object-Oriented Programming Concepts')
+    const info1 = extractCourseInfo(
+      '20-00-0015-iv Functional and Object-Oriented Programming Concepts',
+    )
     expect(info1).not.toBeNull()
     expect(info1?.code).toBe('20-00-0015')
     expect(info1?.name).toBe('Functional and Object-Oriented Programming Concepts')
@@ -403,7 +405,7 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
       }),
     ]
 
-    // Event mit reinem Titel wie vom TUCaN-Export erzeugt:
+    // Event with a plain title as produced by the TUCaN export:
     const digiEvent = {
       uid: 'tucan-digi-1',
       title: 'Digitaltechnik',
@@ -482,8 +484,16 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
       })
 
       // Add modules with full copy-pasted name
-      const modDigi = newModule(semId, { id: 'mod-digi', name: '20-00-0900 Digitaltechnik', code: 'DIGI' })
-      const modPP = newModule(semId, { id: 'mod-pp', name: '20-00-1152 Parallele Programmierung', code: 'PP' })
+      const modDigi = newModule(semId, {
+        id: 'mod-digi',
+        name: '20-00-0900 Digitaltechnik',
+        code: 'DIGI',
+      })
+      const modPP = newModule(semId, {
+        id: 'mod-pp',
+        name: '20-00-1152 Parallele Programmierung',
+        code: 'PP',
+      })
       store.put('modules', modDigi)
       store.put('modules', modPP)
 
@@ -542,10 +552,10 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
       }
       const service = createService(store, secrets)
 
-      // Noch nicht zugeordnet
+      // Not assigned yet
       expect(store.get().events.find((e) => e.id === 'ev-moses-1')?.moduleId).toBeNull()
 
-      // User legt jetzt das Modul an mit TUCaN-Kopiernamen
+      // User now creates the module with the name copied from TUCaN
       service.put(
         'modules',
         newModule(semId, {
@@ -555,7 +565,7 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
         }),
       )
 
-      // Sofort automatisch zugeordnet ohne Neustart!
+      // Assigned automatically right away, without a restart!
       const after = store.get().events.find((e) => e.id === 'ev-moses-1')
       expect(after?.moduleId).toBe('mod-moses')
     } finally {
@@ -602,7 +612,7 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
       }
       const service = createService(store, secrets)
 
-      // Modul in semB anlegen
+      // Create a module in semB
       store.put(
         'modules',
         newModule(semB, {
@@ -612,7 +622,7 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
         }),
       )
 
-      // Umschalten des aktiven Semesters auf semB via service.update
+      // Switch the active semester to semB via service.update
       service.update({ activeSemesterId: semB })
 
       const after = store.get().events.find((e) => e.id === 'ev-calc-1')
@@ -622,4 +632,3 @@ describe('TUCaN Calendar Module Auto-Assignment (Non-AI Rule-Based)', () => {
     }
   })
 })
-

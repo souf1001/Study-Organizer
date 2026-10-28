@@ -1,4 +1,4 @@
-// Einheitlicher Einstieg für alle KI-Anbieter.
+// Single entry point for all AI providers.
 import { getProvider } from '../shared/ai-providers'
 import type { AiRequest, Settings } from '../shared/types'
 import { describeAnthropicError, listAnthropicModels, streamAnthropic } from './ai-anthropic'
@@ -6,7 +6,11 @@ import { describeOpenAiError, listOpenAiModels, streamOpenAi } from './ai-openai
 
 type AiSettings = Settings['ai']
 
-function target(settings: AiSettings): { api: 'openai' | 'anthropic'; baseUrl: string; model: string } {
+function target(settings: AiSettings): {
+  api: 'openai' | 'anthropic'
+  baseUrl: string
+  model: string
+} {
   const provider = getProvider(settings.provider)
   const baseUrl = (provider.customBaseUrl && settings.baseUrl.trim()) || provider.baseUrl
   const model = settings.model.trim() || provider.defaultModel
@@ -30,22 +34,27 @@ export async function streamChat(
   fetchImpl?: typeof fetch,
 ): Promise<string> {
   if (!settings.enabled) throw new Error('KI ist in den Einstellungen deaktiviert.')
-  const t = target(settings)
+  const { api, baseUrl, model } = target(settings)
   try {
-    return t.api === 'anthropic'
-      ? await streamAnthropic(apiKey, t.model, request, onText, signal, fetchImpl)
-      : await streamOpenAi(t.baseUrl, apiKey, t.model, request, onText, signal, fetchImpl)
+    return api === 'anthropic'
+      ? await streamAnthropic(apiKey, model, request, onText, signal, fetchImpl)
+      : await streamOpenAi(baseUrl, apiKey, model, request, onText, signal, fetchImpl)
   } catch (error) {
     throw new Error(describeAiError(error), { cause: error })
   }
 }
 
-export async function listModels(settings: AiSettings, apiKey: string, fetchImpl?: typeof fetch): Promise<string[]> {
-  const t = target({ ...settings, model: settings.model || 'placeholder' })
+export async function listModels(
+  settings: AiSettings,
+  apiKey: string,
+  fetchImpl?: typeof fetch,
+): Promise<string[]> {
+  // Listing models must not fail just because no model is selected yet
+  const { api, baseUrl } = target({ ...settings, model: settings.model || 'placeholder' })
   try {
-    return t.api === 'anthropic'
+    return api === 'anthropic'
       ? await listAnthropicModels(apiKey, fetchImpl)
-      : await listOpenAiModels(t.baseUrl, apiKey, fetchImpl)
+      : await listOpenAiModels(baseUrl, apiKey, fetchImpl)
   } catch (error) {
     throw new Error(describeAiError(error), { cause: error })
   }

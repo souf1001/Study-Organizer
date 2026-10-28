@@ -1,14 +1,43 @@
-// Moodle-Anbindung über die offiziellen Web-Services (dieselben, die auch die Moodle-App nutzt).
-// Holt Abgaben (als Aufgaben), weitere Termine (Tests, Fristen) und optional Kursdateien.
-import type { Module, MoodleCourse, MoodleDiscussion, MoodlePost, MoodleSiteInfo, MoodleSyncResult } from '../shared/types'
+// Moodle integration via the official web services (the same ones the Moodle mobile app uses).
+// Fetches assignments (as tasks), other calendar events (quizzes, deadlines), forums and optionally course files.
+import type {
+  MoodleCourse,
+  MoodleDiscussion,
+  MoodlePost,
+  MoodleSiteInfo,
+  MoodleSyncResult,
+} from '../shared/types'
 import { newFolder, newTask, newId } from '../shared/defaults'
 import { classifyEvent } from './ics'
-import { markAsDownloaded } from './files'
 import { readLimited } from './http'
 import type { ReserveSpace } from './service'
-import type { Store } from './store'
+import type { DataStore } from './data-store'
+import { matchCourseToModules } from '../shared/course-matching'
+
+export { matchCourseToModules }
 
 type Params = Record<string, unknown>
+
+const ANNOUNCEMENT_PATTERN = /ankündigung|nachricht|news|announcement/i
+
+const toIso = (unix: number): string => new Date(unix * 1000).toISOString()
+const nowUnix = (): number => Math.floor(Date.now() / 1000)
+
+/** Truncates an id-like value to a positive integer, or returns null if that is not possible. */
+function toPositiveId(value: unknown): number | null {
+  const id = Math.trunc(Number(value))
+  return id > 0 ? id : null
+}
+
+/** Moodle web services return lists either directly or wrapped in an object under `key`. */
+function unwrapList<T>(response: unknown, key: string): T[] | null {
+  if (Array.isArray(response)) return response as T[]
+  if (response && typeof response === 'object') {
+    const wrapped = (response as Record<string, unknown>)[key]
+    if (Array.isArray(wrapped)) return wrapped as T[]
+  }
+  return null
+}
 
 function encodeParams(params: Params, prefix = '', out = new URLSearchParams()): URLSearchParams {
   for (const [key, value] of Object.entries(params)) {
@@ -39,7 +68,7 @@ export function normalizeMoodleUrl(input: string): string {
   return `${url.origin}${path}`
 }
 
-/** Öffentliche Infos einer Moodle-Instanz (ohne Anmeldung): Name, Adresse und Login-Art */
+/** Public info about a Moodle instance (no login required): name, address and login type */
 export async function moodleSiteInfo(
   input: string,
   fetchImpl: typeof fetch = fetch,
@@ -70,7 +99,7 @@ export async function moodleSiteInfo(
     throw new Error(
       'Diese Moodle-Instanz erlaubt keinen App-Zugang. Nutze stattdessen den Kalender-Export (iCal).',
     )
-  // typeoflogin: 1 = Login-Formular, 2/3 = Hochschul-Login im Browser (SSO)
+  // typeoflogin: 1 = login form, 2/3 = university login in the browser (SSO)
   return {
     siteName: result.data.sitename,
     url: result.data.wwwroot.replace(/\/$/, ''),
@@ -95,6 +124,52 @@ interface MoodleSection {
   }[]
 }
 
+export interface MoodleRawDiscussion {
+  id: number
+  discussion?: number
+  firstpost?: number
+  name: string
+  forumid?: number
+  course?: number
+  subject?: string
+  message?: string
+  userfullname?: string
+  firstpostfullname?: string
+  firstuserfullname?: string
+  userpictureurl?: string
+  firstpostuserimageurl?: string
+  firstuserimageurl?: string
+  created: number
+  timecreated?: number
+  modified?: number
+  timemodified?: number
+  numreplies?: number
+  pinned?: boolean
+}
+
+/** Superset of the post fields returned by the current and the legacy post endpoints */
+interface MoodleRawPost {
+  id: number
+  discussion?: number
+  discussionid?: number
+  parent?: number
+  parentid?: number
+  subject?: string
+  message?: string
+  author?: { fullname?: string; urls?: { profileimage?: string } }
+  userfullname?: string
+  userpictureurl?: string
+  created?: number
+  timecreated?: number
+  capabilities?: { reply?: boolean }
+  canreply?: boolean
+}
+
+/** Oldest post (the root post) first */
+function sortPostsChronologically(posts: MoodlePost[]): MoodlePost[] {
+  return posts.sort((a, b) => a.id - b.id || a.timeCreated.localeCompare(b.timeCreated))
+}
+
 const MAX_FILE_BYTES = 250 * 1024 * 1024
 
 export class MoodleClient {
@@ -104,7 +179,7 @@ export class MoodleClient {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  /** Tauscht Benutzername/Passwort gegen einen Token (klappt nicht bei reinem SSO-Login) */
+  /** Exchanges username/password for a token (does not work for SSO-only logins) */
   static async login(
     site: string,
     username: string,
@@ -140,13 +215,16 @@ export class MoodleClient {
       signal: AbortSignal.timeout(30_000),
     })
     if (!response.ok) throw new Error(`Moodle antwortet mit HTTP ${response.status}.`)
-    const data = (await response.json()) as T & { exception?: string; message?: string; errorcode?: string; error?: string }
-    if (data && typeof data === 'object') {
-      const errObj = data as Record<string, unknown>
-      if (errObj.exception || errObj.errorcode || errObj.error) {
-        const msg = String(errObj.message || errObj.error || errObj.exception || errObj.errorcode)
-        throw new Error(`Moodle: ${msg}`)
-      }
+    const data = (await response.json()) as T & {
+      exception?: string
+      message?: string
+      errorcode?: string
+      error?: string
+    }
+    if (data && typeof data === 'object' && (data.exception || data.errorcode || data.error)) {
+      throw new Error(
+        `Moodle: ${String(data.message || data.error || data.exception || data.errorcode)}`,
+      )
     }
     return data
   }
@@ -172,7 +250,7 @@ export class MoodleClient {
     return this.call('mod_assign_get_assignments', { courseids })
   }
 
-  /** Alle Kalendertermine der Kurse (Tests, Fristen, Kurstermine) im Zeitraum */
+  /** All calendar events of the courses (quizzes, deadlines, course events) within the time range */
   calendarEvents(
     courseids: number[],
     from: number,
@@ -203,73 +281,44 @@ export class MoodleClient {
     return this.call('core_course_get_contents', { courseid })
   }
 
-  forums(courseids?: number[]): Promise<{
-    id: number
-    course: number
-    type: string
-    name: string
-    intro?: string
-    numdiscussions?: number
-  }[]> {
-    return this.call('mod_forum_get_forums_by_courses', courseids && courseids.length > 0 ? { courseids } : {})
+  forums(courseids?: number[]): Promise<
+    {
+      id: number
+      course: number
+      type: string
+      name: string
+      intro?: string
+      numdiscussions?: number
+    }[]
+  > {
+    return this.call(
+      'mod_forum_get_forums_by_courses',
+      courseids && courseids.length > 0 ? { courseids } : {},
+    )
   }
 
-  async discussions(forumid: number): Promise<{
-    id: number
-    discussion?: number
-    firstpost?: number
-    name: string
-    forumid?: number
-    course?: number
-    subject?: string
-    message?: string
-    userfullname?: string
-    firstpostfullname?: string
-    firstuserfullname?: string
-    userpictureurl?: string
-    firstpostuserimageurl?: string
-    firstuserimageurl?: string
-    created: number
-    timecreated?: number
-    modified?: number
-    timemodified?: number
-    numreplies?: number
-    pinned?: boolean
-  }[]> {
-    const fId = Math.trunc(Number(forumid))
-    if (!fId || isNaN(fId) || fId <= 0) return []
+  async discussions(forumid: number): Promise<MoodleRawDiscussion[]> {
+    const forumId = toPositiveId(forumid)
+    if (!forumId) return []
 
-    // 1. Versuche mod_forum_get_forum_discussions mit forumids-Array (offizielle Moodle API-Spezifikation)
-    try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumids: [fId] })
-      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length > 0) return list
-    } catch {
-      // Weiter mit nächstem Versuch
+    // Moodle versions differ in which endpoint/parameters they accept, so try them in turn:
+    // the documented `forumids` array, a plain `forumid`, and finally the paginated endpoint.
+    const attempts: [wsfunction: string, params: Params][] = [
+      ['mod_forum_get_forum_discussions', { forumids: [forumId] }],
+      ['mod_forum_get_forum_discussions', { forumid: forumId }],
+      ['mod_forum_get_forum_discussions_paginated', { forumid: forumId, page: 0, perpage: 50 }],
+    ]
+    for (const [wsfunction, params] of attempts) {
+      try {
+        const list = unwrapList<MoodleRawDiscussion>(
+          await this.call<unknown>(wsfunction, params),
+          'discussions',
+        )
+        if (list && list.length > 0) return list
+      } catch {
+        // Not supported by this Moodle version; try the next variant
+      }
     }
-
-    // 1b. Versuche mod_forum_get_forum_discussions mit nur { forumid } für bestimmte Moodle-Varianten
-    try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions', { forumid: fId })
-      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length > 0) return list
-    } catch {
-      // Weiter mit paginated
-    }
-
-    // 2. Versuche mod_forum_get_forum_discussions_paginated ohne unerlaubte Sortier-Strings
-    try {
-      const res = await this.call<any>('mod_forum_get_forum_discussions_paginated', {
-        forumid: fId,
-        page: 0,
-        perpage: 50,
-      })
-      const list = Array.isArray(res) ? res : Array.isArray(res?.discussions) ? res.discussions : null
-      if (list && list.length > 0) return list
-    } catch {
-      // Keine Beiträge oder nicht unterstützt
-    }
-
     return []
   }
 
@@ -282,109 +331,79 @@ export class MoodleClient {
         return { id: res.post.id, discussion: res.post.discussion }
       }
     } catch {
-      // Ignoriere, falls nicht unterstützt
+      // Not supported by this Moodle version
     }
     return null
   }
 
   async discussionPosts(discussionid: number): Promise<MoodlePost[]> {
-    const discIdNum = Math.trunc(Number(discussionid))
-    if (!discIdNum || isNaN(discIdNum) || discIdNum <= 0) return []
+    const discussionId = toPositiveId(discussionid)
+    if (!discussionId) return []
     try {
-      const res = await this.call<{
-        posts?: {
-          id: number
-          discussion?: number
-          discussionid?: number
-          parent?: number
-          parentid?: number
-          subject?: string
-          message?: string
-          author?: { fullname?: string; urls?: { profileimage?: string } }
-          userfullname?: string
-          userpictureurl?: string
-          created?: number
-          timecreated?: number
-          capabilities?: { reply?: boolean }
-          canreply?: boolean
-        }[]
-      }>('mod_forum_get_discussion_posts', {
-        discussionid: discIdNum,
+      const res = await this.call<{ posts?: MoodleRawPost[] }>('mod_forum_get_discussion_posts', {
+        discussionid: discussionId,
       })
       if (res && Array.isArray(res.posts) && res.posts.length > 0) {
-        const mapped = res.posts.map((p) => ({
-          id: p.id,
-          discussionId: p.discussion ?? p.discussionid ?? discIdNum,
-          parentId: p.parent ?? p.parentid ?? 0,
-          subject: p.subject || '',
-          message: p.message || '',
-          userFullName: p.author?.fullname ?? p.userfullname ?? 'Moodle-Nutzer',
-          userPictureUrl: p.author?.urls?.profileimage ?? p.userpictureurl,
-          timeCreated: toIso(p.created ?? p.timecreated ?? Math.floor(Date.now() / 1000)),
-          canReply: p.capabilities?.reply ?? p.canreply,
-        }))
-        // Chronologisch sortieren: der älteste Beitrag (Root-Post) steht immer an Index 0
-        mapped.sort((a, b) => a.id - b.id || a.timeCreated.localeCompare(b.timeCreated))
-        return mapped
+        return sortPostsChronologically(
+          res.posts.map((p) => ({
+            id: p.id,
+            discussionId: p.discussion ?? p.discussionid ?? discussionId,
+            parentId: p.parent ?? p.parentid ?? 0,
+            subject: p.subject || '',
+            message: p.message || '',
+            userFullName: p.author?.fullname ?? p.userfullname ?? 'Moodle-Nutzer',
+            userPictureUrl: p.author?.urls?.profileimage ?? p.userpictureurl,
+            timeCreated: toIso(p.created ?? p.timecreated ?? nowUnix()),
+            canReply: p.capabilities?.reply ?? p.canreply,
+          })),
+        )
       }
     } catch {
-      // Fallback zu mod_forum_get_forum_discussion_posts
+      // Fall back to the legacy endpoint below
     }
 
     try {
-      const legacyRes = await this.call<{
-        posts?: {
-          id: number
-          discussionid?: number
-          discussion?: number
-          parentid?: number
-          parent?: number
-          subject?: string
-          message?: string
-          author?: { fullname?: string; urls?: { profileimage?: string } }
-          userfullname?: string
-          userpictureurl?: string
-          timecreated?: number
-          created?: number
-          canreply?: boolean
-        }[]
-      }>('mod_forum_get_forum_discussion_posts', {
-        discussionid: discIdNum,
-      })
+      const legacyRes = await this.call<{ posts?: MoodleRawPost[] }>(
+        'mod_forum_get_forum_discussion_posts',
+        {
+          discussionid: discussionId,
+        },
+      )
       if (legacyRes && Array.isArray(legacyRes.posts) && legacyRes.posts.length > 0) {
-        const mapped = legacyRes.posts.map((p) => ({
-          id: p.id,
-          discussionId: p.discussionid ?? p.discussion ?? discIdNum,
-          parentId: p.parentid ?? p.parent ?? 0,
-          subject: p.subject || '',
-          message: p.message || '',
-          userFullName: p.author?.fullname ?? p.userfullname ?? 'Moodle-Nutzer',
-          userPictureUrl: p.author?.urls?.profileimage ?? p.userpictureurl,
-          timeCreated: toIso(p.timecreated ?? p.created ?? Math.floor(Date.now() / 1000)),
-          canReply: p.canreply,
-        }))
-        mapped.sort((a, b) => a.id - b.id || a.timeCreated.localeCompare(b.timeCreated))
-        return mapped
+        return sortPostsChronologically(
+          legacyRes.posts.map((p) => ({
+            id: p.id,
+            discussionId: p.discussionid ?? p.discussion ?? discussionId,
+            parentId: p.parentid ?? p.parent ?? 0,
+            subject: p.subject || '',
+            message: p.message || '',
+            userFullName: p.author?.fullname ?? p.userfullname ?? 'Moodle-Nutzer',
+            userPictureUrl: p.author?.urls?.profileimage ?? p.userpictureurl,
+            timeCreated: toIso(p.timecreated ?? p.created ?? nowUnix()),
+            canReply: p.canreply,
+          })),
+        )
       }
     } catch {
-      // Weiter mit Post-ID Auflösung
+      // Fall through to resolving the id as a post id
     }
 
+    // The id may actually be a post id: resolve its discussion and retry with that
     try {
-      const resolved = await this.getDiscussionPost(discIdNum)
-      if (resolved && resolved.discussion && resolved.discussion !== discIdNum) {
+      const resolved = await this.getDiscussionPost(discussionId)
+      if (resolved?.discussion && resolved.discussion !== discussionId) {
         return await this.discussionPosts(resolved.discussion)
       }
     } catch {
-      // Ignorieren
+      // Ignore
     }
 
     return []
   }
 
   async replyPost(postid: number, subject: string, message: string): Promise<{ postid: number }> {
-    const id = Math.trunc(Number(postid))
-    if (!id || isNaN(id) || id <= 0) throw new Error('Ungültige Post-ID.')
+    const id = toPositiveId(postid)
+    if (!id) throw new Error('Ungültige Post-ID.')
     if (!message || !message.trim()) throw new Error('Nachricht darf nicht leer sein.')
     return this.call<{ postid: number }>('mod_forum_add_discussion_post', {
       postid: id,
@@ -429,73 +448,9 @@ export async function connectMoodle(
   return { site, token, siteName: info.sitename, userId: info.userid, courses }
 }
 
-const toIso = (unix: number): string => new Date(unix * 1000).toISOString()
-
-export function matchCourseToModules(
-  course: { id: number; fullname: string; shortname?: string },
-  modules: Module[],
-): Module | null {
-  if (modules.length === 0) return null
-  const clean = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/\b(?:ws|wise|sose|ss)\s*\d{2}(?:\/\d{2})?\b/gi, '')
-      .replace(/\b(?:vorlesung|übung|uebung|praktikum|integrierte veranstaltung|vl|ue|pr|iv)\b/gi, '')
-      .replace(/[^a-z0-9äöüß]+/gi, ' ')
-      .trim()
-
-  const cFullNorm = clean(course.fullname)
-  const cShortNorm = clean(course.shortname || '')
-
-  // 1. Exakter Match nach Modul-Code
-  for (const m of modules) {
-    if (m.code && m.code.trim().length >= 2) {
-      const codeClean = clean(m.code)
-      if (
-        (codeClean && cShortNorm === codeClean) ||
-        (codeClean && cFullNorm.includes(codeClean)) ||
-        (course.shortname && course.shortname.toLowerCase().includes(m.code.trim().toLowerCase()))
-      ) {
-        return m
-      }
-    }
-  }
-
-  // 2. Exakter Match nach Modul-Name
-  for (const m of modules) {
-    const mNameClean = clean(m.name)
-    if (mNameClean && (cFullNorm === mNameClean || cShortNorm === mNameClean)) {
-      return m
-    }
-  }
-
-  // 3. Substring-Match: Modulname ist signifikant im Kursnamen enthalten (oder umgekehrt)
-  let bestMatch: Module | null = null
-  let bestMatchLength = 0
-
-  for (const m of modules) {
-    const mNameClean = clean(m.name)
-    if (mNameClean.length >= 4) {
-      if (cFullNorm.includes(mNameClean) || (cShortNorm && cShortNorm.includes(mNameClean))) {
-        if (mNameClean.length > bestMatchLength) {
-          bestMatch = m
-          bestMatchLength = mNameClean.length
-        }
-      } else if (mNameClean.length >= 6 && cFullNorm.length >= 6 && mNameClean.includes(cFullNorm)) {
-        if (cFullNorm.length > bestMatchLength) {
-          bestMatch = m
-          bestMatchLength = cFullNorm.length
-        }
-      }
-    }
-  }
-
-  return bestMatch
-}
-
-/** Holt Abgaben, Termine und (optional) Dateien der zugeordneten Kurse */
+/** Fetches assignments, events, forums and (optionally) files of the mapped courses */
 export async function syncMoodle(
-  store: Store,
+  store: DataStore,
   client: MoodleClient,
   reserveSpace: ReserveSpace = async () => () => undefined,
 ): Promise<MoodleSyncResult> {
@@ -503,7 +458,7 @@ export async function syncMoodle(
   const db = store.get()
   const courseMap: Record<string, string> = { ...(db.settings.moodle.courseMap ?? {}) }
 
-  // Automatische Kurszuordnung: Falls Kurse noch nicht zugeordnet sind, versuche sie anhand des Modulnamens oder -codes zuzuordnen
+  // Auto-map courses that are not mapped yet, based on module name or code
   if (db.settings.moodle.userId) {
     try {
       const userCourses = await client.courses(db.settings.moodle.userId)
@@ -519,25 +474,21 @@ export async function syncMoodle(
         }
       }
       if (courseMapUpdated) {
+        const { settings } = store.get()
+        const mergedCourseMap = { ...courseMap, ...settings.moodle.courseMap }
         store.update({
-          settings: {
-            ...db.settings,
-            moodle: {
-              ...db.settings.moodle,
-              courseMap,
-            },
-          },
+          settings: { ...settings, moodle: { ...settings.moodle, courseMap: mergedCourseMap } },
         })
       }
     } catch {
-      // Ignoriere Netzwerk-/Berechtigungsfehler beim Laden der Kursliste
+      // Network/permission errors while loading the course list are not fatal
     }
   }
 
   const moduleFor = (courseId: number | string | undefined): string | null => {
     if (courseId === undefined || courseId === null) return null
-    const targetModId = courseMap[courseId] ?? courseMap[String(courseId)]
-    return targetModId && db.modules.some((m) => m.id === targetModId) ? targetModId : null
+    const moduleId = courseMap[courseId] ?? courseMap[String(courseId)]
+    return moduleId && db.modules.some((m) => m.id === moduleId) ? moduleId : null
   }
 
   const courseIds = Object.keys(courseMap)
@@ -549,7 +500,7 @@ export async function syncMoodle(
     return result
   }
 
-  // Abgaben → Aufgaben (Erledigt-Status bleibt erhalten)
+  // Assignments become tasks (an existing task keeps its done state)
   try {
     const { courses } = await client.assignments(courseIds)
     for (const course of courses) {
@@ -577,11 +528,13 @@ export async function syncMoodle(
     result.errors.push(`Abgaben: ${(error as Error).message}`)
   }
 
-  // Weitere Termine (Tests, Foren, Kurstermine) → Kalender. Abgaben kommen schon als Aufgaben.
+  // Other events (quizzes, forums, course events) go to the calendar; assignments are already tasks
   try {
     const now = Math.floor(Date.now() / 1000)
     const { events } = await client.calendarEvents(courseIds, now - 30 * 86_400, now + 365 * 86_400)
-    const existingMoodleEvents = db.events.filter((e) => Boolean(e.externalId?.startsWith('moodle:event:')))
+    const existingMoodleEvents = db.events.filter((e) =>
+      Boolean(e.externalId?.startsWith('moodle:event:')),
+    )
     const records = events
       .filter((e) => e.modulename !== 'assign')
       .map((e) => {
@@ -594,13 +547,14 @@ export async function syncMoodle(
             ? exact.moduleId
             : moduleFor(e.courseid)
 
-        // Prüfe, ob die Serie dieses Termins bereits manuell einem Modul zugewiesen wurde
+        // Keep a module the user already assigned manually to another event of the same series
         if (!exact && existingMoodleEvents.length > 0) {
-          const eTitleNorm = e.name.trim().toLowerCase()
-          const seriesMatch = existingMoodleEvents.find((ex) => {
-            if (!ex.moduleId || !db.modules.some((m) => m.id === ex.moduleId)) return false
-            return ex.title.trim().toLowerCase() === eTitleNorm
-          })
+          const normalizedTitle = e.name.trim().toLowerCase()
+          const seriesMatch = existingMoodleEvents.find(
+            (ex) =>
+              Boolean(ex.moduleId && db.modules.some((m) => m.id === ex.moduleId)) &&
+              ex.title.trim().toLowerCase() === normalizedTitle,
+          )
           if (seriesMatch?.moduleId) {
             targetModuleId = seriesMatch.moduleId
           }
@@ -629,14 +583,20 @@ export async function syncMoodle(
   if (db.settings.moodle.syncFiles) {
     for (const courseId of courseIds) {
       try {
-        result.files += await syncCourseFiles(store, client, courseId, moduleFor(courseId)!, reserveSpace)
+        result.files += await syncCourseFiles(
+          store,
+          client,
+          courseId,
+          moduleFor(courseId)!,
+          reserveSpace,
+        )
       } catch (error) {
         result.errors.push(`Dateien: ${(error as Error).message}`)
       }
     }
   }
 
-  // Foren & Ankündigungen
+  // Forums & announcements
   try {
     interface DiscoveredForum {
       id: number
@@ -645,9 +605,16 @@ export async function syncMoodle(
       type: string
       name: string
     }
+    type RawForum = Awaited<ReturnType<MoodleClient['forums']>>[number] & { cmid?: number }
     const forums: DiscoveredForum[] = []
 
-    const addForum = (id: unknown, course: unknown, type?: string, name?: string, cmid?: unknown) => {
+    const addForum = (
+      id: unknown,
+      course: unknown,
+      type?: string,
+      name?: string,
+      cmid?: unknown,
+    ) => {
       const numId = Number(id)
       const numCourse = Number(course)
       const numCmid = cmid !== undefined && cmid !== null ? Number(cmid) : undefined
@@ -662,70 +629,66 @@ export async function syncMoodle(
         })
       }
     }
+    const addRawForum = (f: RawForum | null | undefined, fallbackCourse?: number) =>
+      addForum(f?.id, f?.course ?? fallbackCourse, f?.type, f?.name, f?.cmid)
+    const forumList = (response: unknown) =>
+      unwrapList<RawForum | null | undefined>(response, 'forums') ?? []
 
-    // 1. Versuch: mod_forum_get_forums_by_courses für alle Kurse im Sammelaufruf
+    // 1. One bulk call for all mapped courses
     try {
-      const raw = await client.forums(courseIds)
-      const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.forums) ? (raw as any).forums : []
-      for (const f of list) {
-        addForum(f?.id, f?.course, f?.type, f?.name, (f as any)?.cmid)
-      }
+      for (const f of forumList(await client.forums(courseIds))) addRawForum(f)
     } catch {
-      // Sammelaufruf mit Kursliste fehlgeschlagen
+      // Bulk call with course filter failed
     }
 
-    // 1b. Versuch: Falls noch keine Foren gefunden wurden, versuche Sammelaufruf ohne Kursfilter
+    // 1b. If nothing was found, try the bulk call without a course filter
     if (forums.length === 0) {
       try {
-        const rawAll = await client.forums()
-        const list = Array.isArray(rawAll) ? rawAll : Array.isArray((rawAll as any)?.forums) ? (rawAll as any).forums : []
-        for (const f of list) {
-          const cid = Number(f?.course)
-          if (courseIds.includes(cid)) {
-            addForum(f?.id, f?.course, f?.type, f?.name, (f as any)?.cmid)
-          }
+        for (const f of forumList(await client.forums())) {
+          if (courseIds.includes(Number(f?.course))) addRawForum(f)
         }
       } catch {
-        // Sammelaufruf ohne Filter fehlgeschlagen
+        // Unfiltered bulk call failed
       }
     }
 
-    // 2. Versuch: Für nicht abgedeckte Kurse einzeln aufrufen
     const coveredCourses = new Set(forums.map((f) => f.course))
     for (const courseId of courseIds) {
+      // 2. Query courses not covered yet one by one
       if (!coveredCourses.has(courseId)) {
         try {
-          const raw = await client.forums([courseId])
-          const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.forums) ? (raw as any).forums : []
+          const list = forumList(await client.forums([courseId]))
           if (list.length > 0) {
-            for (const f of list) {
-              addForum(f?.id, f?.course ?? courseId, f?.type, f?.name, (f as any)?.cmid)
-            }
+            for (const f of list) addRawForum(f, courseId)
             coveredCourses.add(courseId)
           }
         } catch {
-          // Einzelforenaufruf für diesen Kurs fehlgeschlagen
+          // Per-course forum call failed
         }
       }
 
-      // 3. Fallback: core_course_get_contents für diesen Kurs auslesen (Standard in Moodle)
+      // 3. Fallback: read the forums from the course contents (available on every Moodle)
       if (!coveredCourses.has(courseId)) {
         try {
           const sections = await client.contents(courseId)
           for (const section of sections ?? []) {
             for (const mod of section.modules ?? []) {
-              if (mod.modname === 'forum') {
-                const forumId = mod.instance ?? mod.id
-                if (forumId) {
-                  const isNews = /ankündigung|nachricht|news|announcement/i.test(mod.name)
-                  addForum(forumId, courseId, isNews ? 'news' : 'general', mod.name, mod.id)
-                  coveredCourses.add(courseId)
-                }
+              if (mod.modname !== 'forum') continue
+              const forumId = mod.instance ?? mod.id
+              if (forumId) {
+                addForum(
+                  forumId,
+                  courseId,
+                  ANNOUNCEMENT_PATTERN.test(mod.name) ? 'news' : 'general',
+                  mod.name,
+                  mod.id,
+                )
+                coveredCourses.add(courseId)
               }
             }
           }
         } catch {
-          // Ignoriere Fehler beim Laden der Kursinhalte
+          // Course contents unavailable
         }
       }
     }
@@ -733,54 +696,57 @@ export async function syncMoodle(
     const allDiscussions: MoodleDiscussion[] = []
     const existingDiscussions = db.moodleDiscussions ?? []
 
+    /** Some Moodle versions return extra or differently named fields */
+    type LooseDiscussion = MoodleRawDiscussion & {
+      author?: string | { fullname?: string; urls?: { profileimage?: string } } | null
+      timestart?: number
+    }
+
     for (const forum of forums) {
       try {
-        let discussionsRaw = await client.discussions(forum.id).catch(() => [])
-        let discussions = Array.isArray(discussionsRaw) ? discussionsRaw : []
+        const discussionsRaw = await client.discussions(forum.id).catch(() => [])
+        let discussions: LooseDiscussion[] = Array.isArray(discussionsRaw) ? discussionsRaw : []
+        // Some sites only accept the course-module id instead of the forum instance id
         if (discussions.length === 0 && forum.cmid && forum.cmid !== forum.id) {
           const fallbackRaw = await client.discussions(forum.cmid).catch(() => [])
           if (Array.isArray(fallbackRaw) && fallbackRaw.length > 0) {
             discussions = fallbackRaw
           }
         }
-        const isNews = forum.type === 'news' || /ankündigung|nachricht|news|announcement/i.test(forum.name)
+        const isNews = forum.type === 'news' || ANNOUNCEMENT_PATTERN.test(forum.name)
 
         for (const d of discussions) {
           const discId = Number(d.discussion ?? d.id)
-          const rootPostId = Number(d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId))
-          const existingDisc = existingDiscussions.find((ex) => ex.id === discId || ex.discussionId === discId)
-          const effectiveCourseId = forum.course || Number((d as any).course)
+          const rootPostId = Number(
+            d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId),
+          )
+          const existingDisc = existingDiscussions.find(
+            (ex) => ex.id === discId || ex.discussionId === discId,
+          )
+          const effectiveCourseId = forum.course || Number(d.course)
           const effectiveModuleId = moduleFor(effectiveCourseId)
+          const authorObject = d.author && typeof d.author === 'object' ? d.author : undefined
 
           const author =
             d.userfullname ||
-            (d as any).firstpostfullname ||
-            (d as any).firstuserfullname ||
-            (d as any).author?.fullname ||
-            (typeof (d as any).author === 'string' ? (d as any).author : '') ||
+            d.firstpostfullname ||
+            d.firstuserfullname ||
+            authorObject?.fullname ||
+            (typeof d.author === 'string' ? d.author : '') ||
             existingDisc?.userFullName ||
             'Moodle'
           const picture =
             d.userpictureurl ||
-            (d as any).firstpostuserimageurl ||
-            (d as any).firstuserimageurl ||
-            (d as any).author?.urls?.profileimage ||
+            d.firstpostuserimageurl ||
+            d.firstuserimageurl ||
+            authorObject?.urls?.profileimage ||
             existingDisc?.userPictureUrl
 
           const createdUnix = Number(
-            d.created ||
-              (d as any).timecreated ||
-              (d as any).timestart ||
-              d.timemodified ||
-              (d as any).modified ||
-              Math.floor(Date.now() / 1000),
+            d.created || d.timecreated || d.timestart || d.timemodified || d.modified || nowUnix(),
           )
           const modifiedUnix = Number(
-            d.timemodified ||
-              d.modified ||
-              (d as any).timecreated ||
-              d.created ||
-              createdUnix,
+            d.timemodified || d.modified || d.timecreated || d.created || createdUnix,
           )
 
           allDiscussions.push({
@@ -797,17 +763,17 @@ export async function syncMoodle(
             userPictureUrl: picture,
             timeCreated: toIso(createdUnix),
             timeModified: toIso(modifiedUnix),
-            numReplies: d.numreplies ?? (d as any).numreplies ?? 0,
+            numReplies: d.numreplies ?? 0,
             pinned: Boolean(d.pinned),
             isAnnouncement: isNews,
           })
         }
       } catch {
-        // Ignoriere Fehler einzelner Foren
+        // Skip forums that fail to load
       }
     }
 
-    // Bis zu 10 neueste Diskussionen ohne Text direkt mit Erstbeitrag anreichern (sowohl Ankündigungen als auch Foren)
+    // Fill in the body of up to 10 discussions without text from their first post
     const discussionsNeedingBody = allDiscussions.filter((d) => !d.message).slice(0, 10)
     for (const item of discussionsNeedingBody) {
       try {
@@ -818,18 +784,18 @@ export async function syncMoodle(
           if (root.id) item.firstPostId = root.id
         }
       } catch {
-        // Kein Fehler, wird bei Bedarf in der UI nachgeladen
+        // Not fatal: the UI loads the posts on demand
       }
     }
 
     const updatedDiscIds = new Set(allDiscussions.map((d) => d.id))
     const otherDiscussions = existingDiscussions.filter(
       (d) =>
-        !updatedDiscIds.has(d.id) &&
-        !courseIds.some((cid) => String(cid) === String(d.courseId)),
+        !updatedDiscIds.has(d.id) && !courseIds.some((cid) => String(cid) === String(d.courseId)),
     )
     const mergedDiscussions = [...otherDiscussions, ...allDiscussions].sort(
-      (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
+      (a, b) =>
+        (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
     )
     store.update({ moodleDiscussions: mergedDiscussions })
     if (mergedDiscussions.length > 0) {
@@ -839,17 +805,16 @@ export async function syncMoodle(
     result.errors.push(`Foren: ${(err as Error).message}`)
   }
 
+  // Re-read the settings: the course map or other settings may have changed during the sync
+  const { settings } = store.get()
   store.update({
-    settings: {
-      ...db.settings,
-      moodle: { ...db.settings.moodle, lastSync: new Date().toISOString() },
-    },
+    settings: { ...settings, moodle: { ...settings.moodle, lastSync: new Date().toISOString() } },
   })
   return result
 }
 
 async function syncCourseFiles(
-  store: Store,
+  store: DataStore,
   client: MoodleClient,
   courseId: number,
   moduleId: string,
@@ -875,14 +840,20 @@ async function syncCourseFiles(
         if (file.type !== 'file' || file.filesize > MAX_FILE_BYTES) continue
         const externalId = `moodle:file:${file.fileurl}@${file.timemodified}`
         if (db.items.some((i) => i.externalId === externalId)) continue
-        // Erst die neue Version laden, dann die alte ersetzen (ein Fehler lässt die alte Datei stehen)
+        // Download the new version first, then replace the old one (a failure keeps the old file)
         const bytes = await client.download(file.fileurl)
         const release = await reserveSpace(bytes.length)
         const folderId = folderNamed(section.name || 'Allgemein', rootId)
-        const item = await store.addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes }).finally(release)
+        const item = await store
+          .addFile(
+            { moduleId, folderId },
+            { name: file.filename, type: '', bytes, fromInternet: true },
+          )
+          .finally(release)
         store.put('items', { ...item, source: 'moodle', externalId })
-        await markAsDownloaded(store.filePath(item.fileName!))
-        const outdated = db.items.find((i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`))
+        const outdated = db.items.find(
+          (i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`),
+        )
         if (outdated) await store.remove('items', outdated.id)
         count += 1
       }

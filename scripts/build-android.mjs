@@ -1,52 +1,42 @@
-// Baut die Android-Release-APK und kopiert sie nach release/Study-Organizer-0.2.0.apk
+// Builds the signed Android release APK and copies it to release/Study-Organizer-<version>.apk.
+// Needs a JDK (17+) and the Android SDK (ANDROID_HOME); on Windows the default install
+// locations are detected automatically.
 import { execSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const isWin = process.platform === 'win32'
-const env = { ...process.env }
+const root = process.cwd()
+const isWindows = process.platform === 'win32'
+const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 
-if (isWin) {
+function windowsDefaults(env) {
   if (!env.JAVA_HOME) {
-    if (existsSync('C:\\Program Files\\Java\\jdk-23')) {
-      env.JAVA_HOME = 'C:\\Program Files\\Java\\jdk-23'
-    } else if (existsSync('C:\\Program Files\\Java\\jdk-17')) {
-      env.JAVA_HOME = 'C:\\Program Files\\Java\\jdk-17'
-    }
+    const jdk = ['jdk-23', 'jdk-21', 'jdk-17']
+      .map((name) => join('C:\\Program Files\\Java', name))
+      .find(existsSync)
+    if (jdk) env.JAVA_HOME = jdk
   }
-  if (!env.ANDROID_HOME && !env.ANDROID_SDK_ROOT) {
-    const userProfile = env.USERPROFILE || 'C:\\Users\\Soufian'
-    const sdkPath = join(userProfile, 'AppData', 'Local', 'Android', 'Sdk')
-    if (existsSync(sdkPath)) {
-      env.ANDROID_HOME = sdkPath
-      env.ANDROID_SDK_ROOT = sdkPath
-    }
+  if (!env.ANDROID_HOME && !env.ANDROID_SDK_ROOT && env.LOCALAPPDATA) {
+    const sdk = join(env.LOCALAPPDATA, 'Android', 'Sdk')
+    if (existsSync(sdk)) env.ANDROID_HOME = sdk
   }
+  return env
 }
 
-console.log('--- Baue Android APK (assembleRelease) ---')
-const gradlew = isWin ? 'gradlew.bat' : './gradlew'
-execSync(`${gradlew} assembleRelease`, {
-  cwd: join(process.cwd(), 'android'),
+const env = isWindows ? windowsDefaults({ ...process.env }) : process.env
+
+console.log('--- Building Android APK (assembleRelease) ---')
+execSync(`${isWindows ? 'gradlew.bat' : './gradlew'} assembleRelease`, {
+  cwd: join(root, 'android'),
   stdio: 'inherit',
   env,
 })
 
-const apkSrc = join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
-if (!existsSync(apkSrc)) {
-  throw new Error(`Erwartete APK unter ${apkSrc} wurde nicht gefunden!`)
-}
+const apk = join(root, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
+if (!existsSync(apk)) throw new Error(`Expected APK not found: ${apk}`)
 
-const releaseDir = join(process.cwd(), 'release')
-if (!existsSync(releaseDir)) {
-  mkdirSync(releaseDir, { recursive: true })
-}
-
-const apkDest = join(releaseDir, 'Study-Organizer-0.2.0.apk')
-copyFileSync(apkSrc, apkDest)
-
-const stats = statSync(apkDest)
-const mb = (stats.size / 1024 / 1024).toFixed(2)
-console.log(`\n Erledigt: Android Release APK erfolgreich erstellt!`)
-console.log(` Ziel: ${apkDest}`)
-console.log(` Größe: ${mb} MB (${stats.size} Bytes)`)
+mkdirSync(join(root, 'release'), { recursive: true })
+const target = join(root, 'release', `Study-Organizer-${version}.apk`)
+copyFileSync(apk, target)
+const megabytes = (statSync(target).size / 1024 / 1024).toFixed(1)
+console.log(`\nDone: ${target} (${megabytes} MB)`)

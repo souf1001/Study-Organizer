@@ -1,40 +1,49 @@
-// iCal-/ICS-Kalender abonnieren (Moodle-Kalenderexport, Stundenplan aus my h_da, HISinOne, Stud.IP …).
+// iCal/ICS calendar subscriptions (Moodle calendar export, timetables from my h_da, HISinOne, Stud.IP, ...).
 import ICAL from 'ical.js'
-import type { CalendarEvent, EventKind, ID, Module, ModuleColor, Subscription } from '../shared/types'
+import type {
+  CalendarEvent,
+  EventKind,
+  ID,
+  Module,
+  ModuleColor,
+  Subscription,
+} from '../shared/types'
 import { MODULE_COLORS, newId, newModule } from '../shared/defaults'
 import { readLimited } from './http'
 
 /**
- * Dekodiert ICS-Inhalte zuverlässig in einen bereinigten UTF-8-String.
- * Erkennt und verarbeitet:
- * - UTF-8 mit BOM (0xEF, 0xBB, 0xBF)
- * - UTF-16LE mit BOM (0xFF, 0xFE)
- * - UTF-16BE mit BOM (0xFE, 0xFF)
- * - UTF-16LE / UTF-16BE ohne BOM (über Null-Byte-Muster bei ASCII-Start)
- * - Plain UTF-8
- * - Strings mit führendem Unicode-BOM (\uFEFF)
- * - Binär kodierte Strings (z. B. aus FileReader binary / Latin-1)
+ * Decodes ICS content into a clean string. Handles:
+ * - UTF-8 with BOM (0xEF, 0xBB, 0xBF)
+ * - UTF-16LE with BOM (0xFF, 0xFE)
+ * - UTF-16BE with BOM (0xFE, 0xFF)
+ * - UTF-16LE / UTF-16BE without BOM (detected via the null-byte pattern of ASCII text)
+ * - plain UTF-8
+ * - strings with a leading Unicode BOM (\uFEFF)
+ * - binary strings (e.g. from FileReader binary / Latin-1), where each char holds one byte
  */
 export function decodeIcsText(input: Buffer | Uint8Array | string): string {
   if (typeof input === 'string') {
-    // 1. Führende Unicode-BOMs / Replacement-Chars vollständig entfernen
+    // 1. Strip leading BOMs / replacement characters
     const clean = input.replace(/^[\uFEFF\uFFFD]+/, '')
 
-    // 2. Binär-String-Erkennung (wenn Bytes 1:1 als Latin-1 Chars übergeben wurden)
+    // 2. Binary string: the bytes were passed 1:1 as Latin-1 chars and still start with a byte BOM
     if (
       clean.length >= 2 &&
-      ((clean.charCodeAt(0) === 0xFF && clean.charCodeAt(1) === 0xFE) ||
-        (clean.charCodeAt(0) === 0xFE && clean.charCodeAt(1) === 0xFF) ||
-        (clean.length >= 3 && clean.charCodeAt(0) === 0xEF && clean.charCodeAt(1) === 0xBB && clean.charCodeAt(2) === 0xBF))
+      ((clean.charCodeAt(0) === 0xff && clean.charCodeAt(1) === 0xfe) ||
+        (clean.charCodeAt(0) === 0xfe && clean.charCodeAt(1) === 0xff) ||
+        (clean.length >= 3 &&
+          clean.charCodeAt(0) === 0xef &&
+          clean.charCodeAt(1) === 0xbb &&
+          clean.charCodeAt(2) === 0xbf))
     ) {
       const bytes = new Uint8Array(clean.length)
       for (let i = 0; i < clean.length; i++) {
-        bytes[i] = clean.charCodeAt(i) & 0xFF
+        bytes[i] = clean.charCodeAt(i) & 0xff
       }
       return decodeIcsBytes(bytes)
     }
 
-    // 3. Notfallbereinigung für versehentlich als UTF-8 gelesene UTF-16LE Strings
+    // 3. Repair UTF-16LE content that was mistakenly read as UTF-8
     if (clean.includes('\0') && clean.includes('B\0E\0G\0I\0N\0:\0V\0C\0A\0L\0E\0N\0D\0A\0R')) {
       return clean.replace(/\0/g, '').replace(/^[\uFFFD\uFEFF]+/, '')
     }
@@ -51,13 +60,13 @@ function decodeIcsBytes(bytes: Uint8Array): string {
   let encoding = 'utf-8'
   let offset = 0
 
-  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     encoding = 'utf-8'
     offset = 3
-  } else if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+  } else if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
     encoding = 'utf-16le'
     offset = 2
-  } else if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+  } else if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
     encoding = 'utf-16be'
     offset = 2
   } else if (bytes.length >= 2 && bytes[0] === 0x00 && bytes[1] !== 0x00) {
@@ -72,14 +81,13 @@ function decodeIcsBytes(bytes: Uint8Array): string {
   const slice = offset > 0 ? bytes.subarray(offset) : bytes
   const text = decoder.decode(slice)
 
-  // Absicherung gegen alle verbleibenden BOM- und Replacement-Zeichen am Anfang
+  // Strip any BOM or replacement characters that are still left at the start
   return text.replace(/^[\uFEFF\uFFFD]+/, '')
 }
 
 /**
- * Kombiniert mehrere separate monatliche oder wöchentliche iCal-Exporte (z. B. aus TUCaN / CampusNet)
- * zu einem einzigen vollständigen Semester-Kalender.
- * Entfernt doppelte VEVENTs anhand ihrer UID oder des Inhalts.
+ * Combines several monthly or weekly iCal exports (e.g. from TUCaN / CampusNet) into one
+ * complete semester calendar. Duplicate VEVENTs are removed by UID (or by content without UID).
  */
 export function combineIcs(icsList: (string | Buffer | Uint8Array)[]): string {
   const events: string[] = []
@@ -89,19 +97,13 @@ export function combineIcs(icsList: (string | Buffer | Uint8Array)[]): string {
     const text = decodeIcsText(item)
     const matches = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gi) ?? []
     for (const block of matches) {
-      const uidMatch = block.match(/^UID:(.+?)$/mi)
-      const dtstartMatch = block.match(/^DTSTART(?:;.+?)?:(.+?)$/mi)
-      const recurrenceIdMatch = block.match(/^RECURRENCE-ID(?:;.+?)?:(.+?)$/mi)
-      const rruleMatch = block.match(/^RRULE:(.+?)$/mi)
+      const propertyValue = (pattern: RegExp): string => block.match(pattern)?.[1].trim() ?? ''
+      const uid = propertyValue(/^UID:(.+?)$/im)
+      const dtstart = propertyValue(/^DTSTART(?:;.+?)?:(.+?)$/im)
+      const recurrenceId = propertyValue(/^RECURRENCE-ID(?:;.+?)?:(.+?)$/im)
+      const rrule = propertyValue(/^RRULE:(.+?)$/im)
 
-      const uid = uidMatch ? uidMatch[1].trim() : ''
-      const dtstart = dtstartMatch ? dtstartMatch[1].trim() : ''
-      const recurrenceId = recurrenceIdMatch ? recurrenceIdMatch[1].trim() : ''
-      const rrule = rruleMatch ? rruleMatch[1].trim() : ''
-
-      const dedupKey = uid
-        ? `${uid}#${dtstart}#${recurrenceId}#${rrule}`
-        : block.trim()
+      const dedupKey = uid ? `${uid}#${dtstart}#${recurrenceId}#${rrule}` : block.trim()
 
       if (!seenEventKeys.has(dedupKey)) {
         seenEventKeys.add(dedupKey)
@@ -132,13 +134,16 @@ export interface ParsedEvent {
 }
 
 const MAX_OCCURRENCES = 1000
-/** Höchstens so viele Termine pro Kalender (ein Stundenplan hat wenige hundert) */
+/** Upper bound of events per calendar (a timetable has a few hundred) */
 const MAX_EVENTS = 5000
 const MAX_CALENDAR_BYTES = 10 * 1024 * 1024
+/** Titles marking a cancelled session, e.g. 'Mathe (entfällt)' */
+const CANCELLED_TITLE =
+  /\b(?:entfällt|abgesagt|fällt\s+aus)\b|\((?:entfällt|abgesagt|ausfall)\)|\[(?:entfällt|abgesagt|ausfall)\]/i
 
 export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
-  // Zeitzonen (VTIMEZONE) löst ical.js aus der Datei selbst auf. Nicht global registrieren,
-  // sonst könnte ein Kalender die Zeitzonen anderer Kalender verändern.
+  // ical.js resolves time zones (VTIMEZONE) from the file itself. Do not register them globally,
+  // otherwise one calendar could change the time zones of other calendars.
   const clean = decodeIcsText(text)
   const root = new ICAL.Component(ICAL.parse(clean))
 
@@ -164,18 +169,13 @@ export function parseIcs(text: string, from: Date, to: Date): ParsedEvent[] {
       uid: string,
     ): void => {
       const title = item.summary || '(ohne Titel)'
-      if (
-        /\b(?:entfällt|abgesagt|fällt\s+aus)\b|\((?:entfällt|abgesagt|ausfall)\)|\[(?:entfällt|abgesagt|ausfall)\]/i.test(
-          title,
-        )
-      )
-        return
+      if (CANCELLED_TITLE.test(title)) return
       const startDate = start.toJSDate()
       const endDate = end ? end.toJSDate() : startDate
       if (endDate < from || startDate > to || result.length >= MAX_EVENTS) return
       result.push({
         uid,
-        title: item.summary || '(ohne Titel)',
+        title,
         start: startDate,
         end: endDate,
         allDay: start.isDate,
@@ -223,8 +223,9 @@ const KIND_RULES: [RegExp, EventKind][] = [
 ]
 
 /**
- * Klassifiziert einen Termin nach Titel/Summary, optionalen Kategorien und optionaler Beschreibung.
- * Stufenweise Prüfung verhindert, dass Lehrplantexte in der Beschreibung den Termintyp verfälschen.
+ * Classifies an event by its title/summary, optional categories and optional description.
+ * The description is only checked when title and categories match nothing, so syllabus text
+ * in the description cannot override the event type.
  */
 export function classifyEvent(
   summaryOrText: string,
@@ -268,7 +269,10 @@ const ROMAN_NUMERALS: [RegExp, string][] = [
   ['iii', '3'],
   ['ii', '2'],
   ['i', '1'],
-].map(([rom, num]) => [new RegExp(`(?<=^|[\\s\\-–_/(,.:[+])${rom}(?=$|[\\s\\-–_/),.:+\\]])`, 'gi'), num])
+].map(([rom, num]) => [
+  new RegExp(`(?<=^|[\\s\\-–_/(,.:[+])${rom}(?=$|[\\s\\-–_/),.:+\\]])`, 'gi'),
+  num,
+])
 
 export function normalizeRomanNumerals(text: string): string {
   let result = text
@@ -294,7 +298,10 @@ export function normalizeIcsFilename(filename: string): string {
   const lastDot = trimmed.lastIndexOf('.')
   const rawBase = lastDot !== -1 ? trimmed.slice(0, lastDot) : trimmed
   const ext = lastDot !== -1 ? trimmed.slice(lastDot).trim() : ''
-  const cleanBase = rawBase.trim().replace(/(\s*\(\d+\))+$/g, '').trim()
+  const cleanBase = rawBase
+    .trim()
+    .replace(/(\s*\(\d+\))+$/g, '')
+    .trim()
   return `${cleanBase}${ext}`
 }
 
@@ -327,7 +334,8 @@ export function extractCourseInfo(
   const cats = typeof eventOrSummary === 'string' ? categories : eventOrSummary.categories
   const desc = typeof eventOrSummary === 'string' ? description : eventOrSummary.description
 
-  const codeRegex = /\b(\d{2}-[a-zA-Z0-9]{2}-\d{4}(?:-[a-zA-Z0-9]+)?|[A-Z]{2,5}\s*-\s*\d{2,4}(?:-[a-zA-Z0-9]+)?|[A-Z]{2,5}\s*\d{3,4}(?:-[a-zA-Z0-9]+)?)\b/i
+  const codeRegex =
+    /\b(\d{2}-[a-zA-Z0-9]{2}-\d{4}(?:-[a-zA-Z0-9]+)?|[A-Z]{2,5}\s*-\s*\d{2,4}(?:-[a-zA-Z0-9]+)?|[A-Z]{2,5}\s*\d{3,4}(?:-[a-zA-Z0-9]+)?)\b/i
   const titleCodeMatch = summary.match(codeRegex)
   const catCodeMatch = cats.map((c) => c.match(codeRegex)?.[1]).find(Boolean)
   const rawCode = titleCodeMatch?.[1] || catCodeMatch || ''
@@ -339,10 +347,22 @@ export function extractCourseInfo(
   }
   name = name
     .replace(/^[:\s\-–]+/, '')
-    .replace(/^(?:Übung zu|Uebung zu|Tutorium zu|Tutorium für|Vorlesung zu|Praktikum zu|Seminar zu|Kolloquium zu)\s+/i, '')
-    .replace(/^(?:Vorlesung|Übung|Uebung|Praktikum|Seminar|Tutorium|Klausur|Prüfung|Pruefung|Exam|Lecture)(?:[:\s\-–]+|$)/i, '')
-    .replace(/\s*\((?:Vorlesung|Übung|Uebung|Praktikum|Seminar|Tutorium|Kolloquium|Klausur|Prüfung|Pruefung|Große Übung|Grosse Uebung|Hörsaalübung|Hoersaaluebung|Gruppenübung|Gruppenuebung|Raumänderung|Online)\)$/i, '')
-    .replace(/(?:\s*[:\-–]\s*|\s+)(?:Vorlesung|Übung|Uebung|Praktikum|Seminar|Tutorium|Kolloquium|Klausur|Prüfung|Pruefung|Exam|Lecture|Große Übung|Grosse Uebung|Hörsaalübung|Hoersaaluebung|Gruppenübung|Gruppenuebung|Zentralübung|Zentraluebung|Labor|Laboratorium)$/i, '')
+    .replace(
+      /^(?:Übung zu|Uebung zu|Tutorium zu|Tutorium für|Vorlesung zu|Praktikum zu|Seminar zu|Kolloquium zu)\s+/i,
+      '',
+    )
+    .replace(
+      /^(?:Vorlesung|Übung|Uebung|Praktikum|Seminar|Tutorium|Klausur|Prüfung|Pruefung|Exam|Lecture)(?:[:\s\-–]+|$)/i,
+      '',
+    )
+    .replace(
+      /\s*\((?:Vorlesung|Übung|Uebung|Praktikum|Seminar|Tutorium|Kolloquium|Klausur|Prüfung|Pruefung|Große Übung|Grosse Uebung|Hörsaalübung|Hoersaaluebung|Gruppenübung|Gruppenuebung|Raumänderung|Online)\)$/i,
+      '',
+    )
+    .replace(
+      /(?:\s*[:\-–]\s*|\s+)(?:Vorlesung|Übung|Uebung|Praktikum|Seminar|Tutorium|Kolloquium|Klausur|Prüfung|Pruefung|Exam|Lecture|Große Übung|Grosse Uebung|Hörsaalübung|Hoersaaluebung|Gruppenübung|Gruppenuebung|Zentralübung|Zentraluebung|Labor|Laboratorium)$/i,
+      '',
+    )
     .replace(/\s+(?:VL|UE|Ü|PR|TUT|SE)$/i, '')
     .trim()
 
@@ -354,7 +374,9 @@ export function extractCourseInfo(
   if (!name) return null
 
   let lecturer: string | undefined
-  const lecMatch = desc.match(/(?:Dozent(?:in)?|Prof(?:essor)?(?:\.|\b)|Lehrperson|Lecturer|Instructor)[\s:]*([^\r\n,;]+)/i)
+  const lecMatch = desc.match(
+    /(?:Dozent(?:in)?|Prof(?:essor)?(?:\.|\b)|Lehrperson|Lecturer|Instructor)[\s:]*([^\r\n,;]+)/i,
+  )
   if (lecMatch) lecturer = lecMatch[1].trim()
 
   return { name, code, lecturer }
@@ -375,8 +397,11 @@ export function autoCreateModule(
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-/** Ganzes Wort (nicht Teil eines anderen Worts), ohne Groß-/Kleinschreibung */
-const wordPattern = (s: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(s)}($|[^\\p{L}\\p{N}])`, 'iu')
+/** Whole word (not part of another word), case-insensitive */
+const wordPattern = (s: string) =>
+  new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(s)}($|[^\\p{L}\\p{N}])`, 'iu')
+/** Whole space-separated token sequence within already normalized text */
+const tokenPattern = (s: string) => new RegExp(`(^|\\s)${escapeRegExp(s)}($|\\s)`)
 
 function findModuleMatch(
   summary: string,
@@ -410,7 +435,9 @@ function findModuleMatch(
     const mExtracted = extractCourseInfo(m.name)
     const mCode = m.code.trim().toLowerCase()
     const mCodeStripped = stripModuleSuffix(mCode)
-    const mExtCodeStripped = mExtracted?.code ? stripModuleSuffix(mExtracted.code.toLowerCase()) : ''
+    const mExtCodeStripped = mExtracted?.code
+      ? stripModuleSuffix(mExtracted.code.toLowerCase())
+      : ''
     const mEffectiveCodeStripped = mCodeStripped || mExtCodeStripped
     const mNameNorm = normalizeTextForMatching(m.name)
     const mCleanNameNorm = mExtracted?.name ? normalizeTextForMatching(mExtracted.name) : mNameNorm
@@ -424,6 +451,11 @@ function findModuleMatch(
       mCleanNameNorm,
     }
   })
+
+  const codeCandidates = (item: PreparedModule): string[] =>
+    [item.mCode, item.mCodeStripped, item.mEffectiveCodeStripped].filter((c) => c.length >= 2)
+  const nameCandidates = (item: PreparedModule): string[] =>
+    Array.from(new Set([item.mCleanNameNorm, item.mNameNorm].filter((n) => n.length >= 3)))
 
   // Baseline list: active semester first
   const sorted = [...prepared].sort((a, b) => activeFirst(a.m, b.m))
@@ -496,10 +528,7 @@ function findModuleMatch(
 
   // 3. Word Pattern match on Module Code in Summary / Categories
   for (const item of sortedByCodeLength) {
-    const codes = [item.mCode, item.mCodeStripped, item.mEffectiveCodeStripped].filter(
-      (c): c is string => Boolean(c) && c.length >= 2,
-    )
-    for (const code of codes) {
+    for (const code of codeCandidates(item)) {
       if (wordPattern(code).test(primaryText)) {
         return item.m
       }
@@ -522,11 +551,8 @@ function findModuleMatch(
 
   // 5. Course Name Match in Title / Summary (Longest module clean name first, bidirectional)
   for (const item of sortedByNameLength) {
-    const names = Array.from(
-      new Set([item.mCleanNameNorm, item.mNameNorm].filter((n) => Boolean(n) && n.length >= 3)),
-    )
-    for (const name of names) {
-      const namePattern = new RegExp(`(^|\\s)${escapeRegExp(name)}($|\\s)`)
+    for (const name of nameCandidates(item)) {
+      const namePattern = tokenPattern(name)
       // Forward containment: module name in event summary
       if (normSummary && namePattern.test(normSummary)) {
         return item.m
@@ -536,26 +562,18 @@ function findModuleMatch(
       }
       // Reverse containment: event summary (or extracted name) in module name
       // (Crucial when module was copy-pasted as e.g. "20-00-0900 Digitaltechnik" and event is "Digitaltechnik")
-      if (normSummary && normSummary.length >= 3) {
-        const summaryPattern = new RegExp(`(^|\\s)${escapeRegExp(normSummary)}($|\\s)`)
-        if (summaryPattern.test(name)) {
-          return item.m
-        }
+      if (normSummary.length >= 3 && tokenPattern(normSummary).test(name)) {
+        return item.m
       }
-      if (extNameNorm && extNameNorm.length >= 3) {
-        const extPattern = new RegExp(`(^|\\s)${escapeRegExp(extNameNorm)}($|\\s)`)
-        if (extPattern.test(name)) {
-          return item.m
-        }
+      if (extNameNorm.length >= 3 && tokenPattern(extNameNorm).test(name)) {
+        return item.m
       }
     }
 
-    // Word pattern fallback on raw names
-    const rawNames = [item.m.name.trim()].filter((n) => n.length >= 3)
-    for (const rName of rawNames) {
-      if (wordPattern(rName).test(summary)) {
-        return item.m
-      }
+    // Word pattern fallback on the raw module name
+    const rawName = item.m.name.trim()
+    if (rawName.length >= 3 && wordPattern(rawName).test(summary)) {
+      return item.m
     }
   }
 
@@ -569,10 +587,7 @@ function findModuleMatch(
 
     // 6. Word Pattern match on Module Code in Description
     for (const item of sortedByCodeLength) {
-      const codes = [item.mCode, item.mCodeStripped, item.mEffectiveCodeStripped].filter(
-        (c): c is string => Boolean(c) && c.length >= 2,
-      )
-      for (const code of codes) {
+      for (const code of codeCandidates(item)) {
         if (wordPattern(code).test(trimmedDesc)) {
           return item.m
         }
@@ -581,12 +596,8 @@ function findModuleMatch(
 
     // 7. Course Name Match in Description (Longest module clean name first)
     for (const item of sortedByNameLength) {
-      const names = Array.from(
-        new Set([item.mCleanNameNorm, item.mNameNorm].filter((n) => Boolean(n) && n.length >= 3)),
-      )
-      for (const name of names) {
-        const namePattern = new RegExp(`(^|\\s)${escapeRegExp(name)}($|\\s)`)
-        if (namePattern.test(normDesc)) {
+      for (const name of nameCandidates(item)) {
+        if (tokenPattern(name).test(normDesc)) {
           return item.m
         }
         if (wordPattern(name).test(trimmedDesc)) {
@@ -622,7 +633,13 @@ export function matchModule(
     const event = arg1
     const modules = (Array.isArray(arg2) ? arg2 : []) as Module[]
     const activeSemesterId = typeof arg3 === 'string' ? arg3 : null
-    const matched = findModuleMatch(event.title, event.description, event.categories, modules, activeSemesterId)
+    const matched = findModuleMatch(
+      event.title,
+      event.description,
+      event.categories,
+      modules,
+      activeSemesterId,
+    )
     return matched ? matched.id : null
   }
 
@@ -658,15 +675,15 @@ export async function fetchCalendar(url: string, fetchImpl: typeof fetch = fetch
   return text
 }
 
-/** Adresse ohne geheime Parameter (Token) – nur zur Anzeige */
+/** Address without secret query parameters (tokens), for display only */
 export function maskCalendarUrl(url: string): string {
   const u = new URL(normalizeCalendarUrl(url))
   return `${u.host}${u.pathname}${u.search ? '?…' : ''}`
 }
 
 /**
- * Neue Termine eines Abos mit den vorhandenen zusammenführen. Viele Systeme (z. B. Moodle)
- * liefern nur ein rollierendes Zeitfenster – ältere Termine bleiben deshalb erhalten.
+ * Merges a subscription's new events with the existing ones. Many systems (e.g. Moodle) only
+ * deliver a rolling time window, so older events are kept.
  */
 export function mergeSubscriptionEvents(
   existing: CalendarEvent[],
@@ -687,7 +704,7 @@ export interface EventsFromIcsOptions {
   existingEvents?: CalendarEvent[]
 }
 
-/** Wandelt eine iCal-Datei in Termine des Abos um. */
+/** Converts an iCal file into the subscription's calendar events. */
 export function eventsFromIcs(
   text: string,
   subscription: Subscription,
@@ -708,18 +725,22 @@ export function eventsFromIcs(
     const kind = classifyEvent(e.title, e.description, e.categories)
     const finalKind = kind === 'other' && e.start.getTime() === e.end.getTime() ? 'deadline' : kind
 
-    // 1. Prüfe, ob dieser Termin oder seine Terminserie bereits manuell einem Modul zugewiesen wurde
+    // Keep a module the user already assigned manually to this event or its series
     let existingModuleId: ID | null = null
     const exact = existingEvents.find((ex) => ex.externalId === e.uid)
     if (exact?.moduleId && currentModules.some((m) => m.id === exact.moduleId)) {
       existingModuleId = exact.moduleId
     } else if (existingEvents.length > 0) {
       const baseUid = e.uid.includes('#') ? e.uid.split('#')[0] : null
-      const eTitleNorm = e.title.trim().toLowerCase()
+      const normalizedTitle = e.title.trim().toLowerCase()
       const seriesMatch = existingEvents.find((ex) => {
         if (!ex.moduleId || !currentModules.some((m) => m.id === ex.moduleId)) return false
         if (baseUid && ex.externalId && ex.externalId.split('#')[0] === baseUid) return true
-        if (ex.subscriptionId === subscription.id && ex.title.trim().toLowerCase() === eTitleNorm) return true
+        if (
+          ex.subscriptionId === subscription.id &&
+          ex.title.trim().toLowerCase() === normalizedTitle
+        )
+          return true
         return false
       })
       if (seriesMatch?.moduleId) {
@@ -732,8 +753,14 @@ export function eventsFromIcs(
     if (!matchedId && autoCreate && activeSemesterId) {
       const courseInfo = extractCourseInfo(e)
       const isAcademicKind =
-        finalKind === 'lecture' || finalKind === 'exercise' || finalKind === 'lab' || finalKind === 'exam'
-      if (courseInfo && (Boolean(courseInfo.code) || (isAcademicKind && courseInfo.name.length >= 3))) {
+        finalKind === 'lecture' ||
+        finalKind === 'exercise' ||
+        finalKind === 'lab' ||
+        finalKind === 'exam'
+      if (
+        courseInfo &&
+        (Boolean(courseInfo.code) || (isAcademicKind && courseInfo.name.length >= 3))
+      ) {
         const newMod = autoCreateModule(courseInfo, activeSemesterId, currentModules)
         currentModules.push(newMod)
         options.onModuleCreated?.(newMod)

@@ -1,71 +1,63 @@
-// Mobile Bottom-Navigation für Smartphones.
-// Ermöglicht einhändige Bedienung der 5 Kernbereiche.
+// Bottom navigation on phones: the five main areas, reachable with one thumb.
+import type { ReactNode } from 'react'
 import { BookOpen, Bot, Calendar, CheckSquare, Home } from 'lucide-react'
-import { useWorkspace } from '@/lib/workspace'
+import { useWorkspace, type View } from '@/lib/workspace'
+
+const DESTINATIONS: { view: View; label: string; icon: ReactNode }[] = [
+  { view: { type: 'home' }, label: 'Heute', icon: <Home /> },
+  { view: { type: 'calendar' }, label: 'Kalender', icon: <Calendar /> },
+  { view: { type: 'tasks' }, label: 'Aufgaben', icon: <CheckSquare /> },
+  { view: { type: 'chat' }, label: 'KI-Chat', icon: <Bot /> },
+]
+
+/** Views that belong to the module tree, which lives in the sidebar drawer */
+const MODULE_VIEWS = new Set<View['type']>(['module', 'folder', 'item'])
 
 export function MobileNav() {
   const { panes, activeId, open, sidebarOpen, toggleSidebar } = useWorkspace()
-  const activePane = panes.find((p) => p.id === activeId)
-  const currentViewType = activePane?.view.type
+  const currentType = panes.find((p) => p.id === activeId)?.view.type
+
+  const navigate = (view: View) => {
+    if (sidebarOpen) toggleSidebar()
+    open(view)
+  }
+
+  const item = (
+    key: string,
+    label: string,
+    icon: ReactNode,
+    active: boolean,
+    onClick: () => void,
+  ) => (
+    <button
+      key={key}
+      type="button"
+      className={`mobile-nav-item ${active ? 'active' : ''}`}
+      aria-current={active ? 'page' : undefined}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  )
+
+  const [home, ...rest] = DESTINATIONS
+  const destination = (d: (typeof DESTINATIONS)[number]) =>
+    item(d.view.type, d.label, d.icon, currentType === d.view.type && !sidebarOpen, () =>
+      navigate(d.view),
+    )
 
   return (
-    <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
-      <button
-        type="button"
-        className={`mobile-nav-item ${currentViewType === 'home' && !sidebarOpen ? 'active' : ''}`}
-        onClick={() => {
-          if (sidebarOpen) toggleSidebar()
-          open({ type: 'home' })
-        }}
-      >
-        <Home />
-        <span>Heute</span>
-      </button>
-
-      <button
-        type="button"
-        className={`mobile-nav-item ${sidebarOpen || currentViewType === 'module' || currentViewType === 'folder' || currentViewType === 'item' ? 'active' : ''}`}
-        onClick={() => toggleSidebar()}
-      >
-        <BookOpen />
-        <span>Module</span>
-      </button>
-
-      <button
-        type="button"
-        className={`mobile-nav-item ${currentViewType === 'calendar' && !sidebarOpen ? 'active' : ''}`}
-        onClick={() => {
-          if (sidebarOpen) toggleSidebar()
-          open({ type: 'calendar' })
-        }}
-      >
-        <Calendar />
-        <span>Kalender</span>
-      </button>
-
-      <button
-        type="button"
-        className={`mobile-nav-item ${currentViewType === 'tasks' && !sidebarOpen ? 'active' : ''}`}
-        onClick={() => {
-          if (sidebarOpen) toggleSidebar()
-          open({ type: 'tasks' })
-        }}
-      >
-        <CheckSquare />
-        <span>Aufgaben</span>
-      </button>
-
-      <button
-        type="button"
-        className={`mobile-nav-item ${currentViewType === 'chat' && !sidebarOpen ? 'active' : ''}`}
-        onClick={() => {
-          if (sidebarOpen) toggleSidebar()
-          open({ type: 'chat' })
-        }}
-      >
-        <Bot />
-        <span>KI-Chat</span>
-      </button>
+    <nav className="mobile-bottom-nav" aria-label="Navigation">
+      {destination(home)}
+      {item(
+        'modules',
+        'Module',
+        <BookOpen />,
+        sidebarOpen || (currentType !== undefined && MODULE_VIEWS.has(currentType)),
+        toggleSidebar,
+      )}
+      {rest.map(destination)}
     </nav>
   )
 }

@@ -51,7 +51,9 @@
   position: relative;
   flex: none;
   background: #fff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.08);
   --user-unit: 1;
   --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
 }
@@ -71,7 +73,7 @@
   mix-blend-mode: multiply;
 }
 
-/* Textebene von pdf.js (unsichtbar, aber markierbar) */
+/* pdf.js text layer (invisible but selectable) */
 .textLayer {
   position: absolute;
   inset: 0;
@@ -205,7 +207,11 @@
 }
 
 .seek::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, var(--accent) var(--progress), var(--bg-active) var(--progress));
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--progress),
+    var(--bg-active) var(--progress)
+  );
 }
 
 .seek::-webkit-slider-thumb,
@@ -218,7 +224,7 @@
   background: var(--text);
 }
 
-/* ---- Bilder & Text ---- */
+/* ---- Images & text ---- */
 .image-stage {
   flex: 1;
   overflow: auto;

@@ -1,4 +1,4 @@
-# Prüft jeden Push: Lint, Typen, Unit-Tests, Build und End-to-End-Tests in der echten App.
+# Checks every push: lint, types, unit tests, build and end-to-end tests in the real app.
 name: CI
 
 on:
@@ -19,8 +19,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run format:check
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: End-to-End-Tests (Electron unter Xvfb)
+      - name: End-to-end tests (Electron under Xvfb)
         run: xvfb-run -a npm run test:e2e

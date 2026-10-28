@@ -1,6 +1,15 @@
-// Einstellungen, gegliedert wie in macOS/Linear: Bereiche links, Optionen rechts.
+// Settings, laid out like macOS/Linear: sections on the left, options on the right.
 import { useEffect, useState, type ReactNode } from 'react'
-import { Check, FolderOpen, HardDriveDownload, Monitor, Moon, Pencil, Sun, Trash2 } from 'lucide-react'
+import {
+  Check,
+  FolderOpen,
+  HardDriveDownload,
+  Monitor,
+  Moon,
+  Pencil,
+  Sun,
+  Trash2,
+} from 'lucide-react'
 import { SEMESTER_MODELS } from '@shared/semester'
 import { sessionFolderName } from '@shared/schedule'
 import { today } from '@shared/dates'
@@ -19,9 +28,20 @@ import { PaperColorPicker, PaperPicker } from '../note/PaperPicker'
 import { SemesterDialog } from '../semester/SemesterDialog'
 import { AiSettings } from './AiSettings'
 import { IntegrationSettings } from './IntegrationSettings'
+import { SetupTransferSettings } from './SetupTransfer'
 import './settings.css'
 
-export function SettingRow({ label, description, children, stacked }: { label: string; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
+export function SettingRow({
+  label,
+  description,
+  children,
+  stacked,
+}: {
+  label: string
+  description?: ReactNode
+  children: ReactNode
+  stacked?: boolean
+}) {
   return (
     <div className={`setting-row ${stacked ? 'stacked' : ''}`}>
       <div className="setting-text">
@@ -70,7 +90,13 @@ function ProfileSection() {
         <Input value={p.degree} onChange={(e) => set({ degree: e.target.value })} />
       </SettingRow>
       <SettingRow label="Fachsemester">
-        <Input type="number" min={1} max={20} value={p.studySemester} onChange={(e) => set({ studySemester: Number(e.target.value) || 1 })} />
+        <Input
+          type="number"
+          min={1}
+          max={20}
+          value={p.studySemester}
+          onChange={(e) => set({ studySemester: Number(e.target.value) || 1 })}
+        />
       </SettingRow>
     </SettingGroup>
   )
@@ -87,7 +113,9 @@ function StudySection() {
     const count = db.modules.filter((m) => m.semesterId === s.id).length
     const ok = await confirm({
       title: `${s.name} löschen?`,
-      message: count ? `Alle ${count} Module dieses Semesters mit Notizen und Dateien werden gelöscht.` : undefined,
+      message: count
+        ? `Alle ${count} Module dieses Semesters mit Notizen und Dateien werden gelöscht.`
+        : undefined,
       confirmLabel: 'Löschen',
       danger: true,
     })
@@ -105,17 +133,26 @@ function StudySection() {
                 {s.id === current?.id && <span className="badge color-blue">aktiv</span>}
               </div>
               <div className="setting-description">
-                Vorlesungen {formatDay(s.lectureStart)} – {formatDay(s.lectureEnd)} · {db.modules.filter((m) => m.semesterId === s.id).length} Module
+                Vorlesungen {formatDay(s.lectureStart)} – {formatDay(s.lectureEnd)} ·{' '}
+                {db.modules.filter((m) => m.semesterId === s.id).length} Module
               </div>
             </div>
             <div className="setting-control row">
               {s.id !== current?.id && (
-                <Button size="sm" icon={<Check />} onClick={() => updateDb({ activeSemesterId: s.id })}>
+                <Button
+                  size="sm"
+                  icon={<Check />}
+                  onClick={() => updateDb({ activeSemesterId: s.id })}
+                >
                   Aktivieren
                 </Button>
               )}
-              <IconButton label="Bearbeiten" onClick={() => setEditing(s)}><Pencil /></IconButton>
-              <IconButton label="Löschen" onClick={() => void remove(s)}><Trash2 /></IconButton>
+              <IconButton label="Bearbeiten" onClick={() => setEditing(s)}>
+                <Pencil />
+              </IconButton>
+              <IconButton label="Löschen" onClick={() => void remove(s)}>
+                <Trash2 />
+              </IconButton>
             </div>
           </div>
         ))}
@@ -127,12 +164,22 @@ function StudySection() {
         <SettingRow label="Modell" description={SEMESTER_MODELS[study.semesterModel].description}>
           <Select
             value={study.semesterModel}
-            options={(Object.keys(SEMESTER_MODELS) as SemesterModelId[]).map((id) => ({ value: id, label: SEMESTER_MODELS[id].label }))}
+            options={(Object.keys(SEMESTER_MODELS) as SemesterModelId[]).map((id) => ({
+              value: id,
+              label: SEMESTER_MODELS[id].label,
+            }))}
             onChange={(semesterModel) => updateSettings('study', { semesterModel })}
           />
         </SettingRow>
-        <SettingRow label="Bei neuem Semester nachfragen" description="Auf der Startseite erscheint ein Hinweis, sobald ein neues Semester beginnt.">
-          <Switch checked={study.askForNewSemester} onChange={(askForNewSemester) => updateSettings('study', { askForNewSemester })} label="Nachfragen" />
+        <SettingRow
+          label="Bei neuem Semester nachfragen"
+          description="Auf der Startseite erscheint ein Hinweis, sobald ein neues Semester beginnt."
+        >
+          <Switch
+            checked={study.askForNewSemester}
+            onChange={(askForNewSemester) => updateSettings('study', { askForNewSemester })}
+            label="Nachfragen"
+          />
         </SettingRow>
       </SettingGroup>
       <SettingGroup title="Ordner pro Termin">
@@ -141,14 +188,27 @@ function StudySection() {
           description={
             <>
               Platzhalter: {'{kind}'} Art, {'{n}'} Nummer, {'{date}'} Datum. Vorschau: „
-              {sessionFolderName(study.sessionFolderName, { kind: 'lecture', index: 3, date: today() })}“
+              {sessionFolderName(study.sessionFolderName, {
+                kind: 'lecture',
+                index: 3,
+                date: today(),
+              })}
+              “
             </>
           }
         >
-          <Input value={study.sessionFolderName} onChange={(e) => updateSettings('study', { sessionFolderName: e.target.value })} />
+          <Input
+            value={study.sessionFolderName}
+            onChange={(e) => updateSettings('study', { sessionFolderName: e.target.value })}
+          />
         </SettingRow>
       </SettingGroup>
-      {editing && <SemesterDialog semester={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <SemesterDialog
+          semester={editing === 'new' ? undefined : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </>
   )
 }
@@ -191,11 +251,22 @@ function AppearanceSection() {
           onChange={(zoom) => updateSettings('appearance', { zoom })}
         />
       </SettingRow>
-      <SettingRow label="Kompakte Darstellung" description="Engere Zeilen in Listen und Seitenleiste.">
-        <Switch checked={a.compact} onChange={(compact) => updateSettings('appearance', { compact })} label="Kompakt" />
+      <SettingRow
+        label="Kompakte Darstellung"
+        description="Engere Zeilen in Listen und Seitenleiste."
+      >
+        <Switch
+          checked={a.compact}
+          onChange={(compact) => updateSettings('appearance', { compact })}
+          label="Kompakt"
+        />
       </SettingRow>
       <SettingRow label="Animationen reduzieren">
-        <Switch checked={a.reduceMotion} onChange={(reduceMotion) => updateSettings('appearance', { reduceMotion })} label="Animationen reduzieren" />
+        <Switch
+          checked={a.reduceMotion}
+          onChange={(reduceMotion) => updateSettings('appearance', { reduceMotion })}
+          label="Animationen reduzieren"
+        />
       </SettingRow>
     </SettingGroup>
   )
@@ -210,24 +281,50 @@ function EditorSection() {
           <PaperPicker value={e.paper} onChange={(paper) => updateSettings('editor', { paper })} />
         </SettingRow>
         <SettingRow label="Papierfarbe">
-          <PaperColorPicker value={e.paperColor} onChange={(paperColor) => updateSettings('editor', { paperColor })} />
+          <PaperColorPicker
+            value={e.paperColor}
+            onChange={(paperColor) => updateSettings('editor', { paperColor })}
+          />
         </SettingRow>
         <SettingRow label="Schrift">
-          <Select value={e.font} options={FONTS.map((f) => ({ value: f.id, label: f.label }))} onChange={(font: FontId) => updateSettings('editor', { font })} />
+          <Select
+            value={e.font}
+            options={FONTS.map((f) => ({ value: f.id, label: f.label }))}
+            onChange={(font: FontId) => updateSettings('editor', { font })}
+          />
         </SettingRow>
         <SettingRow label="Schriftgröße">
-          <Select value={e.fontSize} options={[14, 15, 16, 17, 18, 20].map((s) => ({ value: s, label: `${s} px` }))} onChange={(fontSize) => updateSettings('editor', { fontSize })} />
+          <Select
+            value={e.fontSize}
+            options={[14, 15, 16, 17, 18, 20].map((s) => ({ value: s, label: `${s} px` }))}
+            onChange={(fontSize) => updateSettings('editor', { fontSize })}
+          />
         </SettingRow>
         <SettingRow label="Breite Seiten" description="Mehr Platz für Tabellen und Zeichnungen.">
-          <Switch checked={e.wide} onChange={(wide) => updateSettings('editor', { wide })} label="Breite Seiten" />
+          <Switch
+            checked={e.wide}
+            onChange={(wide) => updateSettings('editor', { wide })}
+            label="Breite Seiten"
+          />
         </SettingRow>
         <SettingRow label="Rechtschreibprüfung">
-          <Switch checked={e.spellcheck} onChange={(spellcheck) => updateSettings('editor', { spellcheck })} label="Rechtschreibprüfung" />
+          <Switch
+            checked={e.spellcheck}
+            onChange={(spellcheck) => updateSettings('editor', { spellcheck })}
+            label="Rechtschreibprüfung"
+          />
         </SettingRow>
       </SettingGroup>
       <SettingGroup title="Stift & Tablet">
-        <SettingRow label="Nur Stift zeichnet" description="Mit dem Finger wird gescrollt, gezeichnet wird nur mit dem Stift (Handballen-Erkennung).">
-          <Switch checked={e.penOnly} onChange={(penOnly) => updateSettings('editor', { penOnly })} label="Nur Stift zeichnet" />
+        <SettingRow
+          label="Nur Stift zeichnet"
+          description="Mit dem Finger wird gescrollt, gezeichnet wird nur mit dem Stift (Handballen-Erkennung)."
+        >
+          <Switch
+            checked={e.penOnly}
+            onChange={(penOnly) => updateSettings('editor', { penOnly })}
+            label="Nur Stift zeichnet"
+          />
         </SettingRow>
         <SettingRow label="Standard-Stiftfarbe">
           <div className="accent-picker">
@@ -248,7 +345,10 @@ function EditorSection() {
           <Segmented
             value={String(e.penSize)}
             onChange={(v) => updateSettings('editor', { penSize: Number(v) })}
-            options={PEN_SIZES.map((s, i) => ({ value: String(s), label: ['Fein', 'Mittel', 'Dick'][i] }))}
+            options={PEN_SIZES.map((s, i) => ({
+              value: String(s),
+              label: ['Fein', 'Mittel', 'Dick'][i],
+            }))}
           />
         </SettingRow>
       </SettingGroup>
@@ -258,7 +358,10 @@ function EditorSection() {
 
 function CalendarSection() {
   const c = useDb().settings.calendar
-  const hours = Array.from({ length: 24 }, (_, h) => ({ value: h, label: `${String(h).padStart(2, '0')}:00` }))
+  const hours = Array.from({ length: 24 }, (_, h) => ({
+    value: h,
+    label: `${String(h).padStart(2, '0')}:00`,
+  }))
   return (
     <SettingGroup title="Kalender">
       <SettingRow label="Standardansicht">
@@ -274,15 +377,30 @@ function CalendarSection() {
       </SettingRow>
       <SettingRow label="Sichtbare Stunden">
         <div className="row">
-          <Select value={c.startHour} options={hours.slice(0, 12)} onChange={(startHour) => updateSettings('calendar', { startHour })} />
+          <Select
+            value={c.startHour}
+            options={hours.slice(0, 12)}
+            onChange={(startHour) => updateSettings('calendar', { startHour })}
+          />
           <span className="muted">bis</span>
-          <Select value={c.endHour} options={hours.slice(13).concat({ value: 24, label: '24:00' })} onChange={(endHour) => updateSettings('calendar', { endHour })} />
+          <Select
+            value={c.endHour}
+            options={hours.slice(13).concat({ value: 24, label: '24:00' })}
+            onChange={(endHour) => updateSettings('calendar', { endHour })}
+          />
         </div>
       </SettingRow>
       <SettingRow label="Wochenende anzeigen">
-        <Switch checked={c.showWeekends} onChange={(showWeekends) => updateSettings('calendar', { showWeekends })} label="Wochenende anzeigen" />
+        <Switch
+          checked={c.showWeekends}
+          onChange={(showWeekends) => updateSettings('calendar', { showWeekends })}
+          label="Wochenende anzeigen"
+        />
       </SettingRow>
-      <SettingRow label="Automatisch abgleichen" description="Kalender-Abos und Moodle werden beim Start und danach regelmäßig aktualisiert.">
+      <SettingRow
+        label="Automatisch abgleichen"
+        description="Kalender-Abos und Moodle werden beim Start und danach regelmäßig aktualisiert."
+      >
         <Select
           value={c.syncIntervalHours}
           options={[
@@ -307,7 +425,8 @@ function DataSection() {
   const reset = async () => {
     const ok = await confirm({
       title: 'Alle Daten löschen?',
-      message: 'Semester, Module, Notizen, Dateien und Einstellungen werden unwiderruflich gelöscht. Erstelle vorher ein Backup.',
+      message:
+        'Semester, Module, Notizen, Dateien und Einstellungen werden unwiderruflich gelöscht. Erstelle vorher ein Backup.',
       confirmLabel: 'Alles löschen',
       danger: true,
     })
@@ -319,14 +438,20 @@ function DataSection() {
   return (
     <>
       <SettingGroup title="Speicherort">
-        <SettingRow label="Daten liegen hier" description={<span className="selectable mono-path">{dir}</span>}>
+        <SettingRow
+          label="Daten liegen hier"
+          description={<span className="selectable mono-path">{dir}</span>}
+        >
           {api.platform === 'desktop' && (
             <Button icon={<FolderOpen />} onClick={() => void api.revealDataDir()}>
               Öffnen
             </Button>
           )}
         </SettingRow>
-        <SettingRow label="Backup" description="Kopiert alle Daten (ohne API-Keys) in einen Ordner deiner Wahl, z. B. auf einen USB-Stick oder in die Cloud.">
+        <SettingRow
+          label="Backup"
+          description="Kopiert alle Daten (ohne API-Keys) in einen Ordner deiner Wahl, z. B. auf einen USB-Stick oder in die Cloud."
+        >
           <Button
             icon={<HardDriveDownload />}
             onClick={() =>
@@ -341,7 +466,10 @@ function DataSection() {
         </SettingRow>
       </SettingGroup>
       <SettingGroup title="Gefahrenzone">
-        <SettingRow label="Alles zurücksetzen" description="Löscht alle Daten und startet die Einrichtung neu.">
+        <SettingRow
+          label="Alles zurücksetzen"
+          description="Löscht alle Daten und startet die Einrichtung neu."
+        >
           <Button variant="danger" icon={<Trash2 />} onClick={() => void reset()}>
             Alles löschen
           </Button>
@@ -367,7 +495,10 @@ function AboutSection() {
   return (
     <>
       <SettingGroup title="Study Organizer">
-        <SettingRow label="Version" description="Deine Daten bleiben lokal auf diesem Gerät. Kein Konto, kein Tracking.">
+        <SettingRow
+          label="Version"
+          description="Deine Daten bleiben lokal auf diesem Gerät. Kein Konto, kein Tracking."
+        >
           <span className="muted tabular">{__APP_VERSION__}</span>
         </SettingRow>
       </SettingGroup>
@@ -390,6 +521,7 @@ const SECTIONS = [
   { id: 'calendar', label: 'Kalender', render: () => <CalendarSection /> },
   { id: 'integrations', label: 'Moodle & Kalender-Abos', render: () => <IntegrationSettings /> },
   { id: 'ai', label: 'KI', render: () => <AiSettings /> },
+  { id: 'transfer', label: 'Geräte-Übertragung', render: () => <SetupTransferSettings /> },
   { id: 'data', label: 'Daten & Backup', render: () => <DataSection /> },
   { id: 'about', label: 'Über & Tastenkürzel', render: () => <AboutSection /> },
 ]
@@ -405,7 +537,9 @@ export function SettingsView({ section, paneId }: { section?: string; paneId: st
             key={s.id}
             type="button"
             className={`nav-item ${s.id === current.id ? 'active' : ''}`}
-            onClick={() => useWorkspace.getState().replace(paneId, { type: 'settings', section: s.id })}
+            onClick={() =>
+              useWorkspace.getState().replace(paneId, { type: 'settings', section: s.id })
+            }
           >
             {s.label}
           </button>

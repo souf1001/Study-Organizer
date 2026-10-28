@@ -88,7 +88,11 @@ describe('Empirical Stress: Two-Stage Module Matching & Description Poisoning', 
   })
 
   it('Stage 2 code match takes precedence over Stage 2 name match in description', () => {
-    const modCode = newModule('sem-1', { id: 'mod-code', name: 'Rechnerarchitektur', code: 'RA-100' })
+    const modCode = newModule('sem-1', {
+      id: 'mod-code',
+      name: 'Rechnerarchitektur',
+      code: 'RA-100',
+    })
     const modName = newModule('sem-1', { id: 'mod-name', name: 'Betriebssysteme', code: 'BS-200' })
 
     const event = {
@@ -129,7 +133,11 @@ describe('Empirical Stress: Candidate Length Descending Sort & Shadowing Protect
   it('prevents 3-level hierarchical prefix shadowing (Informatik -> Theoretische Informatik -> Angewandte Theoretische Informatik)', () => {
     const mShort = newModule('sem-1', { id: 'm-short', name: 'Informatik', code: 'INF' })
     const mMed = newModule('sem-1', { id: 'm-med', name: 'Theoretische Informatik', code: 'TI' })
-    const mLong = newModule('sem-1', { id: 'm-long', name: 'Angewandte Theoretische Informatik', code: 'ATI' })
+    const mLong = newModule('sem-1', {
+      id: 'm-long',
+      name: 'Angewandte Theoretische Informatik',
+      code: 'ATI',
+    })
 
     // Put mShort first in list
     const modules = [mShort, mMed, mLong]
@@ -434,7 +442,12 @@ describe('Empirical Stress: Case-Insensitive Filename Deduplication in Service',
     ]
 
     const baseContent = vcal(
-      vevent({ uid: 'c1', summary: 'Chemie 1 Vorlesung', start: '20261012T080000Z', end: '20261012T093000Z' }),
+      vevent({
+        uid: 'c1',
+        summary: 'Chemie 1 Vorlesung',
+        start: '20261012T080000Z',
+        end: '20261012T093000Z',
+      }),
     )
 
     for (const filename of fileVariants) {
@@ -449,7 +462,12 @@ describe('Empirical Stress: Case-Insensitive Filename Deduplication in Service',
 
   it('keeps distinct filenames separate regardless of casing in different file roots', async () => {
     const content = vcal(
-      vevent({ uid: 'c1', summary: 'Chemie 1 Vorlesung', start: '20261012T080000Z', end: '20261012T093000Z' }),
+      vevent({
+        uid: 'c1',
+        summary: 'Chemie 1 Vorlesung',
+        start: '20261012T080000Z',
+        end: '20261012T093000Z',
+      }),
     )
 
     await service.calendarImportFile('Plan_A.ics', content)
@@ -504,8 +522,16 @@ describe('Empirical Stress: Roman Numerals & Keyword Boundaries', () => {
     // When module names differ only by symbols stripped by normalizeTextForMatching (like + and #),
     // normalizeTextForMatching('C++') -> 'c', and normalizeTextForMatching('C#') -> 'c'.
     // If they have distinct codes, codes disambiguate them cleanly:
-    const modCppWithCode = newModule('sem-1', { id: 'm-cpp', name: 'Programmieren in C++', code: 'CS-CPP' })
-    const modCsWithCode = newModule('sem-1', { id: 'm-cs', name: 'Programmieren in C#', code: 'CS-CSHARP' })
+    const modCppWithCode = newModule('sem-1', {
+      id: 'm-cpp',
+      name: 'Programmieren in C++',
+      code: 'CS-CPP',
+    })
+    const modCsWithCode = newModule('sem-1', {
+      id: 'm-cs',
+      name: 'Programmieren in C#',
+      code: 'CS-CSHARP',
+    })
 
     const evCppWithCode = {
       uid: 'cpp-1',
@@ -538,7 +564,8 @@ describe('Empirical Stress: Roman Numerals & Keyword Boundaries', () => {
       vevent({
         uid: 'crypto-1',
         summary: 'Kryptographie Vorlesung',
-        description: 'Voraussetzung: Erfolgreicher Abschluss von Mathematik 1 wird dringend empfohlen.',
+        description:
+          'Voraussetzung: Erfolgreicher Abschluss von Mathematik 1 wird dringend empfohlen.',
         start: '20261012T080000Z',
         end: '20261012T093000Z',
       }),

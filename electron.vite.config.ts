@@ -7,12 +7,13 @@ import react from '@vitejs/plugin-react'
 const alias = { '@shared': resolve('src/shared'), '@backend': resolve('src/backend') }
 const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
 
-// Die Content-Security-Policy blockiert im Dev-Modus das Hot-Reload-Skript von Vite.
-// Sie gilt deshalb nur im fertigen Build.
+// The Content Security Policy blocks Vite's hot-reload script in dev mode,
+// so it only applies to the production build.
 const stripCspInDev: Plugin = {
   name: 'strip-csp-in-dev',
   apply: 'serve',
-  transformIndexHtml: (html) => html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''),
+  transformIndexHtml: (html) =>
+    html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''),
 }
 
 export default defineConfig({
@@ -24,7 +25,7 @@ export default defineConfig({
     resolve: { alias },
     build: {
       externalizeDeps: true,
-      // Preload-Skripte in einer Sandbox müssen CommonJS sein
+      // Sandboxed preload scripts must be CommonJS
       rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } },
     },
   },
