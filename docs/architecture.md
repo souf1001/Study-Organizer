@@ -48,11 +48,14 @@ The platform-independent part (in-memory `Db`, delayed saving, cascading deletes
 
 ```
 <dir>/db.json               metadata (semesters, modules, folders, items, events, tasks, settings, ...)
+<dir>/layout.json           where each document is in the documents folder (and that folder, if moved)
 <dir>/notes/<id>.json       note content (text + drawings)
-<dir>/files/<id>.<ext>      uploaded files
+<dir>/files/<id>.<ext>      new uploads until they are placed, and images pasted into notes
 <dir>/text/<id>.txt         text extracted from PDFs (search, AI)
 <dir>/annotations/<id>.json drawings on PDF pages
 ```
+
+Documents live in a readable structure outside `<dir>` (default `Documents/Study Organizer`): `<semester>/<module>/<folder>/…/<title>.<ext>`, notes as `<title>.md`. `documents-layout.ts` computes where each item belongs (`planLayout`) and brings the folder in line through a small file system adapter (`syncLayout`), which the store runs after every database save: it creates folders, moves renamed or moved files, writes new notes as Markdown, removes app-created folders once empty, and never overwrites or deletes files it did not create (name clashes get a ` (2)` suffix). `Item.fileName` stays the internal key; `Store.filePath()` resolves it to the current location.
 
 Writes are debounced and atomic (write to a temp file, then rename). `files.ts` detects file types and validates IDs and file names against path traversal.
 
