@@ -1,18 +1,46 @@
 // Data store for the Android app (and any browser): persists into IndexedDB through the
 // KeyValueStore abstraction. Files are kept as Blobs and shown through object URLs.
 import { normalizeDb } from '../shared/defaults'
+import { noteToMarkdown } from '../shared/note-markdown'
 import type { Annotations, Db, FileInput, Item, NoteDoc } from '../shared/types'
+import {
+  clearLayout,
+  emptyLayoutState,
+  serialized,
+  syncLayout,
+  type LayoutFs,
+  type LayoutState,
+} from './documents-layout'
 import { detectFile } from './files'
 import { TABLES, createMemoryKeyValueStore, openIndexedDb, type KeyValueStore } from './key-value'
 import { RecordStore } from './record-store'
 import type { Secrets } from './secrets'
 
 const DB_KEY = 'db'
+const LAYOUT_KEY = 'layout'
 
 export class BrowserStore extends RecordStore {
   readonly dir = 'App-Speicher auf diesem Gerät'
   /** Object URLs of stored files, so the UI can show them synchronously */
   private fileUrls = new Map<string, string>()
+  /** Readable copy of all documents in a public folder (Android: Documents/Study Organizer) */
+  private documents: { fs: LayoutFs; state: LayoutState } | null = null
+  /** Brings the documents folder in line with the database (one run at a time) */
+  readonly syncDocuments = serialized(async () => {
+    const documents = this.documents
+    if (!documents) return
+    try {
+      await documents.fs.mkdir('')
+      documents.state = await syncLayout(this.db, documents.state, documents.fs, {
+        noteMarkdown: async (item) => noteToMarkdown(item.title, await this.loadNote(item.id)),
+        onError: (error, item) =>
+          console.warn(`Could not copy ${item?.title ?? 'a folder'} to the documents:`, error),
+      })
+      await this.storage.put('meta', LAYOUT_KEY, documents.state)
+    } catch (error) {
+      console.warn('Could not update the documents folder:', error)
+    }
+  })
 
   private constructor(readonly storage: KeyValueStore) {
     super()
@@ -44,21 +72,40 @@ export class BrowserStore extends RecordStore {
     this.fileUrls.delete(fileName)
   }
 
+  /**
+   * Keeps a readable copy of all documents (semester / module / folder / file, notes as
+   * Markdown) in a folder other apps can see. The data itself stays in IndexedDB.
+   */
+  async attachDocumentsFolder(fs: LayoutFs): Promise<void> {
+    const state = (await this.storage.get<LayoutState>('meta', LAYOUT_KEY)) ?? emptyLayoutState()
+    this.documents = { fs, state }
+    void this.syncDocuments()
+  }
+
   /** URL under which the UI can display a stored file ('' if the file is missing) */
   fileUrl(item: Item): string {
     return item.fileName ? (this.fileUrls.get(item.fileName) ?? '') : ''
   }
 
-  protected saveDb(db: Db): Promise<void> {
-    return this.storage.put('meta', DB_KEY, db)
+  protected async saveDb(db: Db): Promise<void> {
+    await this.storage.put('meta', DB_KEY, db)
+    // Copying files can take a while: saving the database must not wait for it
+    void this.syncDocuments()
   }
 
   protected loadNote(id: string): Promise<NoteDoc | null> {
     return this.storage.get<NoteDoc>('notes', id)
   }
 
-  protected saveNote(id: string, doc: NoteDoc): Promise<void> {
-    return this.storage.put('notes', id, doc)
+  protected async saveNote(id: string, doc: NoteDoc): Promise<void> {
+    await this.storage.put('notes', id, doc)
+    const placed = this.documents?.state.entries[id]
+    const item = this.db.items.find((i) => i.id === id)
+    if (this.documents && placed && item) {
+      await this.documents.fs
+        .writeText(placed, noteToMarkdown(item.title, doc))
+        .catch((error) => console.warn('Could not export the note as Markdown:', error))
+    }
   }
 
   protected loadAnnotations(id: string): Promise<Annotations | null> {
@@ -106,9 +153,20 @@ export class BrowserStore extends RecordStore {
       await this.storage.delete('files', item.fileName)
       this.revokeFileUrl(item.fileName)
     }
+    const placed = this.documents?.state.entries[item.id]
+    if (this.documents && placed) {
+      delete this.documents.state.entries[item.id]
+      await this.documents.fs.remove(placed).catch(() => undefined)
+    }
   }
 
   protected async clearContent(): Promise<void> {
+    if (this.documents) {
+      await this.syncDocuments()
+      await clearLayout(this.documents.state, this.documents.fs)
+      this.documents.state = emptyLayoutState()
+      await this.storage.put('meta', LAYOUT_KEY, this.documents.state)
+    }
     for (const fileName of [...this.fileUrls.keys()]) this.revokeFileUrl(fileName)
     for (const table of TABLES) {
       // Secrets are cleared separately (see KeyValueSecrets): a setup import resets the data

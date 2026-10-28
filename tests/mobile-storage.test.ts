@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BrowserStore, KeyValueSecrets } from '../src/backend/browser-store'
 import { readLimited } from '../src/backend/http'
+import type { LayoutFs } from '../src/backend/documents-layout'
 import { createMemoryKeyValueStore } from '../src/backend/key-value'
 import { createService } from '../src/backend/service'
 import { DEFAULT_SETTINGS, emptyNote, newId, newModule } from '../src/shared/defaults'
@@ -130,5 +131,57 @@ describe('readLimited', () => {
     await expect(
       readLimited(responseOf([new Uint8Array(8), new Uint8Array(8)]), 10, 'X'),
     ).rejects.toThrow('zu groß')
+  })
+})
+
+describe('BrowserStore documents folder', () => {
+  /** In-memory file system standing in for Android's Documents folder */
+  function memoryFs() {
+    const files = new Map<string, string>()
+    const dirs = new Set<string>()
+    const fs: LayoutFs = {
+      exists: async (rel) => files.has(rel) || dirs.has(rel),
+      mkdir: async (rel) => {
+        dirs.add(rel)
+      },
+      move: async (from, to) => {
+        files.set(to, files.get(from)!)
+        files.delete(from)
+      },
+      remove: async (rel) => {
+        files.delete(rel)
+      },
+      removeDirIfEmpty: async (rel) => {
+        const used = [...files.keys(), ...dirs].some((p) => p.startsWith(`${rel}/`))
+        if (!used) dirs.delete(rel)
+      },
+      createFile: async (item, rel) => {
+        files.set(rel, `file:${item.fileName}`)
+        return true
+      },
+      writeText: async (rel, text) => {
+        files.set(rel, text)
+      },
+    }
+    return { fs, files, dirs }
+  }
+
+  it('copies documents into the readable structure and follows renames', async () => {
+    const { store, module } = await storeWithModule('Analysis')
+    const { fs, files } = memoryFs()
+    await store.attachDocumentsFolder(fs)
+    const item = await store.addFile({ moduleId: module.id, folderId: null }, pdf('Blatt_1.pdf'))
+    await store.flush()
+    await store.syncDocuments()
+    const semesterName = store.get().semesters[0].name.replace('/', '-')
+    expect(files.get(`${semesterName}/Analysis/Blatt 1.pdf`)).toBe(`file:${item.fileName}`)
+
+    store.put('items', { ...item, title: 'Blatt eins' })
+    await store.flush()
+    await store.syncDocuments()
+    expect([...files.keys()]).toEqual([`${semesterName}/Analysis/Blatt eins.pdf`])
+
+    await store.remove('items', item.id)
+    expect(files.size).toBe(0)
   })
 })

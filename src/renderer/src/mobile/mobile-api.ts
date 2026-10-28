@@ -7,6 +7,7 @@ import { startBackgroundSync } from '@backend/background-sync'
 import { BrowserStore, KeyValueSecrets } from '@backend/browser-store'
 import { createService } from '@backend/service'
 import { isAndroid } from '@/lib/platform'
+import { androidDocumentsFs, DOCUMENTS_LABEL, documentsFolderAllowed } from './documents-folder'
 import { shareFile } from './share-file'
 import { connectMoodleWithSso, importTucanTimetable } from './university-logins'
 
@@ -30,6 +31,12 @@ export async function createMobileApi(): Promise<Api> {
   const service = createService(store, secrets, { platform: isAndroid ? 'android' : 'web' })
 
   saveWhenLeaving(store)
+  // Readable copy of all documents in Documents/Study Organizer (see documents-folder.ts)
+  if (isAndroid) {
+    void documentsFolderAllowed().then(async (allowed) => {
+      if (allowed) await store.attachDocumentsFolder(androidDocumentsFs(store.storage))
+    })
+  }
 
   // Like on desktop, only changes the backend makes on its own (background sync) are reported.
   // The UI applies its own changes optimistically; reloading after every write would reset
@@ -119,6 +126,7 @@ export async function createMobileApi(): Promise<Api> {
       }
     },
     dataDir: async () => store.dir,
+    documentsDir: async () => (isAndroid ? DOCUMENTS_LABEL : store.dir),
     revealDataDir: async () => undefined,
     // A backup is a complete setup file without credentials
     backup: async () => {
