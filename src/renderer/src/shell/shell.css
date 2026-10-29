@@ -24,7 +24,33 @@
   bottom: 0;
   cursor: col-resize;
   z-index: 20;
+  touch-action: none;
+  -webkit-app-region: no-drag;
   transition: background 0.15s ease;
+}
+
+/* Touchscreens: a wider target for the finger; the visible line stays thin */
+@media (pointer: coarse) {
+  .sidebar-resize-handle {
+    right: -12px;
+    width: 24px;
+    background: none !important;
+  }
+
+  .sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 11px;
+    width: 2px;
+    background: transparent;
+    transition: background 0.15s ease;
+  }
+
+  .sidebar.resizing .sidebar-resize-handle::after {
+    background: var(--accent);
+  }
 }
 
 .sidebar-resize-handle:hover,
@@ -363,6 +389,8 @@
 .pane-separator {
   flex: none;
   background: var(--border);
+  touch-action: none;
+  -webkit-app-region: no-drag;
   transition: background var(--duration) var(--ease);
 }
 
@@ -377,6 +405,27 @@
 .pane-separator:hover,
 .pane-separator[data-separator='active'] {
   background: var(--accent);
+}
+
+/* Touchscreens: the divider itself is wide enough to grab with a finger (and does not scroll) */
+@media (pointer: coarse) {
+  .pane-separator[aria-orientation='vertical'] {
+    width: 14px;
+    background: linear-gradient(to right, transparent 6px, var(--border) 6px 8px, transparent 8px);
+  }
+
+  .pane-separator[aria-orientation='horizontal'] {
+    height: 14px;
+    background: linear-gradient(to bottom, transparent 6px, var(--border) 6px 8px, transparent 8px);
+  }
+
+  .pane-separator[aria-orientation='vertical'][data-separator='active'] {
+    background: linear-gradient(to right, transparent 5px, var(--accent) 5px 9px, transparent 9px);
+  }
+
+  .pane-separator[aria-orientation='horizontal'][data-separator='active'] {
+    background: linear-gradient(to bottom, transparent 5px, var(--accent) 5px 9px, transparent 9px);
+  }
 }
 
 /* ---- Command palette ---- */

@@ -195,9 +195,12 @@ function PaneView({ pane, count }: { pane: Pane; count: number }) {
   )
 }
 
+/** Grab area around the dividers between panes, in pixels (a finger needs more room) */
+const RESIZE_TARGET = { coarse: 32, fine: 10 }
+
 function Row({ panes, count }: { panes: Pane[]; count: number }): ReactNode {
   return (
-    <Group orientation="horizontal" className="pane-group">
+    <Group orientation="horizontal" className="pane-group" resizeTargetMinimumSize={RESIZE_TARGET}>
       {panes.map((pane, i) => (
         <Fragment key={pane.id}>
           {i > 0 && <Separator className="pane-separator" />}
@@ -218,7 +221,11 @@ export function Workspace() {
       {count < 4 ? (
         <Row panes={panes} count={count} />
       ) : (
-        <Group orientation="vertical" className="pane-group">
+        <Group
+          orientation="vertical"
+          className="pane-group"
+          resizeTargetMinimumSize={RESIZE_TARGET}
+        >
           <Panel id="top" minSize={200}>
             <Row panes={panes.slice(0, 2)} count={count} />
           </Panel>
