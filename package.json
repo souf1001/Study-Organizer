@@ -1,7 +1,7 @@
 {
   "name": "study-organizer",
   "productName": "Study Organizer",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Minimalist study organizer: modules, lectures, notes, slides, calendar and optional AI.",
   "main": "out/main/index.js",
   "type": "module",
