@@ -107,6 +107,14 @@ export async function moodleSiteInfo(
   }
 }
 
+interface MoodleFile {
+  type: string
+  filename: string
+  fileurl: string
+  filesize: number
+  timemodified: number
+}
+
 interface MoodleSection {
   name: string
   modules: {
@@ -114,13 +122,7 @@ interface MoodleSection {
     instance?: number
     modname: string
     name: string
-    contents?: {
-      type: string
-      filename: string
-      fileurl: string
-      filesize: number
-      timemodified: number
-    }[]
+    contents?: MoodleFile[]
   }[]
 }
 
@@ -449,13 +451,46 @@ export async function connectMoodle(
 }
 
 /** Fetches assignments, events, forums and (optionally) files of the mapped courses */
+/** Runs `fn` for all items with at most `limit` running at the same time */
+export async function mapLimit<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++])
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
+
+// Parallel requests: Moodle answers each web service call slowly, and the sync makes many
+const PARALLEL_COURSES = 3
+const PARALLEL_REQUESTS = 4
+const PARALLEL_DOWNLOADS = 2
+
 export async function syncMoodle(
   store: DataStore,
-  client: MoodleClient,
+  moodle: MoodleClient,
   reserveSpace: ReserveSpace = async () => () => undefined,
 ): Promise<MoodleSyncResult> {
   const result: MoodleSyncResult = { tasks: 0, events: 0, files: 0, errors: [] }
   const db = store.get()
+  // Course contents are needed for files and for finding forums: load them once per sync
+  const contentsCache = new Map<number, ReturnType<MoodleClient['contents']>>()
+  const client = Object.create(moodle, {
+    contents: {
+      value: (courseId: number) => {
+        if (!contentsCache.has(courseId)) {
+          const loading = moodle.contents(courseId)
+          // A failed request may be tried again
+          loading.catch(() => contentsCache.delete(courseId))
+          contentsCache.set(courseId, loading)
+        }
+        return contentsCache.get(courseId)!
+      },
+    },
+  }) as MoodleClient
   const courseMap: Record<string, string> = { ...(db.settings.moodle.courseMap ?? {}) }
 
   // Auto-map courses that are not mapped yet, based on module name or code
@@ -500,310 +535,333 @@ export async function syncMoodle(
     return result
   }
 
+  // Assignments, calendar events, files and forums are independent: load them at the same time
   // Assignments become tasks (an existing task keeps its done state)
-  try {
-    const { courses } = await client.assignments(courseIds)
-    for (const course of courses) {
-      for (const a of course.assignments) {
-        const externalId = `moodle:assign:${a.id}`
-        const existing = db.tasks.find((t) => t.externalId === externalId)
-        const due = a.duedate ? toIso(a.duedate) : null
-        store.put(
-          'tasks',
-          existing
-            ? { ...existing, title: a.name, due }
-            : newTask({
-                title: a.name,
-                due,
-                moduleId: moduleFor(course.id),
-                kind: 'assignment',
-                source: 'moodle',
-                externalId,
-              }),
-        )
-        result.tasks += 1
+  const assignmentsTask = (async () => {
+    try {
+      const { courses } = await client.assignments(courseIds)
+      for (const course of courses) {
+        for (const a of course.assignments) {
+          const externalId = `moodle:assign:${a.id}`
+          const existing = db.tasks.find((t) => t.externalId === externalId)
+          const due = a.duedate ? toIso(a.duedate) : null
+          store.put(
+            'tasks',
+            existing
+              ? { ...existing, title: a.name, due }
+              : newTask({
+                  title: a.name,
+                  due,
+                  moduleId: moduleFor(course.id),
+                  kind: 'assignment',
+                  source: 'moodle',
+                  externalId,
+                }),
+          )
+          result.tasks += 1
+        }
       }
+    } catch (error) {
+      result.errors.push(`Abgaben: ${(error as Error).message}`)
     }
-  } catch (error) {
-    result.errors.push(`Abgaben: ${(error as Error).message}`)
-  }
+  })()
 
   // Other events (quizzes, forums, course events) go to the calendar; assignments are already tasks
-  try {
-    const now = Math.floor(Date.now() / 1000)
-    const { events } = await client.calendarEvents(courseIds, now - 30 * 86_400, now + 365 * 86_400)
-    const existingMoodleEvents = db.events.filter((e) =>
-      Boolean(e.externalId?.startsWith('moodle:event:')),
-    )
-    const records = events
-      .filter((e) => e.modulename !== 'assign')
-      .map((e) => {
-        const externalId = `moodle:event:${e.id}`
-        const exact = existingMoodleEvents.find((ex) => ex.externalId === externalId)
-        const kind = classifyEvent(e.name)
-
-        let targetModuleId =
-          exact?.moduleId && db.modules.some((m) => m.id === exact.moduleId)
-            ? exact.moduleId
-            : moduleFor(e.courseid)
-
-        // Keep a module the user already assigned manually to another event of the same series
-        if (!exact && existingMoodleEvents.length > 0) {
-          const normalizedTitle = e.name.trim().toLowerCase()
-          const seriesMatch = existingMoodleEvents.find(
-            (ex) =>
-              Boolean(ex.moduleId && db.modules.some((m) => m.id === ex.moduleId)) &&
-              ex.title.trim().toLowerCase() === normalizedTitle,
-          )
-          if (seriesMatch?.moduleId) {
-            targetModuleId = seriesMatch.moduleId
-          }
-        }
-
-        return {
-          id: exact?.id ?? newId(),
-          title: e.name,
-          kind: exact?.kind ?? (kind === 'other' && !e.timeduration ? 'deadline' : kind),
-          start: toIso(e.timestart),
-          end: toIso(e.timestart + (e.timeduration || 0)),
-          allDay: false,
-          moduleId: targetModuleId,
-          location: exact?.location ?? '',
-          notes: exact?.notes ?? '',
-          subscriptionId: null,
-          externalId,
-        }
-      })
-    store.replaceMany('events', (e) => Boolean(e.externalId?.startsWith('moodle:event:')), records)
-    result.events = records.length
-  } catch (error) {
-    result.errors.push(`Termine: ${(error as Error).message}`)
-  }
-
-  if (db.settings.moodle.syncFiles) {
-    for (const courseId of courseIds) {
-      try {
-        result.files += await syncCourseFiles(
-          store,
-          client,
-          courseId,
-          moduleFor(courseId)!,
-          reserveSpace,
-        )
-      } catch (error) {
-        result.errors.push(`Dateien: ${(error as Error).message}`)
-      }
-    }
-  }
-
-  // Forums & announcements
-  try {
-    interface DiscoveredForum {
-      id: number
-      cmid?: number
-      course: number
-      type: string
-      name: string
-    }
-    type RawForum = Awaited<ReturnType<MoodleClient['forums']>>[number] & { cmid?: number }
-    const forums: DiscoveredForum[] = []
-
-    const addForum = (
-      id: unknown,
-      course: unknown,
-      type?: string,
-      name?: string,
-      cmid?: unknown,
-    ) => {
-      const numId = Number(id)
-      const numCourse = Number(course)
-      const numCmid = cmid !== undefined && cmid !== null ? Number(cmid) : undefined
-      if (!numId || isNaN(numId)) return
-      if (!forums.some((ex) => ex.id === numId)) {
-        forums.push({
-          id: numId,
-          cmid: numCmid && !isNaN(numCmid) ? numCmid : undefined,
-          course: numCourse && !isNaN(numCourse) ? numCourse : 0,
-          type: type || 'general',
-          name: name || 'Forum',
-        })
-      }
-    }
-    const addRawForum = (f: RawForum | null | undefined, fallbackCourse?: number) =>
-      addForum(f?.id, f?.course ?? fallbackCourse, f?.type, f?.name, f?.cmid)
-    const forumList = (response: unknown) =>
-      unwrapList<RawForum | null | undefined>(response, 'forums') ?? []
-
-    // 1. One bulk call for all mapped courses
+  const eventsTask = (async () => {
     try {
-      for (const f of forumList(await client.forums(courseIds))) addRawForum(f)
-    } catch {
-      // Bulk call with course filter failed
-    }
+      const now = Math.floor(Date.now() / 1000)
+      const { events } = await client.calendarEvents(
+        courseIds,
+        now - 30 * 86_400,
+        now + 365 * 86_400,
+      )
+      const existingMoodleEvents = db.events.filter((e) =>
+        Boolean(e.externalId?.startsWith('moodle:event:')),
+      )
+      const records = events
+        .filter((e) => e.modulename !== 'assign')
+        .map((e) => {
+          const externalId = `moodle:event:${e.id}`
+          const exact = existingMoodleEvents.find((ex) => ex.externalId === externalId)
+          const kind = classifyEvent(e.name)
 
-    // 1b. If nothing was found, try the bulk call without a course filter
-    if (forums.length === 0) {
-      try {
-        for (const f of forumList(await client.forums())) {
-          if (courseIds.includes(Number(f?.course))) addRawForum(f)
-        }
-      } catch {
-        // Unfiltered bulk call failed
-      }
-    }
+          let targetModuleId =
+            exact?.moduleId && db.modules.some((m) => m.id === exact.moduleId)
+              ? exact.moduleId
+              : moduleFor(e.courseid)
 
-    const coveredCourses = new Set(forums.map((f) => f.course))
-    for (const courseId of courseIds) {
-      // 2. Query courses not covered yet one by one
-      if (!coveredCourses.has(courseId)) {
-        try {
-          const list = forumList(await client.forums([courseId]))
-          if (list.length > 0) {
-            for (const f of list) addRawForum(f, courseId)
-            coveredCourses.add(courseId)
-          }
-        } catch {
-          // Per-course forum call failed
-        }
-      }
-
-      // 3. Fallback: read the forums from the course contents (available on every Moodle)
-      if (!coveredCourses.has(courseId)) {
-        try {
-          const sections = await client.contents(courseId)
-          for (const section of sections ?? []) {
-            for (const mod of section.modules ?? []) {
-              if (mod.modname !== 'forum') continue
-              const forumId = mod.instance ?? mod.id
-              if (forumId) {
-                addForum(
-                  forumId,
-                  courseId,
-                  ANNOUNCEMENT_PATTERN.test(mod.name) ? 'news' : 'general',
-                  mod.name,
-                  mod.id,
-                )
-                coveredCourses.add(courseId)
-              }
+          // Keep a module the user already assigned manually to another event of the same series
+          if (!exact && existingMoodleEvents.length > 0) {
+            const normalizedTitle = e.name.trim().toLowerCase()
+            const seriesMatch = existingMoodleEvents.find(
+              (ex) =>
+                Boolean(ex.moduleId && db.modules.some((m) => m.id === ex.moduleId)) &&
+                ex.title.trim().toLowerCase() === normalizedTitle,
+            )
+            if (seriesMatch?.moduleId) {
+              targetModuleId = seriesMatch.moduleId
             }
           }
-        } catch {
-          // Course contents unavailable
-        }
-      }
-    }
 
-    const allDiscussions: MoodleDiscussion[] = []
-    const existingDiscussions = db.moodleDiscussions ?? []
-
-    /** Some Moodle versions return extra or differently named fields */
-    type LooseDiscussion = MoodleRawDiscussion & {
-      author?: string | { fullname?: string; urls?: { profileimage?: string } } | null
-      timestart?: number
-    }
-
-    for (const forum of forums) {
-      try {
-        const discussionsRaw = await client.discussions(forum.id).catch(() => [])
-        let discussions: LooseDiscussion[] = Array.isArray(discussionsRaw) ? discussionsRaw : []
-        // Some sites only accept the course-module id instead of the forum instance id
-        if (discussions.length === 0 && forum.cmid && forum.cmid !== forum.id) {
-          const fallbackRaw = await client.discussions(forum.cmid).catch(() => [])
-          if (Array.isArray(fallbackRaw) && fallbackRaw.length > 0) {
-            discussions = fallbackRaw
+          return {
+            id: exact?.id ?? newId(),
+            title: e.name,
+            kind: exact?.kind ?? (kind === 'other' && !e.timeduration ? 'deadline' : kind),
+            start: toIso(e.timestart),
+            end: toIso(e.timestart + (e.timeduration || 0)),
+            allDay: false,
+            moduleId: targetModuleId,
+            location: exact?.location ?? '',
+            notes: exact?.notes ?? '',
+            subscriptionId: null,
+            externalId,
           }
+        })
+      store.replaceMany(
+        'events',
+        (e) => Boolean(e.externalId?.startsWith('moodle:event:')),
+        records,
+      )
+      result.events = records.length
+    } catch (error) {
+      result.errors.push(`Termine: ${(error as Error).message}`)
+    }
+  })()
+
+  const filesTask = !db.settings.moodle.syncFiles
+    ? Promise.resolve()
+    : mapLimit(courseIds, PARALLEL_COURSES, async (courseId) => {
+        try {
+          const files = await syncCourseFiles(
+            store,
+            client,
+            courseId,
+            moduleFor(courseId)!,
+            reserveSpace,
+          )
+          result.files += files
+        } catch (error) {
+          result.errors.push(`Dateien: ${(error as Error).message}`)
         }
-        const isNews = forum.type === 'news' || ANNOUNCEMENT_PATTERN.test(forum.name)
+      })
 
-        for (const d of discussions) {
-          const discId = Number(d.discussion ?? d.id)
-          const rootPostId = Number(
-            d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId),
-          )
-          const existingDisc = existingDiscussions.find(
-            (ex) => ex.id === discId || ex.discussionId === discId,
-          )
-          const effectiveCourseId = forum.course || Number(d.course)
-          const effectiveModuleId = moduleFor(effectiveCourseId)
-          const authorObject = d.author && typeof d.author === 'object' ? d.author : undefined
+  // Forums & announcements
+  const forumsTask = (async () => {
+    try {
+      interface DiscoveredForum {
+        id: number
+        cmid?: number
+        course: number
+        type: string
+        name: string
+      }
+      type RawForum = Awaited<ReturnType<MoodleClient['forums']>>[number] & { cmid?: number }
+      const forums: DiscoveredForum[] = []
 
-          const author =
-            d.userfullname ||
-            d.firstpostfullname ||
-            d.firstuserfullname ||
-            authorObject?.fullname ||
-            (typeof d.author === 'string' ? d.author : '') ||
-            existingDisc?.userFullName ||
-            'Moodle'
-          const picture =
-            d.userpictureurl ||
-            d.firstpostuserimageurl ||
-            d.firstuserimageurl ||
-            authorObject?.urls?.profileimage ||
-            existingDisc?.userPictureUrl
-
-          const createdUnix = Number(
-            d.created || d.timecreated || d.timestart || d.timemodified || d.modified || nowUnix(),
-          )
-          const modifiedUnix = Number(
-            d.timemodified || d.modified || d.timecreated || d.created || createdUnix,
-          )
-
-          allDiscussions.push({
-            id: discId,
-            discussionId: discId,
-            firstPostId: rootPostId,
-            forumId: forum.id,
-            courseId: effectiveCourseId,
-            moduleId: effectiveModuleId,
-            forumName: forum.name,
-            subject: d.name || d.subject || '(Ohne Betreff)',
-            message: d.message || existingDisc?.message || '',
-            userFullName: author,
-            userPictureUrl: picture,
-            timeCreated: toIso(createdUnix),
-            timeModified: toIso(modifiedUnix),
-            numReplies: d.numreplies ?? 0,
-            pinned: Boolean(d.pinned),
-            isAnnouncement: isNews,
+      const addForum = (
+        id: unknown,
+        course: unknown,
+        type?: string,
+        name?: string,
+        cmid?: unknown,
+      ) => {
+        const numId = Number(id)
+        const numCourse = Number(course)
+        const numCmid = cmid !== undefined && cmid !== null ? Number(cmid) : undefined
+        if (!numId || isNaN(numId)) return
+        if (!forums.some((ex) => ex.id === numId)) {
+          forums.push({
+            id: numId,
+            cmid: numCmid && !isNaN(numCmid) ? numCmid : undefined,
+            course: numCourse && !isNaN(numCourse) ? numCourse : 0,
+            type: type || 'general',
+            name: name || 'Forum',
           })
         }
-      } catch {
-        // Skip forums that fail to load
       }
-    }
+      const addRawForum = (f: RawForum | null | undefined, fallbackCourse?: number) =>
+        addForum(f?.id, f?.course ?? fallbackCourse, f?.type, f?.name, f?.cmid)
+      const forumList = (response: unknown) =>
+        unwrapList<RawForum | null | undefined>(response, 'forums') ?? []
 
-    // Fill in the body of up to 10 discussions without text from their first post
-    const discussionsNeedingBody = allDiscussions.filter((d) => !d.message).slice(0, 10)
-    for (const item of discussionsNeedingBody) {
+      // 1. One bulk call for all mapped courses
       try {
-        const posts = await client.discussionPosts(item.discussionId)
-        const root = posts.find((p) => p.parentId === 0 || p.id === item.firstPostId) ?? posts[0]
-        if (root?.message) {
-          item.message = root.message
-          if (root.id) item.firstPostId = root.id
-        }
+        for (const f of forumList(await client.forums(courseIds))) addRawForum(f)
       } catch {
-        // Not fatal: the UI loads the posts on demand
+        // Bulk call with course filter failed
       }
-    }
 
-    const updatedDiscIds = new Set(allDiscussions.map((d) => d.id))
-    const otherDiscussions = existingDiscussions.filter(
-      (d) =>
-        !updatedDiscIds.has(d.id) && !courseIds.some((cid) => String(cid) === String(d.courseId)),
-    )
-    const mergedDiscussions = [...otherDiscussions, ...allDiscussions].sort(
-      (a, b) =>
-        (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
-    )
-    store.update({ moodleDiscussions: mergedDiscussions })
-    if (mergedDiscussions.length > 0) {
-      result.discussions = mergedDiscussions.length
+      // 1b. If nothing was found, try the bulk call without a course filter
+      if (forums.length === 0) {
+        try {
+          for (const f of forumList(await client.forums())) {
+            if (courseIds.includes(Number(f?.course))) addRawForum(f)
+          }
+        } catch {
+          // Unfiltered bulk call failed
+        }
+      }
+
+      const coveredCourses = new Set(forums.map((f) => f.course))
+      await mapLimit(courseIds, PARALLEL_REQUESTS, async (courseId) => {
+        // 2. Query courses not covered yet one by one
+        if (!coveredCourses.has(courseId)) {
+          try {
+            const list = forumList(await client.forums([courseId]))
+            if (list.length > 0) {
+              for (const f of list) addRawForum(f, courseId)
+              coveredCourses.add(courseId)
+            }
+          } catch {
+            // Per-course forum call failed
+          }
+        }
+
+        // 3. Fallback: read the forums from the course contents (available on every Moodle)
+        if (!coveredCourses.has(courseId)) {
+          try {
+            const sections = await client.contents(courseId)
+            for (const section of sections ?? []) {
+              for (const mod of section.modules ?? []) {
+                if (mod.modname !== 'forum') continue
+                const forumId = mod.instance ?? mod.id
+                if (forumId) {
+                  addForum(
+                    forumId,
+                    courseId,
+                    ANNOUNCEMENT_PATTERN.test(mod.name) ? 'news' : 'general',
+                    mod.name,
+                    mod.id,
+                  )
+                  coveredCourses.add(courseId)
+                }
+              }
+            }
+          } catch {
+            // Course contents unavailable
+          }
+        }
+      })
+
+      const allDiscussions: MoodleDiscussion[] = []
+      const existingDiscussions = db.moodleDiscussions ?? []
+
+      /** Some Moodle versions return extra or differently named fields */
+      type LooseDiscussion = MoodleRawDiscussion & {
+        author?: string | { fullname?: string; urls?: { profileimage?: string } } | null
+        timestart?: number
+      }
+
+      await mapLimit(forums, PARALLEL_REQUESTS, async (forum) => {
+        try {
+          const discussionsRaw = await client.discussions(forum.id).catch(() => [])
+          let discussions: LooseDiscussion[] = Array.isArray(discussionsRaw) ? discussionsRaw : []
+          // Some sites only accept the course-module id instead of the forum instance id
+          if (discussions.length === 0 && forum.cmid && forum.cmid !== forum.id) {
+            const fallbackRaw = await client.discussions(forum.cmid).catch(() => [])
+            if (Array.isArray(fallbackRaw) && fallbackRaw.length > 0) {
+              discussions = fallbackRaw
+            }
+          }
+          const isNews = forum.type === 'news' || ANNOUNCEMENT_PATTERN.test(forum.name)
+
+          for (const d of discussions) {
+            const discId = Number(d.discussion ?? d.id)
+            const rootPostId = Number(
+              d.firstpost ?? (d.discussion && d.discussion !== d.id ? d.id : discId),
+            )
+            const existingDisc = existingDiscussions.find(
+              (ex) => ex.id === discId || ex.discussionId === discId,
+            )
+            const effectiveCourseId = forum.course || Number(d.course)
+            const effectiveModuleId = moduleFor(effectiveCourseId)
+            const authorObject = d.author && typeof d.author === 'object' ? d.author : undefined
+
+            const author =
+              d.userfullname ||
+              d.firstpostfullname ||
+              d.firstuserfullname ||
+              authorObject?.fullname ||
+              (typeof d.author === 'string' ? d.author : '') ||
+              existingDisc?.userFullName ||
+              'Moodle'
+            const picture =
+              d.userpictureurl ||
+              d.firstpostuserimageurl ||
+              d.firstuserimageurl ||
+              authorObject?.urls?.profileimage ||
+              existingDisc?.userPictureUrl
+
+            const createdUnix = Number(
+              d.created ||
+                d.timecreated ||
+                d.timestart ||
+                d.timemodified ||
+                d.modified ||
+                nowUnix(),
+            )
+            const modifiedUnix = Number(
+              d.timemodified || d.modified || d.timecreated || d.created || createdUnix,
+            )
+
+            allDiscussions.push({
+              id: discId,
+              discussionId: discId,
+              firstPostId: rootPostId,
+              forumId: forum.id,
+              courseId: effectiveCourseId,
+              moduleId: effectiveModuleId,
+              forumName: forum.name,
+              subject: d.name || d.subject || '(Ohne Betreff)',
+              message: d.message || existingDisc?.message || '',
+              userFullName: author,
+              userPictureUrl: picture,
+              timeCreated: toIso(createdUnix),
+              timeModified: toIso(modifiedUnix),
+              numReplies: d.numreplies ?? 0,
+              pinned: Boolean(d.pinned),
+              isAnnouncement: isNews,
+            })
+          }
+        } catch {
+          // Skip forums that fail to load
+        }
+      })
+
+      // Fill in the body of up to 10 discussions without text from their first post
+      const discussionsNeedingBody = allDiscussions.filter((d) => !d.message).slice(0, 10)
+      await mapLimit(discussionsNeedingBody, PARALLEL_REQUESTS, async (item) => {
+        try {
+          const posts = await client.discussionPosts(item.discussionId)
+          const root = posts.find((p) => p.parentId === 0 || p.id === item.firstPostId) ?? posts[0]
+          if (root?.message) {
+            item.message = root.message
+            if (root.id) item.firstPostId = root.id
+          }
+        } catch {
+          // Not fatal: the UI loads the posts on demand
+        }
+      })
+
+      const updatedDiscIds = new Set(allDiscussions.map((d) => d.id))
+      const otherDiscussions = existingDiscussions.filter(
+        (d) =>
+          !updatedDiscIds.has(d.id) && !courseIds.some((cid) => String(cid) === String(d.courseId)),
+      )
+      const mergedDiscussions = [...otherDiscussions, ...allDiscussions].sort(
+        (a, b) =>
+          (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timeCreated.localeCompare(a.timeCreated),
+      )
+      store.update({ moodleDiscussions: mergedDiscussions })
+      if (mergedDiscussions.length > 0) {
+        result.discussions = mergedDiscussions.length
+      }
+    } catch (err) {
+      result.errors.push(`Foren: ${(err as Error).message}`)
     }
-  } catch (err) {
-    result.errors.push(`Foren: ${(err as Error).message}`)
-  }
+  })()
+
+  await Promise.all([assignmentsTask, eventsTask, filesTask, forumsTask])
 
   // Re-read the settings: the course map or other settings may have changed during the sync
   const { settings } = store.get()
@@ -833,6 +891,7 @@ async function syncCourseFiles(
 
   let count = 0
   const rootId = folderNamed('Moodle', null)
+  const downloads: { file: MoodleFile; section: string; externalId: string }[] = []
   for (const section of await client.contents(courseId)) {
     for (const mod of section.modules) {
       if (mod.modname !== 'resource' && mod.modname !== 'folder') continue
@@ -840,24 +899,26 @@ async function syncCourseFiles(
         if (file.type !== 'file' || file.filesize > MAX_FILE_BYTES) continue
         const externalId = `moodle:file:${file.fileurl}@${file.timemodified}`
         if (db.items.some((i) => i.externalId === externalId)) continue
-        // Download the new version first, then replace the old one (a failure keeps the old file)
-        const bytes = await client.download(file.fileurl)
-        const release = await reserveSpace(bytes.length)
-        const folderId = folderNamed(section.name || 'Allgemein', rootId)
-        const item = await store
-          .addFile(
-            { moduleId, folderId },
-            { name: file.filename, type: '', bytes, fromInternet: true },
-          )
-          .finally(release)
-        store.put('items', { ...item, source: 'moodle', externalId })
-        const outdated = db.items.find(
-          (i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`),
-        )
-        if (outdated) await store.remove('items', outdated.id)
-        count += 1
+        downloads.push({ file, section: section.name || 'Allgemein', externalId })
       }
     }
   }
+  await mapLimit(downloads, PARALLEL_DOWNLOADS, async ({ file, section, externalId }) => {
+    // Download the new version first, then replace the old one (a failure keeps the old file)
+    const bytes = await client.download(file.fileurl)
+    const release = await reserveSpace(bytes.length)
+    const folderId = folderNamed(section, rootId)
+    const item = await store
+      .addFile({ moduleId, folderId }, { name: file.filename, type: '', bytes, fromInternet: true })
+      .finally(release)
+    store.put('items', { ...item, source: 'moodle', externalId })
+    const outdated = store
+      .get()
+      .items.find(
+        (i) => i.id !== item.id && i.externalId?.startsWith(`moodle:file:${file.fileurl}@`),
+      )
+    if (outdated) await store.remove('items', outdated.id)
+    count += 1
+  })
   return count
 }

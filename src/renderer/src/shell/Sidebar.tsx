@@ -355,21 +355,25 @@ export function Sidebar() {
   const isDrawer = useDevice((s) => s.isPhone)
   const [resizing, setResizing] = useState(false)
 
-  const startResize = (e: React.MouseEvent) => {
+  // Pointer events, so the width can be changed with a mouse, a pen or a finger
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
     e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
     setResizing(true)
     const startX = e.clientX
     const startWidth = width
-    const onMouseMove = (moveEvent: globalThis.MouseEvent) => {
-      setWidth(startWidth + (moveEvent.clientX - startX))
-    }
-    const onMouseUp = () => {
+    const onMove = (moveEvent: PointerEvent) => setWidth(startWidth + (moveEvent.clientX - startX))
+    const onEnd = () => {
       setResizing(false)
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onEnd)
+      handle.removeEventListener('pointercancel', onEnd)
     }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onEnd)
+    handle.addEventListener('pointercancel', onEnd)
   }
 
   // Open tasks that are due today or overdue.
@@ -458,7 +462,7 @@ export function Sidebar() {
       <div
         className="sidebar-resize-handle"
         title="Breite anpassen (Doppelklick für Standardbreite)"
-        onMouseDown={startResize}
+        onPointerDown={startResize}
         onDoubleClick={() => setWidth(DEFAULT_SIDEBAR_WIDTH)}
       />
 

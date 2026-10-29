@@ -221,4 +221,50 @@ describe('Moodle', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('loads courses in parallel and course contents only once per course', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'moodle-'))
+    try {
+      const store = await Store.open(dir)
+      const modules = [1, 2, 3].map((n) => newModule('s', { name: `Modul ${n}` }))
+      for (const module of modules) store.put('modules', module)
+      const settings = store.get().settings
+      store.update({
+        settings: {
+          ...settings,
+          moodle: {
+            ...settings.moodle,
+            url: 'https://m.de',
+            courseMap: { 11: modules[0].id, 12: modules[1].id, 13: modules[2].id },
+            syncFiles: true,
+          },
+        },
+      })
+
+      let running = 0
+      let mostAtOnce = 0
+      const contentsCalls: string[] = []
+      const slow = fakeFetch((fn, body) => {
+        if (fn === 'core_course_get_contents') {
+          contentsCalls.push(body.get('courseid')!)
+          return [{ name: 'Woche 1', modules: [{ modname: 'forum', name: 'Forum', instance: 7 }] }]
+        }
+        if (fn === 'mod_forum_get_forums_by_courses') return []
+        return {}
+      })
+      const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+        running += 1
+        mostAtOnce = Math.max(mostAtOnce, running)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        running -= 1
+        return slow(input, init)
+      }) as typeof fetch
+
+      await syncMoodle(store, new MoodleClient('https://m.de', 't', fetchImpl))
+      expect(mostAtOnce).toBeGreaterThan(1)
+      expect(contentsCalls.sort()).toEqual(['11', '12', '13'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
