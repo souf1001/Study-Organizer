@@ -17,6 +17,6 @@ function goBack(): void {
 }
 
 export function setupAndroid(): void {
-  passXhrUrlsAsStrings(XMLHttpRequest.prototype)
+  passXhrUrlsAsStrings(window)
   void App.addListener('backButton', goBack)
 }
